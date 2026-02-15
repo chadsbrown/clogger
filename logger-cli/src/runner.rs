@@ -7,7 +7,11 @@ use logger_core::{
 };
 
 use crate::{
-    fakes::{fake_keyer::FakeKeyer, fake_log::FakeLog, fake_rig::FakeRig},
+    fakes::{
+        fake_keyer::FakeKeyer,
+        fake_rig::FakeRig,
+        qso_log_adapter::{QsoLogAdapter, decode_exchange_pairs},
+    },
     script::{ContestValue, KeyValue, ModeValue, Script, ScriptEvent},
 };
 
@@ -55,7 +59,7 @@ pub fn run_script(script: Script) -> Result<()> {
     }
 
     let mut keyer = FakeKeyer::default();
-    let mut log = FakeLog::default();
+    let mut log = QsoLogAdapter::new();
     let mut rig = FakeRig::default();
     let mut beep_error_count = 0usize;
 
@@ -103,7 +107,12 @@ pub fn run_script(script: Script) -> Result<()> {
                 match effect {
                     Effect::CwSend { radio, text } => keyer.send(radio, text),
                     Effect::LogInsert { draft } => {
-                        let id = log.insert(draft);
+                        let id = log.insert(
+                            draft,
+                            st.now_ms.max(0) as u64,
+                            st.focused_radio as u32,
+                            st.active_operator as u32,
+                        )?;
                         st.last_logged = Some(id);
                     }
                     Effect::Beep { kind } => {
@@ -128,20 +137,26 @@ pub fn run_script(script: Script) -> Result<()> {
         }
     }
 
-    if script.expectations.qsos.len() != log.rows.len() {
+    let records = log.ordered_records();
+    if script.expectations.qsos.len() != records.len() {
         bail!(
             "expected {} qsos, got {}",
             script.expectations.qsos.len(),
-            log.rows.len()
+            records.len()
         );
     }
 
-    for (exp, (_, got)) in script.expectations.qsos.iter().zip(log.rows.iter()) {
-        if exp.call.to_uppercase() != got.callsign {
-            bail!("qso mismatch expected call {} got {}", exp.call, got.callsign);
+    for (exp, got) in script.expectations.qsos.iter().zip(records.iter()) {
+        if exp.call.to_uppercase() != got.callsign_norm {
+            bail!(
+                "qso mismatch expected call {} got {}",
+                exp.call,
+                got.callsign_norm
+            );
         }
 
-        let got_map: BTreeMap<String, String> = got.exchange_pairs.iter().cloned().collect();
+        let pairs = decode_exchange_pairs(&got.exchange)?;
+        let got_map: BTreeMap<String, String> = pairs.into_iter().collect();
         if let Some(rst) = &exp.rst
             && got_map.get("rst") != Some(rst)
         {
