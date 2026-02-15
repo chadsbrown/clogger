@@ -1,0 +1,52 @@
+use crate::state::AppState;
+
+pub fn expand_macro(template: &str, st: &AppState) -> String {
+    let call = st.current_call();
+    let my_zone = st.my_zone.to_string();
+    let replacements = [
+        ("{MYCALL}", st.my_call.as_str()),
+        ("{MYZONE}", my_zone.as_str()),
+        ("{RST_SENT}", st.rst_sent.as_str()),
+        ("{CALL}", call.as_str()),
+    ];
+
+    replacements
+        .into_iter()
+        .fold(template.to_string(), |acc, (k, v)| acc.replace(k, v))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use crate::{
+        contest::traits::ContestEntry,
+        entry::state::EntryState,
+        state::{AppState, EsmPolicy},
+        CqwwContest,
+    };
+
+    use super::expand_macro;
+
+    #[test]
+    fn expands_placeholders() {
+        let contest = CqwwContest::default();
+        let mut st = AppState {
+            now_ms: 0,
+            focused_radio: 1,
+            active_operator: 1,
+            radios: HashMap::new(),
+            entry: EntryState::from_spec(&contest.form_spec()),
+            bandmap: Vec::new(),
+            last_logged: None,
+            my_call: "N0CALL".to_string(),
+            my_zone: 4,
+            rst_sent: "599".to_string(),
+            esm_policy: EsmPolicy::default(),
+        };
+        st.entry.fields[0].value = "K1ABC".to_string();
+
+        let out = expand_macro("{MYCALL} {MYZONE} {RST_SENT} {CALL}", &st);
+        assert_eq!(out, "N0CALL 4 599 K1ABC");
+    }
+}

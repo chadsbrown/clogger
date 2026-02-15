@@ -1,0 +1,23 @@
+{
+  "esm_policy": {
+    "sp_send_tu": true
+  },
+  "events": [
+    { "type": "SetMode", "mode": "Sp" },
+    { "type": "Text", "s": "K1ABC" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "599" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "5" },
+    { "type": "Key", "key": "Enter" }
+  ],
+  "expectations": {
+    "qsos": [
+      { "call": "K1ABC", "rst": "599", "zone": 5 }
+    ],
+    "cw_sent_contains": [
+      "K1ABC 599 4",
+      "TU K1ABC"
+    ]
+  }
+}

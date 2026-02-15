@@ -1,0 +1,3 @@
+[workspace]
+members = ["logger-core", "logger-cli"]
+resolver = "2"

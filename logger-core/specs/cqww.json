@@ -1,0 +1,65 @@
+{
+  "id": "cqww",
+  "name": "CQ World-Wide DX Contest",
+  "cabrillo_contest": "CQ-WW",
+  "bands": ["B160", "B80", "B40", "B20", "B15", "B10"],
+  "modes": ["CW", "SSB"],
+  "dupe_dimension": "Band",
+  "valid_qso": [],
+  "exchange": {
+    "received_variants": [
+      {
+        "when": null,
+        "fields": [
+          {"id": "rst", "field_type": "Rst", "required": true, "domain": null, "accept": [], "normalize_upper_trim": false},
+          {"id": "zone", "field_type": "Int", "required": true, "domain": {"Range": {"min": 1, "max": 40}}, "accept": [], "normalize_upper_trim": false}
+        ]
+      }
+    ],
+    "sent_variants": [
+      {
+        "when": null,
+        "fields": [
+          {"id": "rst", "value": {"Const": "599"}, "normalize_upper_trim": false},
+          {"id": "zone", "value": {"Config": "my_cq_zone"}, "normalize_upper_trim": false}
+        ]
+      }
+    ]
+  },
+  "multipliers": [
+    {"id": "zone", "dimension": "Band", "variants": [{"when": null, "key": {"scope": "RCVD", "key": "zone"}, "domain": {"Range": {"min": 1, "max": 40}}}]},
+    {"id": "country", "dimension": "Band", "variants": [{"when": null, "key": {"scope": "DEST", "key": "dxcc"}, "domain": {"External": {"name": "dxcc_entities"}}}]}
+  ],
+  "points": [
+    {"when": {"Eq": [{"Field": {"scope": "SOURCE", "key": "dxcc"}}, {"Field": {"scope": "DEST", "key": "dxcc"}}]}, "value": 0},
+    {"when": {"Ne": [{"Field": {"scope": "SOURCE", "key": "continent"}}, {"Field": {"scope": "DEST", "key": "continent"}}]}, "value": 3},
+    {"when": {"And": [
+      {"Eq": [{"Field": {"scope": "SOURCE", "key": "continent"}}, {"Field": {"scope": "DEST", "key": "continent"}}]},
+      {"Ne": [{"Field": {"scope": "SOURCE", "key": "dxcc"}}, {"Field": {"scope": "DEST", "key": "dxcc"}}]},
+      {"Eq": [{"Field": {"scope": "SOURCE", "key": "continent"}}, {"Value": {"Text": "NA"}}]}
+    ]}, "value": 2},
+    {"when": {"And": [
+      {"Eq": [{"Field": {"scope": "SOURCE", "key": "continent"}}, {"Field": {"scope": "DEST", "key": "continent"}}]},
+      {"Ne": [{"Field": {"scope": "SOURCE", "key": "dxcc"}}, {"Field": {"scope": "DEST", "key": "dxcc"}}]}
+    ]}, "value": 1},
+    {"when": null, "value": 0}
+  ],
+  "score": {"formula": "points_times_mults"},
+  "config_fields": [
+    {"id": "my_cq_zone", "required": true, "required_when": null, "domain": {"Range": {"min": 1, "max": 40}}}
+  ],
+  "variants": {
+    "cw": {
+      "name": "CW Weekend",
+      "cabrillo_contest": "CQ-WW-CW",
+      "allowed_modes": ["CW"],
+      "exchange": {"sent_rst_value": "599"}
+    },
+    "ssb": {
+      "name": "SSB Weekend",
+      "cabrillo_contest": "CQ-WW-SSB",
+      "allowed_modes": ["SSB"],
+      "exchange": {"sent_rst_value": "59"}
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "events": [
+    { "type": "SetMode", "mode": "Run" },
+    { "type": "Text", "s": "K1ABC" },
+    { "type": "Key", "key": "Enter" }
+  ],
+  "expectations": {
+    "qsos": [],
+    "beep_error_count": 1,
+    "focus_field_id": 2
+  }
+}

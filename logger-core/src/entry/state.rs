@@ -1,0 +1,98 @@
+use crate::entry::spec::EntryFormSpec;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OpMode {
+    Run,
+    Sp,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EsmStep {
+    Idle,
+    ExchSent,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Validation {
+    Unknown,
+    Valid,
+    Invalid(String),
+}
+
+impl Validation {
+    pub fn is_valid(&self) -> bool {
+        matches!(self, Self::Valid)
+    }
+
+    pub fn is_invalid(&self) -> bool {
+        matches!(self, Self::Invalid(_))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntryFieldState {
+    pub field_id: u16,
+    pub label: String,
+    pub value: String,
+    pub required: bool,
+    pub status: Validation,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntryState {
+    pub fields: Vec<EntryFieldState>,
+    pub focus: usize,
+    pub overall: Validation,
+    pub mode: OpMode,
+    pub esm_enabled: bool,
+    pub esm_step: EsmStep,
+}
+
+impl EntryState {
+    pub fn from_spec(spec: &EntryFormSpec) -> Self {
+        let fields = spec
+            .fields
+            .iter()
+            .map(|f| EntryFieldState {
+                field_id: f.field_id,
+                label: f.label.clone(),
+                value: String::new(),
+                required: f.required,
+                status: Validation::Unknown,
+            })
+            .collect();
+
+        Self {
+            fields,
+            focus: 0,
+            overall: Validation::Unknown,
+            mode: OpMode::Run,
+            esm_enabled: true,
+            esm_step: EsmStep::Idle,
+        }
+    }
+
+    pub fn clear_values(&mut self) {
+        for field in &mut self.fields {
+            field.value.clear();
+            field.status = Validation::Unknown;
+        }
+        self.focus = 0;
+        self.overall = Validation::Unknown;
+    }
+
+    pub fn focused_mut(&mut self) -> Option<&mut EntryFieldState> {
+        self.fields.get_mut(self.focus)
+    }
+
+    pub fn get_field_value_by_id(&self, field_id: u16) -> Option<&str> {
+        self.fields
+            .iter()
+            .find(|f| f.field_id == field_id)
+            .map(|f| f.value.as_str())
+    }
+
+    pub fn first_invalid_index(&self) -> Option<usize> {
+        self.fields.iter().position(|f| f.status.is_invalid())
+    }
+}
