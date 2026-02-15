@@ -44,6 +44,7 @@ pub struct EntryState {
     pub focus: usize,
     pub overall: Validation,
     pub is_dupe: bool,
+    pub is_new_mult: bool,
     pub mode: OpMode,
     pub esm_enabled: bool,
     pub esm_step: EsmStep,
@@ -68,6 +69,7 @@ impl EntryState {
             focus: 0,
             overall: Validation::Unknown,
             is_dupe: false,
+            is_new_mult: false,
             mode: OpMode::Run,
             esm_enabled: true,
             esm_step: EsmStep::Idle,
@@ -82,6 +84,7 @@ impl EntryState {
         self.focus = 0;
         self.overall = Validation::Unknown;
         self.is_dupe = false;
+        self.is_new_mult = false;
     }
 
     pub fn focused_mut(&mut self) -> Option<&mut EntryFieldState> {

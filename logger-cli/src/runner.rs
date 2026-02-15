@@ -59,7 +59,13 @@ pub fn run_script(script: Script) -> Result<()> {
     }
 
     let mut keyer = FakeKeyer::default();
-    let mut log = QsoLogAdapter::new();
+    let mut log = QsoLogAdapter::new(
+        match contest_kind {
+            ContestValue::Cqww => "cqww",
+            ContestValue::Sweeps => "sweeps",
+        },
+        st.my_zone,
+    );
     let mut rig = FakeRig::default();
     let mut beep_error_count = 0usize;
 
@@ -102,7 +108,7 @@ pub fn run_script(script: Script) -> Result<()> {
         };
 
         if let Some(ev) = app_event {
-            let effects = reduce(&mut st, contest.as_ref(), &macros, &log, ev);
+            let effects = reduce(&mut st, contest.as_ref(), &macros, &log, &log, ev);
             for effect in effects {
                 match effect {
                     Effect::CwSend { radio, text } => keyer.send(radio, text),
@@ -220,6 +226,15 @@ pub fn run_script(script: Script) -> Result<()> {
             st.entry.is_dupe
         );
     }
+    if let Some(expected) = script.expectations.final_is_new_mult
+        && st.entry.is_new_mult != expected
+    {
+        bail!(
+            "expected final is_new_mult {}, got {}",
+            expected,
+            st.entry.is_new_mult
+        );
+    }
 
     Ok(())
 }
@@ -237,6 +252,7 @@ mod tests {
             "cqww_sp_one_step.json",
             "cqww_sp_send_tu.json",
             "cqww_dupe_indicator.json",
+            "cqww_new_mult_indicator.json",
             "cqww_run_exch_sent_edit_resets.json",
             "sweeps_run_two_step.json",
             "sweeps_invalid_focus.json",

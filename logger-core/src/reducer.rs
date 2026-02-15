@@ -11,10 +11,22 @@ pub trait DupeChecker {
     fn is_dupe(&self, call_norm: &str, band: &str, mode: &str) -> bool;
 }
 
+pub trait MultChecker {
+    fn is_new_mult(&self, call_norm: &str, band: &str, mode: &str) -> bool;
+}
+
 pub struct NoDupeChecker;
 
 impl DupeChecker for NoDupeChecker {
     fn is_dupe(&self, _call_norm: &str, _band: &str, _mode: &str) -> bool {
+        false
+    }
+}
+
+pub struct NoMultChecker;
+
+impl MultChecker for NoMultChecker {
+    fn is_new_mult(&self, _call_norm: &str, _band: &str, _mode: &str) -> bool {
         false
     }
 }
@@ -24,6 +36,7 @@ pub fn reduce(
     contest: &dyn ContestEntry,
     macros: &Macros,
     dupe_checker: &dyn DupeChecker,
+    mult_checker: &dyn MultChecker,
     ev: AppEvent,
 ) -> Vec<Effect> {
     match ev {
@@ -46,7 +59,7 @@ pub fn reduce(
                 },
             );
             if radio == st.focused_radio {
-                recompute_dupe(st, dupe_checker);
+                recompute_feedback(st, dupe_checker, mult_checker);
             }
             Vec::new()
         }
@@ -60,7 +73,7 @@ pub fn reduce(
         }
         AppEvent::FocusRadio { radio } => {
             st.focused_radio = radio;
-            recompute_dupe(st, dupe_checker);
+            recompute_feedback(st, dupe_checker, mult_checker);
             Vec::new()
         }
         AppEvent::SetOperator { operator } => {
@@ -75,7 +88,7 @@ pub fn reduce(
             }
             revalidate_after_edit(st, contest);
             if touched_call {
-                recompute_dupe(st, dupe_checker);
+                recompute_feedback(st, dupe_checker, mult_checker);
             }
             Vec::new()
         }
@@ -94,7 +107,7 @@ pub fn reduce(
                 }
                 revalidate_after_edit(st, contest);
                 if touched_call {
-                    recompute_dupe(st, dupe_checker);
+                    recompute_feedback(st, dupe_checker, mult_checker);
                 }
                 Vec::new()
             }
@@ -106,7 +119,7 @@ pub fn reduce(
                 }
                 revalidate_after_edit(st, contest);
                 if touched_call {
-                    recompute_dupe(st, dupe_checker);
+                    recompute_feedback(st, dupe_checker, mult_checker);
                 }
                 Vec::new()
             }
@@ -148,20 +161,27 @@ fn revalidate_after_edit(st: &mut AppState, contest: &dyn ContestEntry) {
     st.entry.esm_step = EsmStep::Idle;
 }
 
-fn recompute_dupe(st: &mut AppState, dupe_checker: &dyn DupeChecker) {
+fn recompute_feedback(
+    st: &mut AppState,
+    dupe_checker: &dyn DupeChecker,
+    mult_checker: &dyn MultChecker,
+) {
     let call_norm = st.current_call();
     if call_norm.is_empty() {
         st.entry.is_dupe = false;
+        st.entry.is_new_mult = false;
         return;
     }
     let Some(rig) = st.radios.get(&st.focused_radio) else {
         st.entry.is_dupe = false;
+        st.entry.is_new_mult = false;
         return;
     };
 
     let band = freq_to_band_label(rig.freq_hz);
     let mode = normalize_mode(&rig.mode);
     st.entry.is_dupe = dupe_checker.is_dupe(&call_norm, &band, &mode);
+    st.entry.is_new_mult = mult_checker.is_new_mult(&call_norm, &band, &mode);
 }
 
 fn freq_to_band_label(freq_hz: u64) -> String {
@@ -197,7 +217,7 @@ mod tests {
         effects::Effect,
         entry::state::{EntryState, EsmStep, OpMode, Validation},
         events::{AppEvent, Key},
-        reducer::{DupeChecker, NoDupeChecker},
+        reducer::{DupeChecker, MultChecker, NoDupeChecker, NoMultChecker},
         state::{AppState, EsmPolicy, Macros},
     };
 
@@ -207,7 +227,7 @@ mod tests {
         macros: &Macros,
         ev: AppEvent,
     ) -> Vec<Effect> {
-        crate::reducer::reduce(st, contest, macros, &NoDupeChecker, ev)
+        crate::reducer::reduce(st, contest, macros, &NoDupeChecker, &NoMultChecker, ev)
     }
 
     struct MatchDupeChecker;
@@ -215,6 +235,14 @@ mod tests {
     impl DupeChecker for MatchDupeChecker {
         fn is_dupe(&self, call_norm: &str, band: &str, mode: &str) -> bool {
             call_norm == "K5ZD" && band == "20m" && mode == "CW"
+        }
+    }
+
+    struct MatchMultChecker;
+
+    impl MultChecker for MatchMultChecker {
+        fn is_new_mult(&self, call_norm: &str, band: &str, mode: &str) -> bool {
+            call_norm == "DL1ABC" && band == "20m" && mode == "CW"
         }
     }
 
@@ -545,6 +573,7 @@ mod tests {
             &contest,
             &macros,
             &MatchDupeChecker,
+            &NoMultChecker,
             AppEvent::TextInput {
                 s: "K5ZD".to_string(),
             },
@@ -556,6 +585,7 @@ mod tests {
             &contest,
             &macros,
             &MatchDupeChecker,
+            &NoMultChecker,
             AppEvent::RigStatus {
                 radio: 1,
                 freq_hz: 14_025_000,
@@ -570,9 +600,54 @@ mod tests {
             &contest,
             &macros,
             &MatchDupeChecker,
+            &NoMultChecker,
             AppEvent::FocusRadio { radio: 2 },
         );
         assert!(!st.entry.is_dupe);
+    }
+
+    #[test]
+    fn mult_recomputes_on_call_and_focus_context_changes() {
+        let contest = CqwwContest::default();
+        let mut st = mk_state();
+        let macros = Macros::default();
+
+        crate::reducer::reduce(
+            &mut st,
+            &contest,
+            &macros,
+            &NoDupeChecker,
+            &MatchMultChecker,
+            AppEvent::TextInput {
+                s: "DL1ABC".to_string(),
+            },
+        );
+        assert!(!st.entry.is_new_mult);
+
+        crate::reducer::reduce(
+            &mut st,
+            &contest,
+            &macros,
+            &NoDupeChecker,
+            &MatchMultChecker,
+            AppEvent::RigStatus {
+                radio: 1,
+                freq_hz: 14_025_000,
+                mode: "CW".to_string(),
+                is_ptt: false,
+            },
+        );
+        assert!(st.entry.is_new_mult);
+
+        crate::reducer::reduce(
+            &mut st,
+            &contest,
+            &macros,
+            &NoDupeChecker,
+            &MatchMultChecker,
+            AppEvent::FocusRadio { radio: 2 },
+        );
+        assert!(!st.entry.is_new_mult);
     }
 
     #[test]

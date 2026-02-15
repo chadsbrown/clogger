@@ -71,6 +71,7 @@ pub struct Expectations {
     pub beep_error_count: Option<usize>,
     pub focus_field_id: Option<u16>,
     pub final_is_dupe: Option<bool>,
+    pub final_is_new_mult: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
