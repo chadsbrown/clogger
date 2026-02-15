@@ -3,16 +3,21 @@ use crate::state::AppState;
 pub fn expand_macro(template: &str, st: &AppState) -> String {
     let call = st.current_call();
     let my_zone = st.my_zone.to_string();
-    let replacements = [
+    let base = [
         ("{MYCALL}", st.my_call.as_str()),
         ("{MYZONE}", my_zone.as_str()),
         ("{RST_SENT}", st.rst_sent.as_str()),
         ("{CALL}", call.as_str()),
     ];
 
-    replacements
+    let out = base
         .into_iter()
-        .fold(template.to_string(), |acc, (k, v)| acc.replace(k, v))
+        .fold(template.to_string(), |acc, (k, v)| acc.replace(k, v));
+
+    st.entry.fields.iter().fold(out, |acc, f| {
+        let token = format!("{{{}}}", f.label.to_ascii_uppercase());
+        acc.replace(&token, f.value.trim())
+    })
 }
 
 #[cfg(test)]

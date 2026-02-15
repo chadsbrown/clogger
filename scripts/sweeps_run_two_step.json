@@ -1,0 +1,34 @@
+{
+  "contest": "Sweeps",
+  "events": [
+    { "type": "SetMode", "mode": "Run" },
+    { "type": "Text", "s": "K1ABC" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "123" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "a" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "77" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "EMA" },
+    { "type": "Key", "key": "Enter" },
+    { "type": "Key", "key": "Enter" }
+  ],
+  "expectations": {
+    "qsos": [
+      {
+        "call": "K1ABC",
+        "exchange": {
+          "nr": "123",
+          "prec": "A",
+          "check": "77",
+          "section": "EMA"
+        }
+      }
+    ],
+    "cw_sent_contains": [
+      "K1ABC 123 a 77 EMA",
+      "TU K1ABC"
+    ]
+  }
+}

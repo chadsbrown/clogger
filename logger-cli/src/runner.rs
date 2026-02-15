@@ -1,14 +1,14 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use anyhow::{Context, Result, bail};
 use logger_core::{
     AppEvent, AppState, BeepKind, ContestEntry, CqwwContest, Effect, EntryState, EsmPolicy, Key,
-    Macros, OpMode, Spot, reduce,
+    Macros, OpMode, Spot, SweepsContest, reduce,
 };
 
 use crate::{
     fakes::{fake_keyer::FakeKeyer, fake_log::FakeLog, fake_rig::FakeRig},
-    script::{KeyValue, ModeValue, Script, ScriptEvent},
+    script::{ContestValue, KeyValue, ModeValue, Script, ScriptEvent},
 };
 
 pub fn run_script_file(path: &str) -> Result<()> {
@@ -18,8 +18,19 @@ pub fn run_script_file(path: &str) -> Result<()> {
 }
 
 pub fn run_script(script: Script) -> Result<()> {
-    let contest = CqwwContest::default();
-    let macros = Macros::default();
+    let contest_kind = script.contest.unwrap_or(ContestValue::Cqww);
+    let (contest, macros): (Box<dyn ContestEntry>, Macros) = match contest_kind {
+        ContestValue::Cqww => (Box::new(CqwwContest::default()), Macros::default()),
+        ContestValue::Sweeps => (
+            Box::new(SweepsContest),
+            Macros {
+                f1: "CQ SS {MYCALL}".to_string(),
+                f2: "{CALL} {NR} {PREC} {CHECK} {SECTION}".to_string(),
+                f3: "TU {CALL}".to_string(),
+            },
+        ),
+    };
+
     let mut st = AppState {
         now_ms: 0,
         focused_radio: 1,
@@ -87,7 +98,7 @@ pub fn run_script(script: Script) -> Result<()> {
         };
 
         if let Some(ev) = app_event {
-            let effects = reduce(&mut st, &contest, &macros, ev);
+            let effects = reduce(&mut st, contest.as_ref(), &macros, ev);
             for effect in effects {
                 match effect {
                     Effect::CwSend { radio, text } => keyer.send(radio, text),
@@ -126,16 +137,28 @@ pub fn run_script(script: Script) -> Result<()> {
     }
 
     for (exp, (_, got)) in script.expectations.qsos.iter().zip(log.rows.iter()) {
-        if exp.call.to_uppercase() != got.callsign || exp.rst != got.rst || exp.zone != got.zone {
-            bail!(
-                "qso mismatch expected ({}, {}, {}) got ({}, {}, {})",
-                exp.call,
-                exp.rst,
-                exp.zone,
-                got.callsign,
-                got.rst,
-                got.zone
-            );
+        if exp.call.to_uppercase() != got.callsign {
+            bail!("qso mismatch expected call {} got {}", exp.call, got.callsign);
+        }
+
+        let got_map: BTreeMap<String, String> = got.exchange_pairs.iter().cloned().collect();
+        if let Some(rst) = &exp.rst
+            && got_map.get("rst") != Some(rst)
+        {
+            bail!("qso mismatch expected rst {} got {:?}", rst, got_map.get("rst"));
+        }
+        if let Some(zone) = exp.zone {
+            let z = zone.to_string();
+            if got_map.get("zone") != Some(&z) {
+                bail!("qso mismatch expected zone {} got {:?}", zone, got_map.get("zone"));
+            }
+        }
+        if let Some(exchange) = &exp.exchange {
+            for (k, v) in exchange {
+                if got_map.get(k) != Some(v) {
+                    bail!("qso mismatch exchange {} expected {} got {:?}", k, v, got_map.get(k));
+                }
+            }
         }
     }
 

@@ -1,7 +1,9 @@
 use serde::Deserialize;
+use std::collections::BTreeMap;
 
 #[derive(Debug, Deserialize)]
 pub struct Script {
+    pub contest: Option<ContestValue>,
     #[serde(default)]
     pub esm_policy: EsmPolicyConfig,
     pub events: Vec<ScriptEvent>,
@@ -40,6 +42,12 @@ pub enum ModeValue {
     Sp,
 }
 
+#[derive(Debug, Deserialize, Clone, Copy)]
+pub enum ContestValue {
+    Cqww,
+    Sweeps,
+}
+
 #[derive(Debug, Deserialize)]
 pub enum KeyValue {
     Space,
@@ -65,8 +73,9 @@ pub struct Expectations {
 #[derive(Debug, Deserialize)]
 pub struct ExpectedQso {
     pub call: String,
-    pub rst: String,
-    pub zone: u8,
+    pub rst: Option<String>,
+    pub zone: Option<u8>,
+    pub exchange: Option<BTreeMap<String, String>>,
 }
 
 #[derive(Debug, Default, Deserialize)]

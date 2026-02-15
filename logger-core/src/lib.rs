@@ -7,6 +7,7 @@ pub mod reducer;
 pub mod state;
 
 pub use contest::cqww::CqwwContest;
+pub use contest::sweeps::SweepsContest;
 pub use contest::traits::{ContestEntry, EntryContext, EntryError};
 pub use effects::{BeepKind, Effect};
 pub use entry::state::{EntryFieldState, EntryState, EsmStep, OpMode, Validation};

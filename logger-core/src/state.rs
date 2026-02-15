@@ -38,9 +38,11 @@ pub struct Spot {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QsoDraft {
+    pub contest_id: String,
     pub callsign: String,
-    pub rst: String,
-    pub zone: u8,
+    pub band: String,
+    pub mode: String,
+    pub freq_hz: u64,
     pub exchange_schema_id: u16,
     pub exchange_pairs: Vec<(String, String)>,
 }

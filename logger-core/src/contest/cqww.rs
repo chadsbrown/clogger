@@ -105,13 +105,13 @@ impl ContestEntry for CqwwContest {
             values.insert(spec_field.id.as_str(), value);
         }
 
-        let rst = values
+        let _rst = values
             .get("rst")
             .cloned()
             .ok_or_else(|| EntryError {
                 message: "missing rst".to_string(),
             })?;
-        let zone = values
+        let _zone = values
             .get("zone")
             .ok_or_else(|| EntryError {
                 message: "missing zone".to_string(),
@@ -120,6 +120,7 @@ impl ContestEntry for CqwwContest {
             .map_err(|_| EntryError {
                 message: "invalid zone".to_string(),
             })?;
+        let rig = _ctx.rig.clone();
 
         let exchange_pairs = self
             .spec
@@ -134,13 +135,31 @@ impl ContestEntry for CqwwContest {
             .collect();
 
         Ok(QsoDraft {
+            contest_id: "cqww".to_string(),
             callsign: call,
-            rst,
-            zone,
+            band: freq_to_band_label(rig.as_ref().map(|r| r.freq_hz).unwrap_or(0)),
+            mode: rig
+                .as_ref()
+                .map(|r| r.mode.to_ascii_uppercase())
+                .unwrap_or_else(|| "CW".to_string()),
+            freq_hz: rig.as_ref().map(|r| r.freq_hz).unwrap_or(0),
             exchange_schema_id: 1,
             exchange_pairs,
         })
     }
+}
+
+fn freq_to_band_label(freq_hz: u64) -> String {
+    match freq_hz {
+        1_800_000..=2_000_000 => "160m",
+        3_500_000..=4_000_000 => "80m",
+        7_000_000..=7_300_000 => "40m",
+        14_000_000..=14_350_000 => "20m",
+        21_000_000..=21_450_000 => "15m",
+        28_000_000..=29_700_000 => "10m",
+        _ => "other",
+    }
+    .to_string()
 }
 
 fn validate_value(spec_field: &ReceivedField, value: &str) -> Validation {
