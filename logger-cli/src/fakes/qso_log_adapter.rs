@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use logger_core::QsoDraft;
+use logger_core::{DupeChecker, QsoDraft};
 use qsolog::{
     core::store::QsoStore,
     qso::{ExchangeBlob, QsoDraft as StoreDraft, QsoFlags, QsoRecord},
@@ -49,6 +49,15 @@ impl QsoLogAdapter {
             .collect()
     }
 
+    pub fn is_dupe(&self, call_norm: &str, band: &str, mode: &str) -> bool {
+        let band = to_band(band);
+        let mode = to_mode(mode);
+        self.store
+            .by_call(call_norm)
+            .into_iter()
+            .any(|q| !q.flags.is_void && q.band == band && q.mode == mode)
+    }
+
     #[allow(dead_code)]
     pub fn undo(&mut self) -> Result<()> {
         self.store.undo().map_err(|e| anyhow::anyhow!("undo failed: {e:?}"))?;
@@ -59,6 +68,12 @@ impl QsoLogAdapter {
     pub fn redo(&mut self) -> Result<()> {
         self.store.redo().map_err(|e| anyhow::anyhow!("redo failed: {e:?}"))?;
         Ok(())
+    }
+}
+
+impl DupeChecker for QsoLogAdapter {
+    fn is_dupe(&self, call_norm: &str, band: &str, mode: &str) -> bool {
+        self.is_dupe(call_norm, band, mode)
     }
 }
 

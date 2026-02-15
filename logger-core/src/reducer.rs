@@ -7,10 +7,23 @@ use crate::{
     state::{AppState, Macros, RadioState},
 };
 
+pub trait DupeChecker {
+    fn is_dupe(&self, call_norm: &str, band: &str, mode: &str) -> bool;
+}
+
+pub struct NoDupeChecker;
+
+impl DupeChecker for NoDupeChecker {
+    fn is_dupe(&self, _call_norm: &str, _band: &str, _mode: &str) -> bool {
+        false
+    }
+}
+
 pub fn reduce(
     st: &mut AppState,
     contest: &dyn ContestEntry,
     macros: &Macros,
+    dupe_checker: &dyn DupeChecker,
     ev: AppEvent,
 ) -> Vec<Effect> {
     match ev {
@@ -32,6 +45,9 @@ pub fn reduce(
                     is_ptt,
                 },
             );
+            if radio == st.focused_radio {
+                recompute_dupe(st, dupe_checker);
+            }
             Vec::new()
         }
         AppEvent::SpotReceived { spot } => {
@@ -44,6 +60,7 @@ pub fn reduce(
         }
         AppEvent::FocusRadio { radio } => {
             st.focused_radio = radio;
+            recompute_dupe(st, dupe_checker);
             Vec::new()
         }
         AppEvent::SetOperator { operator } => {
@@ -51,10 +68,15 @@ pub fn reduce(
             Vec::new()
         }
         AppEvent::TextInput { s } => {
+            let mut touched_call = false;
             if let Some(field) = st.entry.focused_mut() {
+                touched_call = field.field_id == 1;
                 field.value.push_str(&s);
             }
             revalidate_after_edit(st, contest);
+            if touched_call {
+                recompute_dupe(st, dupe_checker);
+            }
             Vec::new()
         }
         AppEvent::KeyPress { key } => match key {
@@ -65,17 +87,27 @@ pub fn reduce(
                 Vec::new()
             }
             Key::Backspace => {
+                let mut touched_call = false;
                 if let Some(field) = st.entry.focused_mut() {
+                    touched_call = field.field_id == 1;
                     field.value.pop();
                 }
                 revalidate_after_edit(st, contest);
+                if touched_call {
+                    recompute_dupe(st, dupe_checker);
+                }
                 Vec::new()
             }
             Key::Esc => {
+                let mut touched_call = false;
                 if let Some(field) = st.entry.focused_mut() {
+                    touched_call = field.field_id == 1;
                     field.value.clear();
                 }
                 revalidate_after_edit(st, contest);
+                if touched_call {
+                    recompute_dupe(st, dupe_checker);
+                }
                 Vec::new()
             }
             Key::F1 => vec![Effect::CwSend {
@@ -116,6 +148,45 @@ fn revalidate_after_edit(st: &mut AppState, contest: &dyn ContestEntry) {
     st.entry.esm_step = EsmStep::Idle;
 }
 
+fn recompute_dupe(st: &mut AppState, dupe_checker: &dyn DupeChecker) {
+    let call_norm = st.current_call();
+    if call_norm.is_empty() {
+        st.entry.is_dupe = false;
+        return;
+    }
+    let Some(rig) = st.radios.get(&st.focused_radio) else {
+        st.entry.is_dupe = false;
+        return;
+    };
+
+    let band = freq_to_band_label(rig.freq_hz);
+    let mode = normalize_mode(&rig.mode);
+    st.entry.is_dupe = dupe_checker.is_dupe(&call_norm, &band, &mode);
+}
+
+fn freq_to_band_label(freq_hz: u64) -> String {
+    match freq_hz {
+        1_800_000..=2_000_000 => "160m",
+        3_500_000..=4_000_000 => "80m",
+        7_000_000..=7_300_000 => "40m",
+        14_000_000..=14_350_000 => "20m",
+        21_000_000..=21_450_000 => "15m",
+        28_000_000..=29_700_000 => "10m",
+        _ => "other",
+    }
+    .to_string()
+}
+
+fn normalize_mode(mode: &str) -> String {
+    match mode.trim().to_ascii_uppercase().as_str() {
+        "CW" => "CW",
+        "SSB" => "SSB",
+        "DIGITAL" => "DIGITAL",
+        _ => "OTHER",
+    }
+    .to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
@@ -126,9 +197,26 @@ mod tests {
         effects::Effect,
         entry::state::{EntryState, EsmStep, OpMode, Validation},
         events::{AppEvent, Key},
-        reducer::reduce,
+        reducer::{DupeChecker, NoDupeChecker},
         state::{AppState, EsmPolicy, Macros},
     };
+
+    fn reduce(
+        st: &mut AppState,
+        contest: &dyn ContestEntry,
+        macros: &Macros,
+        ev: AppEvent,
+    ) -> Vec<Effect> {
+        crate::reducer::reduce(st, contest, macros, &NoDupeChecker, ev)
+    }
+
+    struct MatchDupeChecker;
+
+    impl DupeChecker for MatchDupeChecker {
+        fn is_dupe(&self, call_norm: &str, band: &str, mode: &str) -> bool {
+            call_norm == "K5ZD" && band == "20m" && mode == "CW"
+        }
+    }
 
     fn mk_state() -> AppState {
         let contest = CqwwContest::default();
@@ -444,5 +532,46 @@ mod tests {
         assert_eq!(st.entry.focus, 1);
         assert_eq!(st.entry.fields[0].value, "K1ABC");
         assert!(st.entry.fields[0].value.chars().all(|c| c != ' '));
+    }
+
+    #[test]
+    fn dupe_recomputes_on_call_edit_and_focused_rig_changes() {
+        let contest = CqwwContest::default();
+        let mut st = mk_state();
+        let macros = Macros::default();
+
+        crate::reducer::reduce(
+            &mut st,
+            &contest,
+            &macros,
+            &MatchDupeChecker,
+            AppEvent::TextInput {
+                s: "K5ZD".to_string(),
+            },
+        );
+        assert!(!st.entry.is_dupe);
+
+        crate::reducer::reduce(
+            &mut st,
+            &contest,
+            &macros,
+            &MatchDupeChecker,
+            AppEvent::RigStatus {
+                radio: 1,
+                freq_hz: 14_025_000,
+                mode: "CW".to_string(),
+                is_ptt: false,
+            },
+        );
+        assert!(st.entry.is_dupe);
+
+        crate::reducer::reduce(
+            &mut st,
+            &contest,
+            &macros,
+            &MatchDupeChecker,
+            AppEvent::FocusRadio { radio: 2 },
+        );
+        assert!(!st.entry.is_dupe);
     }
 }

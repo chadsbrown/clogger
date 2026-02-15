@@ -43,6 +43,7 @@ pub struct EntryState {
     pub fields: Vec<EntryFieldState>,
     pub focus: usize,
     pub overall: Validation,
+    pub is_dupe: bool,
     pub mode: OpMode,
     pub esm_enabled: bool,
     pub esm_step: EsmStep,
@@ -66,6 +67,7 @@ impl EntryState {
             fields,
             focus: 0,
             overall: Validation::Unknown,
+            is_dupe: false,
             mode: OpMode::Run,
             esm_enabled: true,
             esm_step: EsmStep::Idle,
@@ -79,6 +81,7 @@ impl EntryState {
         }
         self.focus = 0;
         self.overall = Validation::Unknown;
+        self.is_dupe = false;
     }
 
     pub fn focused_mut(&mut self) -> Option<&mut EntryFieldState> {

@@ -102,7 +102,7 @@ pub fn run_script(script: Script) -> Result<()> {
         };
 
         if let Some(ev) = app_event {
-            let effects = reduce(&mut st, contest.as_ref(), &macros, ev);
+            let effects = reduce(&mut st, contest.as_ref(), &macros, &log, ev);
             for effect in effects {
                 match effect {
                     Effect::CwSend { radio, text } => keyer.send(radio, text),
@@ -198,6 +198,15 @@ pub fn run_script(script: Script) -> Result<()> {
         if got != expected_field_id {
             bail!("expected focus field id {}, got {}", expected_field_id, got);
         }
+    }
+    if let Some(expected) = script.expectations.final_is_dupe
+        && st.entry.is_dupe != expected
+    {
+        bail!(
+            "expected final is_dupe {}, got {}",
+            expected,
+            st.entry.is_dupe
+        );
     }
 
     Ok(())
