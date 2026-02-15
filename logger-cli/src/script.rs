@@ -66,6 +66,8 @@ pub struct Expectations {
     pub qsos: Vec<ExpectedQso>,
     #[serde(default)]
     pub cw_sent_contains: Vec<String>,
+    #[serde(default)]
+    pub cw_sent_exact: Vec<String>,
     pub beep_error_count: Option<usize>,
     pub focus_field_id: Option<u16>,
     pub final_is_dupe: Option<bool>,

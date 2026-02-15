@@ -1,0 +1,26 @@
+{
+  "events": [
+    { "type": "RigStatus", "radio": 1, "freq_hz": 14025000, "mode": "CW", "is_ptt": false },
+    { "type": "SetMode", "mode": "Run" },
+    { "type": "Text", "s": "K1ABC" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "599" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "05" },
+    { "type": "Key", "key": "Enter" },
+    { "type": "Key", "key": "Backspace" },
+    { "type": "Text", "s": "4" },
+    { "type": "Key", "key": "Enter" },
+    { "type": "Key", "key": "Enter" }
+  ],
+  "expectations": {
+    "qsos": [
+      { "call": "K1ABC", "rst": "599", "zone": 4 }
+    ],
+    "cw_sent_exact": [
+      "K1ABC 599 4",
+      "K1ABC 599 4",
+      "TU K1ABC"
+    ]
+  }
+}

@@ -574,4 +574,158 @@ mod tests {
         );
         assert!(!st.entry.is_dupe);
     }
+
+    #[test]
+    fn run_exchsent_logs_without_resending_exch() {
+        let contest = CqwwContest::default();
+        let mut st = mk_state();
+        let macros = Macros::default();
+        st.entry.mode = OpMode::Run;
+
+        reduce(
+            &mut st,
+            &contest,
+            &macros,
+            AppEvent::TextInput {
+                s: "K1ABC".to_string(),
+            },
+        );
+        reduce(
+            &mut st,
+            &contest,
+            &macros,
+            AppEvent::KeyPress { key: Key::Space },
+        );
+        reduce(
+            &mut st,
+            &contest,
+            &macros,
+            AppEvent::TextInput {
+                s: "599".to_string(),
+            },
+        );
+        reduce(
+            &mut st,
+            &contest,
+            &macros,
+            AppEvent::KeyPress { key: Key::Space },
+        );
+        reduce(
+            &mut st,
+            &contest,
+            &macros,
+            AppEvent::TextInput { s: "5".to_string() },
+        );
+
+        let _ = reduce(
+            &mut st,
+            &contest,
+            &macros,
+            AppEvent::KeyPress { key: Key::Enter },
+        );
+        let effects = reduce(
+            &mut st,
+            &contest,
+            &macros,
+            AppEvent::KeyPress { key: Key::Enter },
+        );
+        assert!(effects.iter().any(|e| matches!(e, Effect::LogInsert { .. })));
+        assert!(effects.iter().any(|e| matches!(e, Effect::CwSend { text, .. } if text.starts_with("TU "))));
+        assert!(!effects.iter().any(|e| {
+            matches!(e, Effect::CwSend { text, .. } if text.contains("599 4") && text.contains("K1ABC"))
+        }));
+    }
+
+    #[test]
+    fn run_edit_after_exch_sent_requires_resend_then_log() {
+        let contest = CqwwContest::default();
+        let mut st = mk_state();
+        let macros = Macros::default();
+        st.entry.mode = OpMode::Run;
+
+        reduce(
+            &mut st,
+            &contest,
+            &macros,
+            AppEvent::TextInput {
+                s: "K1ABC".to_string(),
+            },
+        );
+        reduce(
+            &mut st,
+            &contest,
+            &macros,
+            AppEvent::KeyPress { key: Key::Space },
+        );
+        reduce(
+            &mut st,
+            &contest,
+            &macros,
+            AppEvent::TextInput {
+                s: "599".to_string(),
+            },
+        );
+        reduce(
+            &mut st,
+            &contest,
+            &macros,
+            AppEvent::KeyPress { key: Key::Space },
+        );
+        reduce(
+            &mut st,
+            &contest,
+            &macros,
+            AppEvent::TextInput { s: "05".to_string() },
+        );
+
+        let _ = reduce(
+            &mut st,
+            &contest,
+            &macros,
+            AppEvent::KeyPress { key: Key::Enter },
+        );
+        assert_eq!(st.entry.esm_step, EsmStep::ExchSent);
+
+        reduce(
+            &mut st,
+            &contest,
+            &macros,
+            AppEvent::KeyPress {
+                key: Key::Backspace,
+            },
+        );
+        reduce(
+            &mut st,
+            &contest,
+            &macros,
+            AppEvent::TextInput { s: "4".to_string() },
+        );
+        assert_eq!(st.entry.esm_step, EsmStep::Idle);
+
+        let effects_resend = reduce(
+            &mut st,
+            &contest,
+            &macros,
+            AppEvent::KeyPress { key: Key::Enter },
+        );
+        assert!(effects_resend.iter().any(|e| {
+            matches!(e, Effect::CwSend { text, .. } if text.contains("K1ABC 599 4"))
+        }));
+        assert!(!effects_resend
+            .iter()
+            .any(|e| matches!(e, Effect::LogInsert { .. })));
+
+        let effects_log = reduce(
+            &mut st,
+            &contest,
+            &macros,
+            AppEvent::KeyPress { key: Key::Enter },
+        );
+        assert!(effects_log
+            .iter()
+            .any(|e| matches!(e, Effect::LogInsert { .. })));
+        assert!(effects_log
+            .iter()
+            .any(|e| matches!(e, Effect::CwSend { text, .. } if text.starts_with("TU "))));
+    }
 }

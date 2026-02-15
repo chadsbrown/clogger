@@ -27,6 +27,12 @@ cargo run -p logger-cli -- scripts/cqww_run_two_step.json
 cargo run -p logger-cli -- scripts/cqww_run_invalid.json
 cargo run -p logger-cli -- scripts/cqww_sp_one_step.json
 cargo run -p logger-cli -- scripts/cqww_sp_send_tu.json
+cargo run -p logger-cli -- scripts/cqww_dupe_indicator.json
+cargo run -p logger-cli -- scripts/cqww_run_exch_sent_edit_resets.json
 cargo run -p logger-cli -- scripts/sweeps_run_two_step.json
 cargo run -p logger-cli -- scripts/sweeps_invalid_focus.json
+cargo run -p logger-cli -- scripts/sweeps_dupe_indicator.json
+cargo run -p logger-cli -- scripts/sweeps_run_exch_sent_edit_resets.json
 ```
+
+All golden scripts also run under `cargo test` via `logger-cli` test harness.

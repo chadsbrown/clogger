@@ -38,7 +38,7 @@ fn handle_run(st: &mut AppState, contest: &dyn ContestEntry, macros: &Macros) ->
         }];
     }
 
-    log_and_clear(st, contest, macros, true)
+    log_and_clear(st, contest, macros, true, !st.esm_policy.run_two_step)
 }
 
 fn handle_sp(st: &mut AppState, contest: &dyn ContestEntry, macros: &Macros) -> Vec<Effect> {
@@ -47,7 +47,7 @@ fn handle_sp(st: &mut AppState, contest: &dyn ContestEntry, macros: &Macros) -> 
     }
 
     if st.esm_policy.sp_log_on_first_enter {
-        return log_and_clear(st, contest, macros, st.esm_policy.sp_send_tu);
+        return log_and_clear(st, contest, macros, st.esm_policy.sp_send_tu, true);
     }
 
     if st.entry.esm_step == EsmStep::Idle {
@@ -58,7 +58,7 @@ fn handle_sp(st: &mut AppState, contest: &dyn ContestEntry, macros: &Macros) -> 
         }];
     }
 
-    log_and_clear(st, contest, macros, st.esm_policy.sp_send_tu)
+    log_and_clear(st, contest, macros, st.esm_policy.sp_send_tu, false)
 }
 
 fn log_and_clear(
@@ -66,6 +66,7 @@ fn log_and_clear(
     contest: &dyn ContestEntry,
     macros: &Macros,
     send_tu: bool,
+    send_exch: bool,
 ) -> Vec<Effect> {
     match contest.build_qso_draft(&st.entry, &entry_ctx(st)) {
         Ok(draft) => {
@@ -79,13 +80,14 @@ fn log_and_clear(
             st.entry.clear_values();
             st.entry.esm_step = EsmStep::Idle;
 
-            let mut effects = vec![
-                Effect::CwSend {
+            let mut effects = Vec::new();
+            if send_exch {
+                effects.push(Effect::CwSend {
                     radio: st.focused_radio,
                     text: exch_text,
-                },
-                Effect::LogInsert { draft },
-            ];
+                });
+            }
+            effects.push(Effect::LogInsert { draft });
             if let Some(text) = tu_text {
                 effects.push(Effect::CwSend {
                     radio: st.focused_radio,

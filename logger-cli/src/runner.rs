@@ -163,8 +163,10 @@ pub fn run_script(script: Script) -> Result<()> {
             bail!("qso mismatch expected rst {} got {:?}", rst, got_map.get("rst"));
         }
         if let Some(zone) = exp.zone {
-            let z = zone.to_string();
-            if got_map.get("zone") != Some(&z) {
+            let got_zone = got_map
+                .get("zone")
+                .and_then(|z| z.parse::<u8>().ok());
+            if got_zone != Some(zone) {
                 bail!("qso mismatch expected zone {} got {:?}", zone, got_map.get("zone"));
             }
         }
@@ -184,6 +186,16 @@ pub fn run_script(script: Script) -> Result<()> {
             cursor += pos + needle.len();
         } else {
             bail!("expected CW output to contain in order: {needle}");
+        }
+    }
+    if !script.expectations.cw_sent_exact.is_empty() {
+        let got: Vec<String> = keyer.sent.into_iter().map(|(_, t)| t).collect();
+        if got != script.expectations.cw_sent_exact {
+            bail!(
+                "expected exact CW {:?}, got {:?}",
+                script.expectations.cw_sent_exact,
+                got
+            );
         }
     }
 
@@ -210,4 +222,31 @@ pub fn run_script(script: Script) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::run_script_file;
+
+    #[test]
+    fn run_all_golden_scripts() {
+        let base = format!("{}/../scripts", env!("CARGO_MANIFEST_DIR"));
+        let scripts = [
+            "cqww_run_two_step.json",
+            "cqww_run_invalid.json",
+            "cqww_sp_one_step.json",
+            "cqww_sp_send_tu.json",
+            "cqww_dupe_indicator.json",
+            "cqww_run_exch_sent_edit_resets.json",
+            "sweeps_run_two_step.json",
+            "sweeps_invalid_focus.json",
+            "sweeps_dupe_indicator.json",
+            "sweeps_run_exch_sent_edit_resets.json",
+        ];
+
+        for script in scripts {
+            let path = format!("{base}/{script}");
+            run_script_file(&path).unwrap_or_else(|e| panic!("{script} failed: {e}"));
+        }
+    }
 }

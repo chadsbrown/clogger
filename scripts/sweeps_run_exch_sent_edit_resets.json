@@ -1,0 +1,39 @@
+{
+  "contest": "Sweeps",
+  "events": [
+    { "type": "RigStatus", "radio": 1, "freq_hz": 14025000, "mode": "CW", "is_ptt": false },
+    { "type": "SetMode", "mode": "Run" },
+    { "type": "Text", "s": "K1ABC" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "123" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "A" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "77" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "EMA" },
+    { "type": "Key", "key": "Enter" },
+    { "type": "Key", "key": "Esc" },
+    { "type": "Text", "s": "WMA" },
+    { "type": "Key", "key": "Enter" },
+    { "type": "Key", "key": "Enter" }
+  ],
+  "expectations": {
+    "qsos": [
+      {
+        "call": "K1ABC",
+        "exchange": {
+          "nr": "123",
+          "prec": "A",
+          "check": "77",
+          "section": "WMA"
+        }
+      }
+    ],
+    "cw_sent_exact": [
+      "K1ABC 123 A 77 EMA",
+      "K1ABC 123 A 77 WMA",
+      "TU K1ABC"
+    ]
+  }
+}
