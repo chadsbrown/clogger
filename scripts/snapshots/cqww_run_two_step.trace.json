@@ -1,0 +1,166 @@
+{
+  "script": "cqww_run_two_step.json",
+  "steps": [
+    {
+      "event": {
+        "mode": "Run",
+        "type": "SetMode"
+      },
+      "effects": [],
+      "state_after": {
+        "focused_radio": 1,
+        "entry_focus_index": 0,
+        "entry_focus_field_id": 1,
+        "esm_step": "Idle",
+        "is_dupe": false,
+        "is_new_mult": false,
+        "overall": "Unknown"
+      }
+    },
+    {
+      "event": {
+        "s": "K1ABC",
+        "type": "Text"
+      },
+      "effects": [],
+      "state_after": {
+        "focused_radio": 1,
+        "entry_focus_index": 0,
+        "entry_focus_field_id": 1,
+        "esm_step": "Idle",
+        "is_dupe": false,
+        "is_new_mult": false,
+        "overall": "Invalid"
+      }
+    },
+    {
+      "event": {
+        "key": "Space",
+        "type": "Key"
+      },
+      "effects": [],
+      "state_after": {
+        "focused_radio": 1,
+        "entry_focus_index": 1,
+        "entry_focus_field_id": 2,
+        "esm_step": "Idle",
+        "is_dupe": false,
+        "is_new_mult": false,
+        "overall": "Invalid"
+      }
+    },
+    {
+      "event": {
+        "s": "599",
+        "type": "Text"
+      },
+      "effects": [],
+      "state_after": {
+        "focused_radio": 1,
+        "entry_focus_index": 1,
+        "entry_focus_field_id": 2,
+        "esm_step": "Idle",
+        "is_dupe": false,
+        "is_new_mult": false,
+        "overall": "Invalid"
+      }
+    },
+    {
+      "event": {
+        "key": "Space",
+        "type": "Key"
+      },
+      "effects": [],
+      "state_after": {
+        "focused_radio": 1,
+        "entry_focus_index": 2,
+        "entry_focus_field_id": 3,
+        "esm_step": "Idle",
+        "is_dupe": false,
+        "is_new_mult": false,
+        "overall": "Invalid"
+      }
+    },
+    {
+      "event": {
+        "s": "5",
+        "type": "Text"
+      },
+      "effects": [],
+      "state_after": {
+        "focused_radio": 1,
+        "entry_focus_index": 2,
+        "entry_focus_field_id": 3,
+        "esm_step": "Idle",
+        "is_dupe": false,
+        "is_new_mult": false,
+        "overall": "Valid"
+      }
+    },
+    {
+      "event": {
+        "key": "Enter",
+        "type": "Key"
+      },
+      "effects": [
+        {
+          "type": "CwSend",
+          "radio": 1,
+          "text": "K1ABC 599 4"
+        }
+      ],
+      "state_after": {
+        "focused_radio": 1,
+        "entry_focus_index": 2,
+        "entry_focus_field_id": 3,
+        "esm_step": "ExchSent",
+        "is_dupe": false,
+        "is_new_mult": false,
+        "overall": "Valid"
+      }
+    },
+    {
+      "event": {
+        "key": "Enter",
+        "type": "Key"
+      },
+      "effects": [
+        {
+          "type": "LogInsert",
+          "callsign": "K1ABC",
+          "exchange_pairs": [
+            [
+              "rst",
+              "599"
+            ],
+            [
+              "zone",
+              "5"
+            ]
+          ]
+        },
+        {
+          "type": "CwSend",
+          "radio": 1,
+          "text": "TU K1ABC"
+        },
+        {
+          "type": "UiClearEntry"
+        },
+        {
+          "type": "UiSetFocus",
+          "field_id": 1
+        }
+      ],
+      "state_after": {
+        "focused_radio": 1,
+        "entry_focus_index": 0,
+        "entry_focus_field_id": 1,
+        "esm_step": "Idle",
+        "is_dupe": false,
+        "is_new_mult": false,
+        "overall": "Unknown"
+      }
+    }
+  ]
+}

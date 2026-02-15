@@ -36,3 +36,9 @@ cargo run -p logger-cli -- scripts/sweeps_run_exch_sent_edit_resets.json
 ```
 
 All golden scripts also run under `cargo test` via `logger-cli` test harness.
+
+Effect-trace snapshots are checked in tests. To intentionally refresh them:
+
+```bash
+UPDATE_SNAPSHOTS=1 cargo test -p logger-cli
+```

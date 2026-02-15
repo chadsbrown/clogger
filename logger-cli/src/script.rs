@@ -1,7 +1,7 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Script {
     pub contest: Option<ContestValue>,
     #[serde(default)]
@@ -11,7 +11,7 @@ pub struct Script {
     pub expectations: Expectations,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "type")]
 pub enum ScriptEvent {
     RigStatus {
@@ -39,19 +39,19 @@ pub enum ScriptEvent {
     },
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum ModeValue {
     Run,
     Sp,
 }
 
-#[derive(Debug, Deserialize, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 pub enum ContestValue {
     Cqww,
     Sweeps,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum KeyValue {
     Space,
     Tab,
@@ -63,7 +63,7 @@ pub enum KeyValue {
     Enter,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct Expectations {
     #[serde(default)]
     pub qsos: Vec<ExpectedQso>,
@@ -77,7 +77,7 @@ pub struct Expectations {
     pub final_is_new_mult: Option<bool>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ExpectedQso {
     pub call: String,
     pub band: Option<String>,
@@ -86,7 +86,7 @@ pub struct ExpectedQso {
     pub exchange: Option<BTreeMap<String, String>>,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct EsmPolicyConfig {
     pub run_two_step: Option<bool>,
     pub sp_log_on_first_enter: Option<bool>,

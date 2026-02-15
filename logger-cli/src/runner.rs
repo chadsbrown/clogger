@@ -1,10 +1,12 @@
-use std::collections::{BTreeMap, HashMap};
+use std::{collections::{BTreeMap, HashMap}, fs};
 
 use anyhow::{Context, Result, bail};
 use logger_core::{
     AppEvent, AppState, BeepKind, ContestEntry, CqwwContest, Effect, EntryState, EsmPolicy, Key,
     Macros, OpMode, Spot, SweepsContest, reduce,
 };
+use serde::Serialize;
+use serde_json::Value;
 
 use crate::{
     fakes::{
@@ -12,16 +14,65 @@ use crate::{
         fake_rig::FakeRig,
         qso_log_adapter::{QsoLogAdapter, decode_exchange_pairs},
     },
-    script::{ContestValue, KeyValue, ModeValue, Script, ScriptEvent},
+    script::{ContestValue, KeyValue, Script, ScriptEvent},
 };
 
+#[derive(Debug)]
+struct RunArtifacts {
+    st: AppState,
+    records: Vec<qsolog::qso::QsoRecord>,
+    full_cw: String,
+    cw_sent: Vec<String>,
+    beep_error_count: usize,
+    trace: Vec<TraceStep>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct TraceStep {
+    event: Value,
+    effects: Vec<TraceEffect>,
+    state_after: TraceState,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "type")]
+enum TraceEffect {
+    CwSend { radio: u8, text: String },
+    LogInsert { callsign: String, exchange_pairs: Vec<(String, String)> },
+    Beep { kind: String },
+    UiSetFocus { field_id: u16 },
+    UiClearEntry,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct TraceState {
+    focused_radio: u8,
+    entry_focus_index: usize,
+    entry_focus_field_id: u16,
+    esm_step: String,
+    is_dupe: bool,
+    is_new_mult: bool,
+    overall: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct TraceSnapshot {
+    script: String,
+    steps: Vec<TraceStep>,
+}
+
 pub fn run_script_file(path: &str) -> Result<()> {
-    let data = std::fs::read_to_string(path).with_context(|| format!("read script: {path}"))?;
+    let data = fs::read_to_string(path).with_context(|| format!("read script: {path}"))?;
     let script: Script = serde_json::from_str(&data).with_context(|| format!("parse script: {path}"))?;
     run_script(script)
 }
 
 pub fn run_script(script: Script) -> Result<()> {
+    let artifacts = execute_script(&script, false)?;
+    validate_expectations(&artifacts, &script)
+}
+
+fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
     let contest_kind = script.contest.unwrap_or(ContestValue::Cqww);
     let (contest, macros): (Box<dyn ContestEntry>, Macros) = match contest_kind {
         ContestValue::Cqww => (Box::new(CqwwContest::default()), Macros::default()),
@@ -68,9 +119,10 @@ pub fn run_script(script: Script) -> Result<()> {
     );
     let mut rig = FakeRig::default();
     let mut beep_error_count = 0usize;
+    let mut trace = Vec::new();
 
-    for ev in script.events {
-        let app_event = match ev {
+    for script_event in script.events.iter().cloned() {
+        let app_event = match script_event.clone() {
             ScriptEvent::RigStatus {
                 radio,
                 freq_hz,
@@ -84,8 +136,8 @@ pub fn run_script(script: Script) -> Result<()> {
             }),
             ScriptEvent::SetMode { mode } => Some(AppEvent::SetOpMode {
                 mode: match mode {
-                    ModeValue::Run => OpMode::Run,
-                    ModeValue::Sp => OpMode::Sp,
+                    crate::script::ModeValue::Run => OpMode::Run,
+                    crate::script::ModeValue::Sp => OpMode::Sp,
                 },
             }),
             ScriptEvent::FocusRadio { radio } => Some(AppEvent::FocusRadio { radio }),
@@ -108,8 +160,12 @@ pub fn run_script(script: Script) -> Result<()> {
             }),
         };
 
+        let mut trace_effects = Vec::new();
         if let Some(ev) = app_event {
             let effects = reduce(&mut st, contest.as_ref(), &macros, &log, &log, ev);
+            if record_trace {
+                trace_effects = effects.iter().map(normalize_effect).collect();
+            }
             for effect in effects {
                 match effect {
                     Effect::CwSend { radio, text } => keyer.send(radio, text),
@@ -139,21 +195,50 @@ pub fn run_script(script: Script) -> Result<()> {
             }
         }
 
+        if record_trace {
+            trace.push(TraceStep {
+                event: serde_json::to_value(&script_event).unwrap_or(Value::Null),
+                effects: trace_effects,
+                state_after: TraceState {
+                    focused_radio: st.focused_radio,
+                    entry_focus_index: st.entry.focus,
+                    entry_focus_field_id: st.entry.fields.get(st.entry.focus).map(|f| f.field_id).unwrap_or(0),
+                    esm_step: format!("{:?}", st.entry.esm_step),
+                    is_dupe: st.entry.is_dupe,
+                    is_new_mult: st.entry.is_new_mult,
+                    overall: normalize_overall(&st.entry.overall),
+                },
+            });
+        }
+
         for (radio_id, state) in &st.radios {
             rig.set(*radio_id, state.clone());
         }
     }
 
-    let records = log.ordered_records();
-    if script.expectations.qsos.len() != records.len() {
+    let full_cw = keyer.joined_text();
+    let cw_sent = keyer.sent.iter().map(|(_, t)| t.clone()).collect();
+
+    Ok(RunArtifacts {
+        st,
+        records: log.ordered_records(),
+        full_cw,
+        cw_sent,
+        beep_error_count,
+        trace,
+    })
+}
+
+fn validate_expectations(artifacts: &RunArtifacts, script: &Script) -> Result<()> {
+    if script.expectations.qsos.len() != artifacts.records.len() {
         bail!(
             "expected {} qsos, got {}",
             script.expectations.qsos.len(),
-            records.len()
+            artifacts.records.len()
         );
     }
 
-    for (exp, got) in script.expectations.qsos.iter().zip(records.iter()) {
+    for (exp, got) in script.expectations.qsos.iter().zip(artifacts.records.iter()) {
         if exp.call.to_uppercase() != got.callsign_norm {
             bail!(
                 "qso mismatch expected call {} got {}",
@@ -184,9 +269,7 @@ pub fn run_script(script: Script) -> Result<()> {
             bail!("qso mismatch expected rst {} got {:?}", rst, got_map.get("rst"));
         }
         if let Some(zone) = exp.zone {
-            let got_zone = got_map
-                .get("zone")
-                .and_then(|z| z.parse::<u8>().ok());
+            let got_zone = got_map.get("zone").and_then(|z| z.parse::<u8>().ok());
             if got_zone != Some(zone) {
                 bail!("qso mismatch expected zone {} got {:?}", zone, got_map.get("zone"));
             }
@@ -200,63 +283,98 @@ pub fn run_script(script: Script) -> Result<()> {
         }
     }
 
-    let full_cw = keyer.joined_text();
     let mut cursor = 0usize;
     for needle in &script.expectations.cw_sent_contains {
-        if let Some(pos) = full_cw[cursor..].find(needle) {
+        if let Some(pos) = artifacts.full_cw[cursor..].find(needle) {
             cursor += pos + needle.len();
         } else {
             bail!("expected CW output to contain in order: {needle}");
         }
     }
-    if !script.expectations.cw_sent_exact.is_empty() {
-        let got: Vec<String> = keyer.sent.into_iter().map(|(_, t)| t).collect();
-        if got != script.expectations.cw_sent_exact {
-            bail!(
-                "expected exact CW {:?}, got {:?}",
-                script.expectations.cw_sent_exact,
-                got
-            );
-        }
+    if !script.expectations.cw_sent_exact.is_empty() && artifacts.cw_sent != script.expectations.cw_sent_exact {
+        bail!(
+            "expected exact CW {:?}, got {:?}",
+            script.expectations.cw_sent_exact,
+            artifacts.cw_sent
+        );
     }
 
     if let Some(expected) = script.expectations.beep_error_count
-        && expected != beep_error_count
+        && expected != artifacts.beep_error_count
     {
-        bail!("expected {} error beeps, got {}", expected, beep_error_count);
+        bail!(
+            "expected {} error beeps, got {}",
+            expected,
+            artifacts.beep_error_count
+        );
     }
 
     if let Some(expected_field_id) = script.expectations.focus_field_id {
-        let got = st.entry.fields.get(st.entry.focus).map(|f| f.field_id).unwrap_or(0);
+        let got = artifacts
+            .st
+            .entry
+            .fields
+            .get(artifacts.st.entry.focus)
+            .map(|f| f.field_id)
+            .unwrap_or(0);
         if got != expected_field_id {
             bail!("expected focus field id {}, got {}", expected_field_id, got);
         }
     }
     if let Some(expected) = script.expectations.final_is_dupe
-        && st.entry.is_dupe != expected
+        && artifacts.st.entry.is_dupe != expected
     {
         bail!(
             "expected final is_dupe {}, got {}",
             expected,
-            st.entry.is_dupe
+            artifacts.st.entry.is_dupe
         );
     }
     if let Some(expected) = script.expectations.final_is_new_mult
-        && st.entry.is_new_mult != expected
+        && artifacts.st.entry.is_new_mult != expected
     {
         bail!(
             "expected final is_new_mult {}, got {}",
             expected,
-            st.entry.is_new_mult
+            artifacts.st.entry.is_new_mult
         );
     }
 
     Ok(())
 }
 
+fn normalize_effect(effect: &Effect) -> TraceEffect {
+    match effect {
+        Effect::CwSend { radio, text } => TraceEffect::CwSend {
+            radio: *radio,
+            text: text.clone(),
+        },
+        Effect::LogInsert { draft } => TraceEffect::LogInsert {
+            callsign: draft.callsign.clone(),
+            exchange_pairs: draft.exchange_pairs.clone(),
+        },
+        Effect::Beep { kind } => TraceEffect::Beep {
+            kind: format!("{:?}", kind),
+        },
+        Effect::UiSetFocus { field_id } => TraceEffect::UiSetFocus {
+            field_id: *field_id,
+        },
+        Effect::UiClearEntry => TraceEffect::UiClearEntry,
+    }
+}
+
+fn normalize_overall(v: &logger_core::Validation) -> String {
+    match v {
+        logger_core::Validation::Unknown => "Unknown".to_string(),
+        logger_core::Validation::Valid => "Valid".to_string(),
+        logger_core::Validation::Invalid(_) => "Invalid".to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::run_script_file;
+    use super::{TraceSnapshot, execute_script, run_script_file};
+    use crate::script::Script;
 
     #[test]
     fn run_all_golden_scripts() {
@@ -280,6 +398,52 @@ mod tests {
         for script in scripts {
             let path = format!("{base}/{script}");
             run_script_file(&path).unwrap_or_else(|e| panic!("{script} failed: {e}"));
+        }
+    }
+
+    #[test]
+    fn snapshot_regressions() {
+        let base = format!("{}/../scripts", env!("CARGO_MANIFEST_DIR"));
+        let scripts = [
+            "cqww_run_two_step.json",
+            "cqww_run_exch_sent_edit_resets.json",
+            "cqww_dupe_indicator.json",
+            "cqww_new_mult_indicator.json",
+            "so2r_focus_dupe_band_separation.json",
+        ];
+        let update = std::env::var("UPDATE_SNAPSHOTS").ok().as_deref() == Some("1");
+
+        for script_name in scripts {
+            let script_path = format!("{base}/{script_name}");
+            let data = std::fs::read_to_string(&script_path).expect("read script");
+            let script: Script = serde_json::from_str(&data).expect("parse script");
+            let artifacts = execute_script(&script, true).expect("run script with trace");
+
+            let snapshot = TraceSnapshot {
+                script: script_name.to_string(),
+                steps: artifacts.trace,
+            };
+            let snapshot_json = serde_json::to_string_pretty(&snapshot).expect("serialize trace");
+
+            let stem = script_name.strip_suffix(".json").unwrap_or(script_name);
+            let snapshot_path = format!("{base}/snapshots/{stem}.trace.json");
+            if update {
+                if let Some(parent) = std::path::Path::new(&snapshot_path).parent() {
+                    std::fs::create_dir_all(parent).expect("create snapshot dir");
+                }
+                std::fs::write(&snapshot_path, snapshot_json.as_bytes()).expect("write snapshot");
+                continue;
+            }
+
+            let expected_raw = std::fs::read_to_string(&snapshot_path)
+                .unwrap_or_else(|_| panic!("missing snapshot {} (set UPDATE_SNAPSHOTS=1)", snapshot_path));
+            let expected_val: serde_json::Value = serde_json::from_str(&expected_raw).expect("parse expected snapshot");
+            let actual_val: serde_json::Value = serde_json::from_str(&snapshot_json).expect("parse actual snapshot");
+            assert_eq!(
+                expected_val, actual_val,
+                "snapshot mismatch for {} (set UPDATE_SNAPSHOTS=1)",
+                script_name
+            );
         }
     }
 }
