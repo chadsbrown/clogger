@@ -1,0 +1,24 @@
+{
+  "events": [
+    { "type": "RigStatus", "radio": 1, "freq_hz": 14025000, "mode": "CW", "is_ptt": false },
+    { "type": "RigStatus", "radio": 2, "freq_hz": 21025000, "mode": "CW", "is_ptt": false },
+    { "type": "FocusRadio", "radio": 1 },
+    { "type": "SetMode", "mode": "Run" },
+    { "type": "Text", "s": "DL1ABC" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "599" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "14" },
+    { "type": "Key", "key": "Enter" },
+    { "type": "Key", "key": "Enter" },
+    { "type": "FocusRadio", "radio": 2 },
+    { "type": "Text", "s": "DL1ABC" }
+  ],
+  "expectations": {
+    "qsos": [
+      { "call": "DL1ABC", "band": "20m", "rst": "599", "zone": 14 }
+    ],
+    "final_is_dupe": false,
+    "final_is_new_mult": true
+  }
+}

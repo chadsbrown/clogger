@@ -23,6 +23,9 @@ pub enum ScriptEvent {
     SetMode {
         mode: ModeValue,
     },
+    FocusRadio {
+        radio: u8,
+    },
     Text {
         s: String,
     },
@@ -77,6 +80,7 @@ pub struct Expectations {
 #[derive(Debug, Deserialize)]
 pub struct ExpectedQso {
     pub call: String,
+    pub band: Option<String>,
     pub rst: Option<String>,
     pub zone: Option<u8>,
     pub exchange: Option<BTreeMap<String, String>>,

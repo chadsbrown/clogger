@@ -88,6 +88,7 @@ pub fn run_script(script: Script) -> Result<()> {
                     ModeValue::Sp => OpMode::Sp,
                 },
             }),
+            ScriptEvent::FocusRadio { radio } => Some(AppEvent::FocusRadio { radio }),
             ScriptEvent::Text { s } => Some(AppEvent::TextInput { s }),
             ScriptEvent::Key { key } => Some(AppEvent::KeyPress {
                 key: match key {
@@ -159,6 +160,20 @@ pub fn run_script(script: Script) -> Result<()> {
                 exp.call,
                 got.callsign_norm
             );
+        }
+        if let Some(exp_band) = &exp.band {
+            let got_band = match got.band {
+                qsolog::types::Band::B160m => "160m",
+                qsolog::types::Band::B80m => "80m",
+                qsolog::types::Band::B40m => "40m",
+                qsolog::types::Band::B20m => "20m",
+                qsolog::types::Band::B15m => "15m",
+                qsolog::types::Band::B10m => "10m",
+                qsolog::types::Band::Other => "other",
+            };
+            if exp_band.to_ascii_lowercase() != got_band {
+                bail!("qso mismatch expected band {} got {}", exp_band, got_band);
+            }
         }
 
         let pairs = decode_exchange_pairs(&got.exchange)?;
@@ -258,6 +273,8 @@ mod tests {
             "sweeps_invalid_focus.json",
             "sweeps_dupe_indicator.json",
             "sweeps_run_exch_sent_edit_resets.json",
+            "so2r_focus_dupe_band_separation.json",
+            "so2r_focus_mult_per_band.json",
         ];
 
         for script in scripts {
