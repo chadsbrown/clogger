@@ -76,6 +76,7 @@ pub struct AppState {
     pub my_call: String,
     pub my_zone: u8,
     pub rst_sent: String,
+    pub my_exchange: HashMap<String, String>,
     pub esm_policy: EsmPolicy,
 }
 

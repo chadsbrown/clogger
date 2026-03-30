@@ -41,7 +41,7 @@ impl ContestEntry for CwtContest {
     fn default_macros(&self) -> Macros {
         Macros {
             f1: "CQ CWT {MYCALL}".to_string(),
-            f2: "{CALL} {NAME} {XCHG}".to_string(),
+            f2: "{CALL} {MYNAME} {MYXCHG}".to_string(),
             f3: "TU {CALL}".to_string(),
         }
     }

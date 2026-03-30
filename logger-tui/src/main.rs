@@ -40,6 +40,14 @@ async fn main() -> Result<()> {
     let macros = contest.default_macros();
 
     // Build initial state
+    let mut my_exchange = HashMap::new();
+    if let Some(name) = &config.my_name {
+        my_exchange.insert("NAME".to_string(), name.clone());
+    }
+    if let Some(xchg) = &config.my_xchg {
+        my_exchange.insert("XCHG".to_string(), xchg.clone());
+    }
+
     let state = AppState {
         now_ms: chrono::Utc::now().timestamp_millis(),
         focused_radio: 1,
@@ -51,6 +59,7 @@ async fn main() -> Result<()> {
         my_call: config.my_call.clone(),
         my_zone: config.my_zone,
         rst_sent: config.rst_sent.clone(),
+        my_exchange,
         esm_policy: EsmPolicy::default(),
     };
 

@@ -207,6 +207,7 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
         my_call: "N0CALL".to_string(),
         my_zone: 4,
         rst_sent: "599".to_string(),
+        my_exchange: HashMap::new(),
         esm_policy: EsmPolicy::default(),
     };
     if let Some(v) = script.esm_policy.run_two_step {

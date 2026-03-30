@@ -10,9 +10,15 @@ pub fn expand_macro(template: &str, st: &AppState) -> String {
         ("{CALL}", call.as_str()),
     ];
 
-    let out = base
+    let mut out = base
         .into_iter()
         .fold(template.to_string(), |acc, (k, v)| acc.replace(k, v));
+
+    // Expand {MY<KEY>} from my_exchange map (e.g. {MYNAME}, {MYXCHG})
+    for (key, val) in &st.my_exchange {
+        let token = format!("{{MY{}}}", key.to_ascii_uppercase());
+        out = out.replace(&token, val);
+    }
 
     st.entry.fields.iter().fold(out, |acc, f| {
         let token = format!("{{{}}}", f.label.to_ascii_uppercase());
@@ -47,6 +53,7 @@ mod tests {
             my_call: "N0CALL".to_string(),
             my_zone: 4,
             rst_sent: "599".to_string(),
+            my_exchange: HashMap::new(),
             esm_policy: EsmPolicy::default(),
         };
         st.entry.fields[0].value = "K1ABC".to_string();

@@ -391,6 +391,7 @@ mod tests {
             my_call: "N0CALL".to_string(),
             my_zone: 4,
             rst_sent: "599".to_string(),
+            my_exchange: HashMap::new(),
             esm_policy: EsmPolicy::default(),
         }
     }
