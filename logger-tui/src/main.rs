@@ -4,6 +4,7 @@ mod event_loop;
 mod ui;
 
 use std::collections::HashMap;
+use std::fs::File;
 
 use anyhow::Result;
 use clap::Parser;
@@ -23,9 +24,11 @@ pub struct TuiState {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let log_file = File::create("clogger.log")?;
     tracing_subscriber::fmt()
-        .with_writer(std::io::stderr)
+        .with_writer(log_file)
         .with_max_level(tracing::Level::INFO)
+        .with_ansi(false)
         .init();
 
     let cli = Cli::parse();

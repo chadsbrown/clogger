@@ -13,7 +13,7 @@ use crate::TuiState;
 
 pub fn render(frame: &mut Frame, app: &AppState, tui: &TuiState) {
     let chunks = Layout::vertical([
-        Constraint::Length(1), // status bar
+        Constraint::Length(3), // status bar
         Constraint::Length(1), // entry line
         Constraint::Length(4), // cw buffer
         Constraint::Min(3),    // log tail

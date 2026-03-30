@@ -58,11 +58,25 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState) {
         spans.push(Span::raw(" "));
     }
 
-    // SCP matches
+    let mut lines = vec![Line::from(spans)];
+
+    // SCP prefix matches
     if !st.entry.scp_matches.is_empty() {
         let scp_text = st.entry.scp_matches.iter().take(10).cloned().collect::<Vec<_>>().join(" ");
-        spans.push(Span::styled(scp_text, Style::default().fg(Color::DarkGray)));
+        lines.push(Line::from(vec![
+            Span::styled("SCP: ", Style::default().fg(Color::Cyan)),
+            Span::styled(scp_text, Style::default().fg(Color::DarkGray)),
+        ]));
     }
 
-    frame.render_widget(Paragraph::new(Line::from(spans)), area);
+    // N+1 edit-distance matches
+    if !st.entry.scp_n1_matches.is_empty() {
+        let n1_text = st.entry.scp_n1_matches.iter().take(10).cloned().collect::<Vec<_>>().join(" ");
+        lines.push(Line::from(vec![
+            Span::styled("N+1: ", Style::default().fg(Color::Cyan)),
+            Span::styled(n1_text, Style::default().fg(Color::DarkGray)),
+        ]));
+    }
+
+    frame.render_widget(Paragraph::new(lines), area);
 }

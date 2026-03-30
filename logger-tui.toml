@@ -16,7 +16,10 @@ db_path = "n9unx-cqww.db"
 #contest_spacing = true   # default: false
 
 # DX cluster spots (optional — omit entire section to run without)
-#[[dxfeed.sources]]
-#host = "dxc.nc0d.com"
-#port = 7300
-#callsign = "N9UNX"
+[[dxfeed.sources]]
+host = "dxc.nc7j.com"
+port = 7373
+callsign = "N9UNX"
+
+my_name="CHAD"
+my_xchg="3151"

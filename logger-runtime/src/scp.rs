@@ -24,4 +24,12 @@ impl ScpLookup for ScpDb {
             .map(|s| s.call)
             .collect()
     }
+
+    fn n_plus_one_matches(&self, call: &str, limit: usize) -> Vec<String> {
+        self.inner
+            .suggest_n_plus_one(call, limit)
+            .into_iter()
+            .map(|s| s.call)
+            .collect()
+    }
 }

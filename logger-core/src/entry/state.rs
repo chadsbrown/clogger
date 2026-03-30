@@ -50,6 +50,7 @@ pub struct EntryState {
     pub esm_enabled: bool,
     pub esm_step: EsmStep,
     pub scp_matches: Vec<String>,
+    pub scp_n1_matches: Vec<String>,
     pub scp_cycle_index: Option<usize>,
 }
 
@@ -78,6 +79,7 @@ impl EntryState {
             esm_enabled: true,
             esm_step: EsmStep::Idle,
             scp_matches: Vec::new(),
+            scp_n1_matches: Vec::new(),
             scp_cycle_index: None,
         }
     }
@@ -93,6 +95,7 @@ impl EntryState {
         self.is_dupe = false;
         self.is_new_mult = false;
         self.scp_matches.clear();
+        self.scp_n1_matches.clear();
         self.scp_cycle_index = None;
     }
 

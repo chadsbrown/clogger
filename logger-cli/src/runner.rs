@@ -66,6 +66,8 @@ struct TraceState {
     overall: String,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     scp_matches: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    scp_n1_matches: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -130,6 +132,57 @@ impl ScpLookup for ScriptScp {
             .take(limit)
             .cloned()
             .collect()
+    }
+
+    fn n_plus_one_matches(&self, call: &str, limit: usize) -> Vec<String> {
+        if call.is_empty() {
+            return Vec::new();
+        }
+        self.sorted_calls
+            .iter()
+            .filter(|c| is_edit_distance_one(call, c))
+            .take(limit)
+            .cloned()
+            .collect()
+    }
+}
+
+fn is_edit_distance_one(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    let (la, lb) = (a.len(), b.len());
+    if la.abs_diff(lb) > 1 {
+        return false;
+    }
+    if la == lb {
+        // substitution or transposition
+        let diffs: Vec<usize> = (0..la).filter(|&i| a[i] != b[i]).collect();
+        match diffs.len() {
+            1 => true,
+            2 => {
+                // transposition
+                a[diffs[0]] == b[diffs[1]] && a[diffs[1]] == b[diffs[0]]
+            }
+            _ => false,
+        }
+    } else {
+        // insert/delete: the longer string has one extra char
+        let (short, long) = if la < lb { (a, b) } else { (b, a) };
+        let mut i = 0;
+        let mut j = 0;
+        let mut edits = 0;
+        while i < short.len() && j < long.len() {
+            if short[i] != long[j] {
+                edits += 1;
+                if edits > 1 {
+                    return false;
+                }
+                j += 1;
+            } else {
+                i += 1;
+                j += 1;
+            }
+        }
+        true
     }
 }
 
@@ -291,6 +344,7 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
                     is_new_mult: st.entry.is_new_mult,
                     overall: normalize_overall(&st.entry.overall),
                     scp_matches: st.entry.scp_matches.clone(),
+                    scp_n1_matches: st.entry.scp_n1_matches.clone(),
                 },
             });
         }

@@ -46,6 +46,9 @@ impl CallHistoryLookup for NoCallHistory {
 
 pub trait ScpLookup {
     fn partial_matches(&self, prefix: &str, limit: usize) -> Vec<String>;
+    fn n_plus_one_matches(&self, _call: &str, _limit: usize) -> Vec<String> {
+        Vec::new()
+    }
 }
 
 pub struct NoScp;
@@ -193,12 +196,14 @@ pub fn reduce(
                     field.value = new_call;
                 }
                 let saved_matches = st.entry.scp_matches.clone();
+                let saved_n1 = st.entry.scp_n1_matches.clone();
                 let saved_index = st.entry.scp_cycle_index;
                 revalidate_after_edit(st, contest);
                 recompute_feedback(st, dupe_checker, mult_checker);
                 apply_call_history(st, contest, call_history, scp);
                 revalidate_after_edit(st, contest);
                 st.entry.scp_matches = saved_matches;
+                st.entry.scp_n1_matches = saved_n1;
                 st.entry.scp_cycle_index = saved_index;
                 Vec::new()
             }
@@ -266,6 +271,7 @@ fn apply_call_history(
 
     // Update SCP matches
     st.entry.scp_matches = scp.partial_matches(&call_norm, 10);
+    st.entry.scp_n1_matches = scp.n_plus_one_matches(&call_norm, 10);
 
     // Exact lookup
     let Some(pairs) = call_history.lookup(&call_norm) else {
@@ -309,6 +315,7 @@ fn clear_history_fields(st: &mut AppState) {
         }
     }
     st.entry.scp_matches.clear();
+    st.entry.scp_n1_matches.clear();
 }
 
 fn normalize_mode(mode: &str) -> String {
