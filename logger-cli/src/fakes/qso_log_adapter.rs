@@ -37,7 +37,7 @@ impl QsoLogAdapter {
         };
 
         let store_draft = StoreDraft {
-            contest_instance_id: contest_instance_id(&draft.contest_id),
+            contest_instance_id: draft.exchange_schema_id as u64,
             callsign_raw: draft.callsign.clone(),
             callsign_norm: draft.callsign,
             band: to_band(draft.band.as_str()),
@@ -168,23 +168,10 @@ fn encode_exchange_pairs(pairs: &[(String, String)]) -> Result<Vec<u8>> {
 
 fn raw_exchange_for_record(rec: &QsoRecord) -> Option<String> {
     let pairs = decode_exchange_pairs(&rec.exchange).ok()?;
-    let map: HashMap<String, String> = pairs.into_iter().collect();
-
-    if rec.contest_instance_id == 1 {
-        let rst = map.get("rst")?;
-        let zone = map.get("zone")?;
-        return Some(format!("{} {}", rst, zone));
+    if pairs.is_empty() {
+        return None;
     }
-
-    if rec.contest_instance_id == 2 {
-        let nr = map.get("nr")?;
-        let prec = map.get("prec")?;
-        let check = map.get("check")?;
-        let section = map.get("section")?;
-        return Some(format!("{} {} {} {}", nr, prec, check, section));
-    }
-
-    None
+    Some(pairs.into_iter().map(|(_, v)| v).collect::<Vec<_>>().join(" "))
 }
 
 fn resolved_station_for_call(call: &str) -> ResolvedStation {
@@ -203,14 +190,6 @@ fn resolved_station_for_call(call: &str) -> ResolvedStation {
     }
 
     ResolvedStation::new("W", Continent::NA, true, true)
-}
-
-fn contest_instance_id(contest_id: &str) -> u64 {
-    match contest_id {
-        "sweeps" => 2,
-        "cwt" => 3,
-        _ => 1,
-    }
 }
 
 fn to_band(s: &str) -> Band {

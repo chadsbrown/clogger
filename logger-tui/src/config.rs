@@ -20,7 +20,7 @@ pub struct Config {
     pub my_call: String,
     #[serde(default)]
     pub my_zone: u8,
-    pub contest: ContestKind,
+    pub contest: String,
     #[serde(default = "default_rst_sent")]
     pub rst_sent: String,
     pub my_name: Option<String>,
@@ -33,14 +33,6 @@ pub struct Config {
 
 fn default_rst_sent() -> String {
     "599".to_string()
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum ContestKind {
-    Cqww,
-    Cwt,
-    Sweeps,
 }
 
 #[derive(Debug, Deserialize)]

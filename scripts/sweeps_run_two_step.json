@@ -1,5 +1,5 @@
 {
-  "contest": "Sweeps",
+  "contest": "sweeps",
   "events": [
     { "type": "SetMode", "mode": "Run" },
     { "type": "Text", "s": "K1ABC" },

@@ -8,13 +8,13 @@ use std::collections::HashMap;
 use anyhow::Result;
 use clap::Parser;
 use logger_core::{
-    AppState, ContestEntry, CqwwContest, CwtContest, EntryState, EsmPolicy, Macros, SweepsContest,
+    AppState, EntryState, EsmPolicy, contest_from_id,
 };
 use tokio::sync::mpsc;
 use tracing::warn;
 use winkey::Keyer;
 
-use config::{Cli, ContestKind, load_config};
+use config::{Cli, load_config};
 use ui::log_tail::LogRow;
 
 #[derive(Default)]
@@ -34,25 +34,9 @@ async fn main() -> Result<()> {
     let config = load_config(&cli)?;
 
     // Build contest + macros
-    let (contest, macros): (Box<dyn ContestEntry>, Macros) = match config.contest {
-        ContestKind::Cqww => (Box::new(CqwwContest::default()), Macros::default()),
-        ContestKind::Cwt => (
-            Box::new(CwtContest::default()),
-            Macros {
-                f1: "CQ CWT {MYCALL}".to_string(),
-                f2: "{CALL} {NAME} {XCHG}".to_string(),
-                f3: "TU {CALL}".to_string(),
-            },
-        ),
-        ContestKind::Sweeps => (
-            Box::new(SweepsContest),
-            Macros {
-                f1: "CQ SS {MYCALL}".to_string(),
-                f2: "{CALL} {NR} {PREC} {CHECK} {SECTION}".to_string(),
-                f3: "TU {CALL}".to_string(),
-            },
-        ),
-    };
+    let contest = contest_from_id(&config.contest)
+        .ok_or_else(|| anyhow::anyhow!("unknown contest: {}", config.contest))?;
+    let macros = contest.default_macros();
 
     // Build initial state
     let state = AppState {
@@ -70,11 +54,7 @@ async fn main() -> Result<()> {
     };
 
     // Build log adapter
-    let contest_id = match config.contest {
-        ContestKind::Cqww => "cqww",
-        ContestKind::Cwt => "cwt",
-        ContestKind::Sweeps => "sweeps",
-    };
+    let contest_id = contest.contest_id();
     let db_path = cli.db.as_ref().or(config.db_path.as_ref());
     let log_adapter = if let Some(db_path) = db_path {
         adapters::log::LogAdapter::open_db(contest_id, config.my_zone, db_path)?

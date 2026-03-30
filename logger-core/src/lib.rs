@@ -8,6 +8,8 @@ pub mod state;
 
 pub use contest::cqww::CqwwContest;
 pub use contest::cwt::CwtContest;
+pub use contest::freq_to_band_label;
+pub use contest::contest_from_id;
 pub use contest::sweeps::SweepsContest;
 pub use contest::traits::{ContestEntry, EntryContext, EntryError};
 pub use effects::{BeepKind, Effect};

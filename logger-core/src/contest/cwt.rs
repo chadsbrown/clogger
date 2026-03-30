@@ -9,7 +9,7 @@ use crate::{
         state::{EntryState, Validation},
         validation::EntryValidation,
     },
-    state::QsoDraft,
+    state::{Macros, QsoDraft},
 };
 
 const CALL_ID: u16 = 1;
@@ -30,6 +30,22 @@ impl Default for CwtContest {
 }
 
 impl ContestEntry for CwtContest {
+    fn contest_id(&self) -> &str {
+        "cwt"
+    }
+
+    fn contest_instance_id(&self) -> u64 {
+        3
+    }
+
+    fn default_macros(&self) -> Macros {
+        Macros {
+            f1: "CQ CWT {MYCALL}".to_string(),
+            f2: "{CALL} {NAME} {XCHG}".to_string(),
+            f3: "TU {CALL}".to_string(),
+        }
+    }
+
     fn form_spec(&self) -> EntryFormSpec {
         let mut fields = vec![EntryFieldSpec {
             field_id: CALL_ID,
@@ -122,7 +138,7 @@ impl ContestEntry for CwtContest {
         Ok(QsoDraft {
             contest_id: "cwt".to_string(),
             callsign: call,
-            band: freq_to_band_label(rig.as_ref().map(|r| r.freq_hz).unwrap_or(0)),
+            band: super::freq_to_band_label(rig.as_ref().map(|r| r.freq_hz).unwrap_or(0)),
             mode: rig
                 .as_ref()
                 .map(|r| r.mode.to_ascii_uppercase())
@@ -135,19 +151,6 @@ impl ContestEntry for CwtContest {
             ],
         })
     }
-}
-
-fn freq_to_band_label(freq_hz: u64) -> String {
-    match freq_hz {
-        1_800_000..=2_000_000 => "160m",
-        3_500_000..=4_000_000 => "80m",
-        7_000_000..=7_300_000 => "40m",
-        14_000_000..=14_350_000 => "20m",
-        21_000_000..=21_450_000 => "15m",
-        28_000_000..=29_700_000 => "10m",
-        _ => "other",
-    }
-    .to_string()
 }
 
 fn parsed_spec() -> &'static ParsedCwtSpec {

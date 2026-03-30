@@ -5,7 +5,7 @@ use crate::{
         state::{EntryState, Validation},
         validation::EntryValidation,
     },
-    state::QsoDraft,
+    state::{Macros, QsoDraft},
 };
 
 pub struct SweepsContest;
@@ -17,6 +17,22 @@ const CHECK_ID: u16 = 4;
 const SECTION_ID: u16 = 5;
 
 impl ContestEntry for SweepsContest {
+    fn contest_id(&self) -> &str {
+        "sweeps"
+    }
+
+    fn contest_instance_id(&self) -> u64 {
+        2
+    }
+
+    fn default_macros(&self) -> Macros {
+        Macros {
+            f1: "CQ SS {MYCALL}".to_string(),
+            f2: "{CALL} {NR} {PREC} {CHECK} {SECTION}".to_string(),
+            f3: "TU {CALL}".to_string(),
+        }
+    }
+
     fn form_spec(&self) -> EntryFormSpec {
         EntryFormSpec {
             fields: vec![
@@ -154,7 +170,7 @@ impl ContestEntry for SweepsContest {
         Ok(QsoDraft {
             contest_id: "sweeps".to_string(),
             callsign: call,
-            band: freq_to_band_label(rig.as_ref().map(|r| r.freq_hz).unwrap_or(0)),
+            band: super::freq_to_band_label(rig.as_ref().map(|r| r.freq_hz).unwrap_or(0)),
             mode: rig
                 .as_ref()
                 .map(|r| r.mode.to_ascii_uppercase())
@@ -169,19 +185,6 @@ impl ContestEntry for SweepsContest {
             ],
         })
     }
-}
-
-fn freq_to_band_label(freq_hz: u64) -> String {
-    match freq_hz {
-        1_800_000..=2_000_000 => "160m",
-        3_500_000..=4_000_000 => "80m",
-        7_000_000..=7_300_000 => "40m",
-        14_000_000..=14_350_000 => "20m",
-        21_000_000..=21_450_000 => "15m",
-        28_000_000..=29_700_000 => "10m",
-        _ => "other",
-    }
-    .to_string()
 }
 
 #[cfg(test)]

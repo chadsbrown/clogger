@@ -1,5 +1,5 @@
 {
-  "contest": "Sweeps",
+  "contest": "sweeps",
   "events": [
     { "type": "RigStatus", "radio": 1, "freq_hz": 14025000, "mode": "CW", "is_ptt": false },
     { "type": "SetMode", "mode": "Run" },

@@ -178,23 +178,10 @@ fn recompute_feedback(
         return;
     };
 
-    let band = freq_to_band_label(rig.freq_hz);
+    let band = crate::contest::freq_to_band_label(rig.freq_hz);
     let mode = normalize_mode(&rig.mode);
     st.entry.is_dupe = dupe_checker.is_dupe(&call_norm, &band, &mode);
     st.entry.is_new_mult = mult_checker.is_new_mult(&call_norm, &band, &mode);
-}
-
-fn freq_to_band_label(freq_hz: u64) -> String {
-    match freq_hz {
-        1_800_000..=2_000_000 => "160m",
-        3_500_000..=4_000_000 => "80m",
-        7_000_000..=7_300_000 => "40m",
-        14_000_000..=14_350_000 => "20m",
-        21_000_000..=21_450_000 => "15m",
-        28_000_000..=29_700_000 => "10m",
-        _ => "other",
-    }
-    .to_string()
 }
 
 fn normalize_mode(mode: &str) -> String {

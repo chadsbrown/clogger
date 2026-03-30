@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Script {
-    pub contest: Option<ContestValue>,
+    pub contest: Option<String>,
     #[serde(default)]
     pub esm_policy: EsmPolicyConfig,
     pub events: Vec<ScriptEvent>,
@@ -43,13 +43,6 @@ pub enum ScriptEvent {
 pub enum ModeValue {
     Run,
     Sp,
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
-pub enum ContestValue {
-    Cqww,
-    Cwt,
-    Sweeps,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

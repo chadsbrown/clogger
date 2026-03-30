@@ -2,8 +2,8 @@ use std::{collections::{BTreeMap, HashMap}, fs};
 
 use anyhow::{Context, Result, bail};
 use logger_core::{
-    AppEvent, AppState, BeepKind, ContestEntry, CqwwContest, CwtContest, Effect, EntryState,
-    EsmPolicy, Key, Macros, OpMode, Spot, SweepsContest, reduce,
+    AppEvent, AppState, BeepKind, Effect, EntryState,
+    EsmPolicy, Key, OpMode, Spot, contest_from_id, reduce,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -14,7 +14,7 @@ use crate::{
         fake_rig::FakeRig,
         qso_log_adapter::{QsoLogAdapter, decode_exchange_pairs},
     },
-    script::{ContestValue, KeyValue, Script, ScriptEvent},
+    script::{KeyValue, Script, ScriptEvent},
 };
 
 #[derive(Debug)]
@@ -73,26 +73,10 @@ pub fn run_script(script: Script) -> Result<()> {
 }
 
 fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
-    let contest_kind = script.contest.unwrap_or(ContestValue::Cqww);
-    let (contest, macros): (Box<dyn ContestEntry>, Macros) = match contest_kind {
-        ContestValue::Cqww => (Box::new(CqwwContest::default()), Macros::default()),
-        ContestValue::Cwt => (
-            Box::new(CwtContest::default()),
-            Macros {
-                f1: "CQ CWT {MYCALL}".to_string(),
-                f2: "{CALL} {NAME} {XCHG}".to_string(),
-                f3: "TU {CALL}".to_string(),
-            },
-        ),
-        ContestValue::Sweeps => (
-            Box::new(SweepsContest),
-            Macros {
-                f1: "CQ SS {MYCALL}".to_string(),
-                f2: "{CALL} {NR} {PREC} {CHECK} {SECTION}".to_string(),
-                f3: "TU {CALL}".to_string(),
-            },
-        ),
-    };
+    let contest_id = script.contest.as_deref().unwrap_or("cqww").to_ascii_lowercase();
+    let contest = contest_from_id(&contest_id)
+        .ok_or_else(|| anyhow::anyhow!("unknown contest: {contest_id}"))?;
+    let macros = contest.default_macros();
 
     let mut st = AppState {
         now_ms: 0,
@@ -118,14 +102,7 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
     }
 
     let mut keyer = FakeKeyer::default();
-    let mut log = QsoLogAdapter::new(
-        match contest_kind {
-            ContestValue::Cqww => "cqww",
-            ContestValue::Cwt => "cwt",
-            ContestValue::Sweeps => "sweeps",
-        },
-        st.my_zone,
-    );
+    let mut log = QsoLogAdapter::new(contest.contest_id(), st.my_zone);
     let mut rig = FakeRig::default();
     let mut beep_error_count = 0usize;
     let mut trace = Vec::new();
