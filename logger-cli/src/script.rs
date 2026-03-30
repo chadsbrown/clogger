@@ -6,9 +6,17 @@ pub struct Script {
     pub contest: Option<String>,
     #[serde(default)]
     pub esm_policy: EsmPolicyConfig,
+    #[serde(default)]
+    pub call_history: Vec<CallHistoryEntry>,
     pub events: Vec<ScriptEvent>,
     #[serde(default)]
     pub expectations: Expectations,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CallHistoryEntry {
+    pub call: String,
+    pub fields: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -69,6 +77,7 @@ pub struct Expectations {
     pub focus_field_id: Option<u16>,
     pub final_is_dupe: Option<bool>,
     pub final_is_new_mult: Option<bool>,
+    pub final_field_values: Option<BTreeMap<u16, String>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

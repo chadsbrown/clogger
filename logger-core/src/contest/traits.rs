@@ -27,4 +27,9 @@ pub trait ContestEntry {
         input: &EntryState,
         ctx: &EntryContext,
     ) -> Result<QsoDraft, EntryError>;
+
+    /// Maps .ch column names to form field_ids for history pre-population.
+    fn history_field_mapping(&self) -> Vec<(&str, u16)> {
+        vec![]
+    }
 }

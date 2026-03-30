@@ -55,6 +55,13 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState) {
             " MULT ",
             Style::default().fg(Color::Black).bg(Color::Green),
         ));
+        spans.push(Span::raw(" "));
+    }
+
+    // SCP matches
+    if !st.entry.scp_matches.is_empty() {
+        let scp_text = st.entry.scp_matches.iter().take(5).cloned().collect::<Vec<_>>().join(" ");
+        spans.push(Span::styled(scp_text, Style::default().fg(Color::DarkGray)));
     }
 
     frame.render_widget(Paragraph::new(Line::from(spans)), area);

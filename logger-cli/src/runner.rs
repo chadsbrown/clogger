@@ -5,8 +5,8 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 use logger_core::{
-    AppEvent, AppState, BeepKind, Effect, EntryState, EsmPolicy, Key, OpMode, Spot,
-    contest_from_id, reduce,
+    AppEvent, AppState, BeepKind, CallHistoryLookup, Effect, EntryState, EsmPolicy, Key,
+    NoCallHistory, OpMode, Spot, contest_from_id, reduce,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -64,6 +64,8 @@ struct TraceState {
     is_dupe: bool,
     is_new_mult: bool,
     overall: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    scp_matches: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -82,6 +84,53 @@ pub fn run_script_file(path: &str) -> Result<()> {
 pub fn run_script(script: Script) -> Result<()> {
     let artifacts = execute_script(&script, false)?;
     validate_expectations(&artifacts, &script)
+}
+
+struct ScriptCallHistory {
+    records: HashMap<String, HashMap<String, String>>,
+    sorted_calls: Vec<String>,
+}
+
+impl ScriptCallHistory {
+    fn from_entries(entries: &[crate::script::CallHistoryEntry]) -> Self {
+        let mut records: HashMap<String, HashMap<String, String>> = HashMap::new();
+        for entry in entries {
+            let call = entry.call.to_ascii_uppercase();
+            let fields: HashMap<String, String> = entry
+                .fields
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+            records.insert(call, fields);
+        }
+        let mut sorted_calls: Vec<String> = records.keys().cloned().collect();
+        sorted_calls.sort();
+        Self {
+            records,
+            sorted_calls,
+        }
+    }
+}
+
+impl CallHistoryLookup for ScriptCallHistory {
+    fn lookup(&self, call_norm: &str) -> Option<Vec<(String, String)>> {
+        self.records
+            .get(call_norm)
+            .map(|rec| rec.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+    }
+
+    fn partial_matches(&self, prefix: &str, limit: usize) -> Vec<String> {
+        if prefix.is_empty() {
+            return Vec::new();
+        }
+        let start = self.sorted_calls.partition_point(|c| c.as_str() < prefix);
+        self.sorted_calls[start..]
+            .iter()
+            .take_while(|c| c.starts_with(prefix))
+            .take(limit)
+            .cloned()
+            .collect()
+    }
 }
 
 fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
@@ -122,6 +171,12 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
     let mut rig = FakeRig::default();
     let mut beep_error_count = 0usize;
     let mut trace = Vec::new();
+
+    let call_history: Box<dyn CallHistoryLookup> = if script.call_history.is_empty() {
+        Box::new(NoCallHistory)
+    } else {
+        Box::new(ScriptCallHistory::from_entries(&script.call_history))
+    };
 
     for script_event in script.events.iter().cloned() {
         let app_event = match script_event.clone() {
@@ -164,7 +219,15 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
 
         let mut trace_effects = Vec::new();
         if let Some(ev) = app_event {
-            let effects = reduce(&mut st, contest.as_ref(), &macros, &log, &log, ev);
+            let effects = reduce(
+                &mut st,
+                contest.as_ref(),
+                &macros,
+                &log,
+                &log,
+                call_history.as_ref(),
+                ev,
+            );
             if record_trace {
                 trace_effects = effects.iter().map(normalize_effect).collect();
             }
@@ -216,6 +279,7 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
                     is_dupe: st.entry.is_dupe,
                     is_new_mult: st.entry.is_new_mult,
                     overall: normalize_overall(&st.entry.overall),
+                    scp_matches: st.entry.scp_matches.clone(),
                 },
             });
         }
@@ -369,6 +433,24 @@ fn validate_expectations(artifacts: &RunArtifacts, script: &Script) -> Result<()
         );
     }
 
+    if let Some(expected_fields) = &script.expectations.final_field_values {
+        for (field_id, expected_val) in expected_fields {
+            let got = artifacts
+                .st
+                .entry
+                .get_field_value_by_id(*field_id)
+                .unwrap_or("");
+            if got != expected_val {
+                bail!(
+                    "expected field {} value {:?}, got {:?}",
+                    field_id,
+                    expected_val,
+                    got
+                );
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -422,6 +504,8 @@ mod tests {
             "sweeps_run_exch_sent_edit_resets.json",
             "so2r_focus_dupe_band_separation.json",
             "so2r_focus_mult_per_band.json",
+            "cwt_call_history_prepopulate.json",
+            "cqww_call_history_operator_override.json",
         ];
 
         for script in scripts {

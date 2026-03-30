@@ -26,6 +26,7 @@ pub struct Config {
     pub my_name: Option<String>,
     pub my_xchg: Option<String>,
     pub db_path: Option<PathBuf>,
+    pub call_history_file: Option<PathBuf>,
     pub rig: Option<logger_runtime::RigConfig>,
     pub keyer: Option<logger_runtime::KeyerConfig>,
     pub dxfeed: Option<logger_runtime::DxFeedConfig>,

@@ -1,0 +1,21 @@
+{
+  "contest": "cqww",
+  "call_history": [
+    { "call": "K1ABC", "fields": { "CqZone": "5" } },
+    { "call": "W2XYZ", "fields": { "CqZone": "3" } }
+  ],
+  "events": [
+    { "type": "RigStatus", "radio": 1, "freq_hz": 14025000, "mode": "CW", "is_ptt": false },
+    { "type": "Text", "s": "K1ABC" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Key", "key": "Backspace" },
+    { "type": "Text", "s": "9" }
+  ],
+  "expectations": {
+    "focus_field_id": 3,
+    "final_field_values": {
+      "3": "9"
+    }
+  }
+}

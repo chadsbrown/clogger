@@ -107,6 +107,10 @@ impl ContestEntry for CwtContest {
         }
     }
 
+    fn history_field_mapping(&self) -> Vec<(&str, u16)> {
+        vec![("Name", 2), ("Exch1", 3)]
+    }
+
     fn build_qso_draft(
         &self,
         input: &EntryState,

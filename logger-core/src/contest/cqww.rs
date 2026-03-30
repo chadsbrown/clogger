@@ -94,6 +94,10 @@ impl ContestEntry for CqwwContest {
         }
     }
 
+    fn history_field_mapping(&self) -> Vec<(&str, u16)> {
+        vec![("CqZone", 3)]
+    }
+
     fn build_qso_draft(
         &self,
         input: &EntryState,

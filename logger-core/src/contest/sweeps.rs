@@ -134,6 +134,10 @@ impl ContestEntry for SweepsContest {
         }
     }
 
+    fn history_field_mapping(&self) -> Vec<(&str, u16)> {
+        vec![("Exch1", 3), ("CK", 4), ("Sect", 5)]
+    }
+
     fn build_qso_draft(
         &self,
         input: &EntryState,

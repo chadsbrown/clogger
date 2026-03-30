@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use anyhow::Result;
 use clap::Parser;
-use logger_core::{AppEvent, AppState, EntryState, EsmPolicy, contest_from_id};
+use logger_core::{AppEvent, AppState, CallHistoryLookup, EntryState, EsmPolicy, NoCallHistory, contest_from_id};
 use tokio::sync::mpsc;
 use tracing::warn;
 use logger_runtime::Keyer;
@@ -105,6 +105,19 @@ async fn main() -> Result<()> {
         }
     });
 
+    // Load call history if configured
+    let call_history: Box<dyn CallHistoryLookup> = if let Some(path) = &config.call_history_file {
+        match logger_runtime::CallHistoryDb::load(path) {
+            Ok(db) => Box::new(db),
+            Err(e) => {
+                warn!("call history load failed, continuing without: {e}");
+                Box::new(NoCallHistory)
+            }
+        }
+    } else {
+        Box::new(NoCallHistory)
+    };
+
     // Rebuild log display from restored QSOs
     let initial_log_display = adapters::log::build_log_display(&log_adapter);
 
@@ -115,6 +128,7 @@ async fn main() -> Result<()> {
         macros,
         log_adapter,
         keyer,
+        call_history,
         tui_rx,
         initial_log_display,
     )

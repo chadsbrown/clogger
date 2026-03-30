@@ -1,0 +1,18 @@
+{
+  "contest": "cwt",
+  "call_history": [
+    { "call": "K1ABC", "fields": { "Name": "CHAD", "Exch1": "1234" } },
+    { "call": "W2XYZ", "fields": { "Name": "BOB", "Exch1": "5678" } }
+  ],
+  "events": [
+    { "type": "RigStatus", "radio": 1, "freq_hz": 14025000, "mode": "CW", "is_ptt": false },
+    { "type": "SetMode", "mode": "Run" },
+    { "type": "Text", "s": "K1ABC" }
+  ],
+  "expectations": {
+    "final_field_values": {
+      "2": "CHAD",
+      "3": "1234"
+    }
+  }
+}

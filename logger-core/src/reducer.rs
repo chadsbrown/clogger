@@ -31,12 +31,31 @@ impl MultChecker for NoMultChecker {
     }
 }
 
+pub trait CallHistoryLookup {
+    /// Exact match. Returns .ch column-name/value pairs, e.g. [("CqZone", "5")].
+    fn lookup(&self, call_norm: &str) -> Option<Vec<(String, String)>>;
+    /// Prefix match for SCP. Returns up to `limit` sorted callsigns.
+    fn partial_matches(&self, prefix: &str, limit: usize) -> Vec<String>;
+}
+
+pub struct NoCallHistory;
+
+impl CallHistoryLookup for NoCallHistory {
+    fn lookup(&self, _: &str) -> Option<Vec<(String, String)>> {
+        None
+    }
+    fn partial_matches(&self, _: &str, _: usize) -> Vec<String> {
+        Vec::new()
+    }
+}
+
 pub fn reduce(
     st: &mut AppState,
     contest: &dyn ContestEntry,
     macros: &Macros,
     dupe_checker: &dyn DupeChecker,
     mult_checker: &dyn MultChecker,
+    call_history: &dyn CallHistoryLookup,
     ev: AppEvent,
 ) -> Vec<Effect> {
     match ev {
@@ -84,11 +103,16 @@ pub fn reduce(
             let mut touched_call = false;
             if let Some(field) = st.entry.focused_mut() {
                 touched_call = field.field_id == 1;
+                if !touched_call {
+                    field.from_history = false;
+                }
                 field.value.push_str(&s);
             }
             revalidate_after_edit(st, contest);
             if touched_call {
                 recompute_feedback(st, dupe_checker, mult_checker);
+                apply_call_history(st, contest, call_history);
+                revalidate_after_edit(st, contest);
             }
             Vec::new()
         }
@@ -103,11 +127,16 @@ pub fn reduce(
                 let mut touched_call = false;
                 if let Some(field) = st.entry.focused_mut() {
                     touched_call = field.field_id == 1;
+                    if !touched_call {
+                        field.from_history = false;
+                    }
                     field.value.pop();
                 }
                 revalidate_after_edit(st, contest);
                 if touched_call {
                     recompute_feedback(st, dupe_checker, mult_checker);
+                    apply_call_history(st, contest, call_history);
+                    revalidate_after_edit(st, contest);
                 }
                 Vec::new()
             }
@@ -116,6 +145,9 @@ pub fn reduce(
                 if let Some(field) = st.entry.focused_mut() {
                     touched_call = field.field_id == 1;
                     field.value.clear();
+                }
+                if touched_call {
+                    clear_history_fields(st);
                 }
                 revalidate_after_edit(st, contest);
                 if touched_call {
@@ -184,6 +216,61 @@ fn recompute_feedback(
     st.entry.is_new_mult = mult_checker.is_new_mult(&call_norm, &band, &mode);
 }
 
+fn apply_call_history(
+    st: &mut AppState,
+    contest: &dyn ContestEntry,
+    call_history: &dyn CallHistoryLookup,
+) {
+    let call_norm = st.current_call();
+    if call_norm.is_empty() {
+        // Clear any previous history-populated fields and SCP matches
+        clear_history_fields(st);
+        return;
+    }
+
+    // Update SCP matches
+    st.entry.scp_matches = call_history.partial_matches(&call_norm, 10);
+
+    // Exact lookup
+    let Some(pairs) = call_history.lookup(&call_norm) else {
+        // No exact match — clear history-populated fields but keep SCP
+        for field in &mut st.entry.fields {
+            if field.from_history {
+                field.value.clear();
+                field.from_history = false;
+            }
+        }
+        return;
+    };
+
+    let mapping = contest.history_field_mapping();
+    let pairs_map: std::collections::HashMap<&str, &str> = pairs
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+
+    for (col_name, field_id) in &mapping {
+        if let Some(value) = pairs_map.get(col_name) {
+            if let Some(field) = st.entry.fields.iter_mut().find(|f| f.field_id == *field_id) {
+                if field.value.is_empty() || field.from_history {
+                    field.value = value.to_string();
+                    field.from_history = true;
+                }
+            }
+        }
+    }
+}
+
+fn clear_history_fields(st: &mut AppState) {
+    for field in &mut st.entry.fields {
+        if field.from_history {
+            field.value.clear();
+            field.from_history = false;
+        }
+    }
+    st.entry.scp_matches.clear();
+}
+
 fn normalize_mode(mode: &str) -> String {
     match mode.trim().to_ascii_uppercase().as_str() {
         "CW" => "CW",
@@ -204,7 +291,7 @@ mod tests {
         effects::Effect,
         entry::state::{EntryState, EsmStep, OpMode, Validation},
         events::{AppEvent, Key},
-        reducer::{DupeChecker, MultChecker, NoDupeChecker, NoMultChecker},
+        reducer::{DupeChecker, MultChecker, NoCallHistory, NoDupeChecker, NoMultChecker},
         state::{AppState, EsmPolicy, Macros},
     };
 
@@ -214,7 +301,15 @@ mod tests {
         macros: &Macros,
         ev: AppEvent,
     ) -> Vec<Effect> {
-        crate::reducer::reduce(st, contest, macros, &NoDupeChecker, &NoMultChecker, ev)
+        crate::reducer::reduce(
+            st,
+            contest,
+            macros,
+            &NoDupeChecker,
+            &NoMultChecker,
+            &NoCallHistory,
+            ev,
+        )
     }
 
     struct MatchDupeChecker;
@@ -569,6 +664,7 @@ mod tests {
             &macros,
             &MatchDupeChecker,
             &NoMultChecker,
+            &NoCallHistory,
             AppEvent::TextInput {
                 s: "K5ZD".to_string(),
             },
@@ -581,6 +677,7 @@ mod tests {
             &macros,
             &MatchDupeChecker,
             &NoMultChecker,
+            &NoCallHistory,
             AppEvent::RigStatus {
                 radio: 1,
                 freq_hz: 14_025_000,
@@ -596,6 +693,7 @@ mod tests {
             &macros,
             &MatchDupeChecker,
             &NoMultChecker,
+            &NoCallHistory,
             AppEvent::FocusRadio { radio: 2 },
         );
         assert!(!st.entry.is_dupe);
@@ -613,6 +711,7 @@ mod tests {
             &macros,
             &NoDupeChecker,
             &MatchMultChecker,
+            &NoCallHistory,
             AppEvent::TextInput {
                 s: "DL1ABC".to_string(),
             },
@@ -625,6 +724,7 @@ mod tests {
             &macros,
             &NoDupeChecker,
             &MatchMultChecker,
+            &NoCallHistory,
             AppEvent::RigStatus {
                 radio: 1,
                 freq_hz: 14_025_000,
@@ -640,6 +740,7 @@ mod tests {
             &macros,
             &NoDupeChecker,
             &MatchMultChecker,
+            &NoCallHistory,
             AppEvent::FocusRadio { radio: 2 },
         );
         assert!(!st.entry.is_new_mult);

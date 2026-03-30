@@ -36,6 +36,7 @@ pub struct EntryFieldState {
     pub value: String,
     pub required: bool,
     pub status: Validation,
+    pub from_history: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,6 +49,7 @@ pub struct EntryState {
     pub mode: OpMode,
     pub esm_enabled: bool,
     pub esm_step: EsmStep,
+    pub scp_matches: Vec<String>,
 }
 
 impl EntryState {
@@ -61,6 +63,7 @@ impl EntryState {
                 value: String::new(),
                 required: f.required,
                 status: Validation::Unknown,
+                from_history: false,
             })
             .collect();
 
@@ -73,6 +76,7 @@ impl EntryState {
             mode: OpMode::Run,
             esm_enabled: true,
             esm_step: EsmStep::Idle,
+            scp_matches: Vec::new(),
         }
     }
 
@@ -80,11 +84,13 @@ impl EntryState {
         for field in &mut self.fields {
             field.value.clear();
             field.status = Validation::Unknown;
+            field.from_history = false;
         }
         self.focus = 0;
         self.overall = Validation::Unknown;
         self.is_dupe = false;
         self.is_new_mult = false;
+        self.scp_matches.clear();
     }
 
     pub fn focused_mut(&mut self) -> Option<&mut EntryFieldState> {
