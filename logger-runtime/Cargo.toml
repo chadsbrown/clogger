@@ -10,6 +10,7 @@ contest-engine = { path = "../../contest-engine" }
 riglib = { path = "../../riglib/crates/riglib", features = ["full"] }
 winkey = { path = "../../winkey" }
 dxfeed = { path = "../../dxfeed", features = ["serde"] }
+station-data = { path = "../../station-data" }
 tokio = { version = "1", features = ["sync"] }
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }
