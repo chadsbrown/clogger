@@ -1,37 +1,60 @@
 use std::collections::HashMap;
+use std::path::Path;
 
 use anyhow::{Context, Result};
-use contest_engine::{
-    spec::{
-        ContestSpec, InMemoryDomainProvider, InMemoryResolver, Mode as CeMode, ResolvedStation,
-        SpecSession, Value, domain_packs,
-    },
-    types::{Band as CeBand, Callsign, Continent},
+use contest_engine::spec::{
+    ContestSpec, InMemoryDomainProvider, InMemoryResolver, Mode as CeMode, ResolvedStation,
+    SpecSession, Value, domain_packs,
 };
+use contest_engine::types::{Band as CeBand, Callsign, Continent};
 use logger_core::{DupeChecker, MultChecker, QsoDraft};
 use qsolog::{
     core::store::QsoStore,
+    persist::{OpSink, sqlite::SqliteOpSink},
     qso::{ExchangeBlob, QsoDraft as StoreDraft, QsoFlags, QsoRecord},
     types::{Band, Mode, QsoId},
 };
+use tracing::info;
 
-#[derive(Debug, Default)]
-pub struct QsoLogAdapter {
+pub struct LogAdapter {
     store: QsoStore,
+    sink: Option<SqliteOpSink>,
     contest_id: String,
     my_zone: u8,
 }
 
-impl QsoLogAdapter {
+impl LogAdapter {
     pub fn new(contest_id: impl Into<String>, my_zone: u8) -> Self {
         Self {
             store: QsoStore::new(),
+            sink: None,
             contest_id: contest_id.into(),
             my_zone,
         }
     }
 
-    pub fn insert(&mut self, draft: QsoDraft, ts_ms: u64, radio_id: u32, operator_id: u32) -> Result<QsoId> {
+    pub fn open_db(contest_id: impl Into<String>, my_zone: u8, path: &Path) -> Result<Self> {
+        let sink = SqliteOpSink::open(path).map_err(|e| anyhow::anyhow!("open db: {e:?}"))?;
+        let store = sink
+            .load_store()
+            .map_err(|e| anyhow::anyhow!("load store: {e:?}"))?;
+        let count = store.ordered_ids().len();
+        info!("loaded {count} QSOs from {}", path.display());
+        Ok(Self {
+            store,
+            sink: Some(sink),
+            contest_id: contest_id.into(),
+            my_zone,
+        })
+    }
+
+    pub fn insert(
+        &mut self,
+        draft: QsoDraft,
+        ts_ms: u64,
+        radio_id: u32,
+        operator_id: u32,
+    ) -> Result<QsoId> {
         let exchange = ExchangeBlob {
             bytes: encode_exchange_pairs(&draft.exchange_pairs)?,
         };
@@ -40,8 +63,8 @@ impl QsoLogAdapter {
             contest_instance_id: draft.exchange_schema_id as u64,
             callsign_raw: draft.callsign.clone(),
             callsign_norm: draft.callsign,
-            band: to_band(draft.band.as_str()),
-            mode: to_mode(draft.mode.as_str()),
+            band: to_band(&draft.band),
+            mode: to_mode(&draft.mode),
             freq_hz: draft.freq_hz,
             ts_ms,
             radio_id,
@@ -50,7 +73,20 @@ impl QsoLogAdapter {
             flags: QsoFlags::default(),
         };
 
-        let (id, _) = self.store.insert(store_draft).map_err(|e| anyhow::anyhow!("insert failed: {e:?}"))?;
+        let (id, _) = self
+            .store
+            .insert(store_draft)
+            .map_err(|e| anyhow::anyhow!("insert failed: {e:?}"))?;
+
+        // Persist to SQLite if available
+        if let Some(sink) = &mut self.sink {
+            let ops = self.store.drain_pending_ops();
+            if !ops.is_empty() {
+                sink.append_ops(&ops)
+                    .map_err(|e| anyhow::anyhow!("persist failed: {e:?}"))?;
+            }
+        }
+
         Ok(id)
     }
 
@@ -62,7 +98,56 @@ impl QsoLogAdapter {
             .collect()
     }
 
-    pub fn is_dupe(&self, call_norm: &str, band: &str, mode: &str) -> bool {
+    pub fn undo(&mut self) -> Result<()> {
+        self.store
+            .undo()
+            .map_err(|e| anyhow::anyhow!("undo failed: {e:?}"))?;
+        Ok(())
+    }
+
+    pub fn redo(&mut self) -> Result<()> {
+        self.store
+            .redo()
+            .map_err(|e| anyhow::anyhow!("redo failed: {e:?}"))?;
+        Ok(())
+    }
+
+    fn build_cqww_session(&self) -> Result<SpecSession<InMemoryResolver, InMemoryDomainProvider>> {
+        let spec_path = format!(
+            "{}/../../contest-engine/specs/cqww.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        let domain_path = format!(
+            "{}/../../contest-engine/specs/domains",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        let spec = ContestSpec::from_path(spec_path)
+            .map_err(|e| anyhow::anyhow!("load cqww spec: {e}"))?;
+        let domains =
+            domain_packs::load_standard_domain_pack(domain_path).map_err(|e| anyhow::anyhow!(e))?;
+
+        let mut resolver = InMemoryResolver::new();
+        for rec in self.ordered_records() {
+            resolver.insert(
+                &rec.callsign_norm,
+                resolved_station_for_call(&rec.callsign_norm),
+            );
+        }
+
+        let source = ResolvedStation::new("W", Continent::NA, true, true);
+        let mut config: HashMap<String, Value> = HashMap::new();
+        config.insert(
+            "my_cq_zone".to_string(),
+            Value::Int(i64::from(self.my_zone)),
+        );
+
+        SpecSession::new(spec, source, config, resolver, domains)
+            .map_err(|e| anyhow::anyhow!("session: {e:?}"))
+    }
+}
+
+impl DupeChecker for LogAdapter {
+    fn is_dupe(&self, call_norm: &str, band: &str, mode: &str) -> bool {
         let band = to_band(band);
         let mode = to_mode(mode);
         self.store
@@ -70,8 +155,10 @@ impl QsoLogAdapter {
             .into_iter()
             .any(|q| !q.flags.is_void && q.band == band && q.mode == mode)
     }
+}
 
-    pub fn is_new_mult(&self, call_norm: &str, band: &str, mode: &str) -> bool {
+impl MultChecker for LogAdapter {
+    fn is_new_mult(&self, call_norm: &str, band: &str, mode: &str) -> bool {
         if self.contest_id != "cqww" {
             return false;
         }
@@ -107,55 +194,6 @@ impl QsoLogAdapter {
             .map(|c| !c.new_mults.is_empty())
             .unwrap_or(false)
     }
-
-    #[allow(dead_code)]
-    pub fn undo(&mut self) -> Result<()> {
-        self.store.undo().map_err(|e| anyhow::anyhow!("undo failed: {e:?}"))?;
-        Ok(())
-    }
-
-    #[allow(dead_code)]
-    pub fn redo(&mut self) -> Result<()> {
-        self.store.redo().map_err(|e| anyhow::anyhow!("redo failed: {e:?}"))?;
-        Ok(())
-    }
-
-    fn build_cqww_session(&self) -> Result<SpecSession<InMemoryResolver, InMemoryDomainProvider>> {
-        let spec_path = format!(
-            "{}/../../contest-engine/specs/cqww.json",
-            env!("CARGO_MANIFEST_DIR")
-        );
-        let domain_path = format!(
-            "{}/../../contest-engine/specs/domains",
-            env!("CARGO_MANIFEST_DIR")
-        );
-        let spec = ContestSpec::from_path(spec_path).map_err(|e| anyhow::anyhow!("load cqww spec: {e}"))?;
-        let domains =
-            domain_packs::load_standard_domain_pack(domain_path).map_err(|e| anyhow::anyhow!(e))?;
-
-        let mut resolver = InMemoryResolver::new();
-        for rec in self.ordered_records() {
-            resolver.insert(&rec.callsign_norm, resolved_station_for_call(&rec.callsign_norm));
-        }
-
-        let source = ResolvedStation::new("W", Continent::NA, true, true);
-        let mut config: HashMap<String, Value> = HashMap::new();
-        config.insert("my_cq_zone".to_string(), Value::Int(i64::from(self.my_zone)));
-
-        SpecSession::new(spec, source, config, resolver, domains).map_err(|e| anyhow::anyhow!("session: {e:?}"))
-    }
-}
-
-impl DupeChecker for QsoLogAdapter {
-    fn is_dupe(&self, call_norm: &str, band: &str, mode: &str) -> bool {
-        self.is_dupe(call_norm, band, mode)
-    }
-}
-
-impl MultChecker for QsoLogAdapter {
-    fn is_new_mult(&self, call_norm: &str, band: &str, mode: &str) -> bool {
-        self.is_new_mult(call_norm, band, mode)
-    }
 }
 
 pub fn decode_exchange_pairs(blob: &ExchangeBlob) -> Result<Vec<(String, String)>> {
@@ -171,7 +209,13 @@ fn raw_exchange_for_record(rec: &QsoRecord) -> Option<String> {
     if pairs.is_empty() {
         return None;
     }
-    Some(pairs.into_iter().map(|(_, v)| v).collect::<Vec<_>>().join(" "))
+    Some(
+        pairs
+            .into_iter()
+            .map(|(_, v)| v)
+            .collect::<Vec<_>>()
+            .join(" "),
+    )
 }
 
 fn resolved_station_for_call(call: &str) -> ResolvedStation {
@@ -185,7 +229,11 @@ fn resolved_station_for_call(call: &str) -> ResolvedStation {
     if upper.starts_with("VE") {
         return ResolvedStation::new("VE", Continent::NA, true, true);
     }
-    if upper.starts_with('K') || upper.starts_with('W') || upper.starts_with('N') || upper.starts_with('A') {
+    if upper.starts_with('K')
+        || upper.starts_with('W')
+        || upper.starts_with('N')
+        || upper.starts_with('A')
+    {
         return ResolvedStation::new("W", Continent::NA, true, true);
     }
 
@@ -251,11 +299,11 @@ fn to_ce_mode_from_qsolog(m: Mode) -> CeMode {
 
 #[cfg(test)]
 mod tests {
-    use super::QsoLogAdapter;
+    use super::LogAdapter;
 
     #[test]
     fn undo_redo_placeholder_roundtrip() {
-        let mut adapter = QsoLogAdapter::new("cqww", 4);
+        let mut adapter = LogAdapter::new("cqww", 4);
         let draft = logger_core::QsoDraft {
             contest_id: "cqww".to_string(),
             callsign: "K1ABC".to_string(),

@@ -36,10 +36,7 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState) {
             Style::default().fg(Color::Yellow),
         ));
         spans.push(Span::raw(" "));
-        spans.push(Span::styled(
-            &rig.mode,
-            Style::default().fg(Color::Yellow),
-        ));
+        spans.push(Span::styled(&rig.mode, Style::default().fg(Color::Yellow)));
         spans.push(Span::raw(" "));
     }
 

@@ -33,12 +33,11 @@ pub fn render(frame: &mut Frame, area: Rect, rows: &[LogRow]) {
         })
         .collect();
 
-    let header = Row::new(vec!["#", "Call", "Band", "Mode", "Exchange"])
-        .style(
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        );
+    let header = Row::new(vec!["#", "Call", "Band", "Mode", "Exchange"]).style(
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD),
+    );
 
     let table = Table::new(
         table_rows,

@@ -7,12 +7,12 @@ use crossterm::{
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use logger_core::{AppState, ContestEntry, Effect, Macros, reduce};
+use logger_runtime::LogAdapter;
 use ratatui::backend::CrosstermBackend;
 use tokio::sync::mpsc;
-use winkey::Keyer;
+use logger_runtime::Keyer;
 
 use crate::TuiState;
-use crate::adapters::log::LogAdapter;
 use crate::adapters::terminal::TerminalEvent;
 use crate::ui;
 use crate::ui::log_tail::LogRow;
@@ -114,7 +114,7 @@ async fn dispatch_effects(
         match effect {
             Effect::CwSend { radio: _, text } => {
                 tui_state.cw_history.push(text.clone());
-                crate::adapters::keyer::send_cw(keyer, text).await;
+                logger_runtime::send_cw(keyer, text).await;
             }
             Effect::LogInsert { draft } => {
                 let now_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
@@ -146,8 +146,11 @@ async fn dispatch_effects(
                 print!("\x07");
             }
             Effect::UiSetFocus { field_id } => {
-                if let Some(idx) =
-                    state.entry.fields.iter().position(|f| f.field_id == *field_id)
+                if let Some(idx) = state
+                    .entry
+                    .fields
+                    .iter()
+                    .position(|f| f.field_id == *field_id)
                 {
                     state.entry.focus = idx;
                 }

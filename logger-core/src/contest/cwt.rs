@@ -145,10 +145,7 @@ impl ContestEntry for CwtContest {
                 .unwrap_or_else(|| "CW".to_string()),
             freq_hz: rig.as_ref().map(|r| r.freq_hz).unwrap_or(0),
             exchange_schema_id: 3,
-            exchange_pairs: vec![
-                ("name".to_string(), name),
-                ("xchg".to_string(), xchg),
-            ],
+            exchange_pairs: vec![("name".to_string(), name), ("xchg".to_string(), xchg)],
         })
     }
 }
@@ -211,11 +208,7 @@ struct ReceivedFieldRaw {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        contest::traits::ContestEntry,
-        entry::state::EntryState,
-        EntryContext,
-    };
+    use crate::{EntryContext, contest::traits::ContestEntry, entry::state::EntryState};
 
     use super::CwtContest;
 

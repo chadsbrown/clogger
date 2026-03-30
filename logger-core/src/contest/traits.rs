@@ -22,5 +22,9 @@ pub trait ContestEntry {
     fn default_macros(&self) -> Macros;
     fn form_spec(&self) -> EntryFormSpec;
     fn validate_entry(&self, input: &EntryState, ctx: &EntryContext) -> EntryValidation;
-    fn build_qso_draft(&self, input: &EntryState, ctx: &EntryContext) -> Result<QsoDraft, EntryError>;
+    fn build_qso_draft(
+        &self,
+        input: &EntryState,
+        ctx: &EntryContext,
+    ) -> Result<QsoDraft, EntryError>;
 }

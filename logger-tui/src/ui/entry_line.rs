@@ -18,10 +18,7 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState) {
         // Label
         let label = format!("{}:", field.label);
         let label_len = label.len() as u16;
-        spans.push(Span::styled(
-            label,
-            Style::default().fg(Color::DarkGray),
-        ));
+        spans.push(Span::styled(label, Style::default().fg(Color::DarkGray)));
         col += label_len;
 
         // Value with validation color

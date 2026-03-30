@@ -26,45 +26,13 @@ pub struct Config {
     pub my_name: Option<String>,
     pub my_xchg: Option<String>,
     pub db_path: Option<PathBuf>,
-    pub rig: Option<RigConfig>,
-    pub keyer: Option<KeyerConfig>,
-    pub dxfeed: Option<DxFeedConfig>,
+    pub rig: Option<logger_runtime::RigConfig>,
+    pub keyer: Option<logger_runtime::KeyerConfig>,
+    pub dxfeed: Option<logger_runtime::DxFeedConfig>,
 }
 
 fn default_rst_sent() -> String {
     "599".to_string()
-}
-
-#[derive(Debug, Deserialize)]
-pub struct RigConfig {
-    pub model: String,
-    pub port: String,
-    pub baud_rate: Option<u32>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct KeyerConfig {
-    pub port: String,
-    #[serde(default = "default_speed")]
-    pub speed_wpm: u8,
-    #[serde(default)]
-    pub contest_spacing: bool,
-}
-
-fn default_speed() -> u8 {
-    28
-}
-
-#[derive(Debug, Deserialize)]
-pub struct DxFeedConfig {
-    pub sources: Vec<DxFeedSourceConfig>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct DxFeedSourceConfig {
-    pub host: String,
-    pub port: u16,
-    pub callsign: String,
 }
 
 pub fn load_config(cli: &Cli) -> anyhow::Result<Config> {

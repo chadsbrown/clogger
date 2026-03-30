@@ -7,12 +7,10 @@ use std::collections::HashMap;
 
 use anyhow::Result;
 use clap::Parser;
-use logger_core::{
-    AppState, EntryState, EsmPolicy, contest_from_id,
-};
+use logger_core::{AppEvent, AppState, EntryState, EsmPolicy, contest_from_id};
 use tokio::sync::mpsc;
 use tracing::warn;
-use winkey::Keyer;
+use logger_runtime::Keyer;
 
 use config::{Cli, load_config};
 use ui::log_tail::LogRow;
@@ -57,20 +55,21 @@ async fn main() -> Result<()> {
     let contest_id = contest.contest_id();
     let db_path = cli.db.as_ref().or(config.db_path.as_ref());
     let log_adapter = if let Some(db_path) = db_path {
-        adapters::log::LogAdapter::open_db(contest_id, config.my_zone, db_path)?
+        logger_runtime::LogAdapter::open_db(contest_id, config.my_zone, db_path)?
     } else {
-        adapters::log::LogAdapter::new(contest_id, config.my_zone)
+        logger_runtime::LogAdapter::new(contest_id, config.my_zone)
     };
 
-    // Event channel
-    let (tx, rx) = mpsc::channel::<adapters::terminal::TerminalEvent>(256);
+    // Two-channel bridge: hardware adapters send AppEvent, terminal sends TerminalEvent
+    let (app_tx, mut app_rx) = mpsc::channel::<AppEvent>(256);
+    let (tui_tx, tui_rx) = mpsc::channel::<adapters::terminal::TerminalEvent>(256);
 
     // Spawn terminal input reader
-    adapters::terminal::spawn_terminal_reader(tx.clone());
+    adapters::terminal::spawn_terminal_reader(tui_tx.clone());
 
     // Optionally connect rig
     if let Some(rig_config) = &config.rig {
-        match adapters::rig::spawn_rig_adapter(rig_config, tx.clone()).await {
+        match logger_runtime::spawn_rig_adapter(rig_config, app_tx.clone()).await {
             Ok(_rig) => {}
             Err(e) => warn!("rig connection failed, continuing without: {e}"),
         }
@@ -78,7 +77,7 @@ async fn main() -> Result<()> {
 
     // Optionally connect keyer
     let keyer: Option<Box<dyn Keyer>> = if let Some(keyer_config) = &config.keyer {
-        match adapters::keyer::connect_keyer(keyer_config).await {
+        match logger_runtime::connect_keyer(keyer_config).await {
             Ok(k) => Some(k),
             Err(e) => {
                 warn!("keyer connection failed, continuing without: {e}");
@@ -91,14 +90,33 @@ async fn main() -> Result<()> {
 
     // Optionally connect dxfeed
     if let Some(dxfeed_config) = &config.dxfeed {
-        if let Err(e) = adapters::dxfeed::spawn_dxfeed_adapter(dxfeed_config, tx.clone()).await {
+        if let Err(e) = logger_runtime::spawn_dxfeed_adapter(dxfeed_config, app_tx.clone()).await {
             warn!("dxfeed connection failed, continuing without: {e}");
         }
     }
+
+    // Bridge: AppEvent → TerminalEvent::App
+    let bridge_tx = tui_tx.clone();
+    tokio::spawn(async move {
+        while let Some(ev) = app_rx.recv().await {
+            let _ = bridge_tx
+                .send(adapters::terminal::TerminalEvent::App(ev))
+                .await;
+        }
+    });
 
     // Rebuild log display from restored QSOs
     let initial_log_display = adapters::log::build_log_display(&log_adapter);
 
     // Run the event loop
-    event_loop::run(state, contest, macros, log_adapter, keyer, rx, initial_log_display).await
+    event_loop::run(
+        state,
+        contest,
+        macros,
+        log_adapter,
+        keyer,
+        tui_rx,
+        initial_log_display,
+    )
+    .await
 }

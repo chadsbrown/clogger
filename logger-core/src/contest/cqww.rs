@@ -94,7 +94,11 @@ impl ContestEntry for CqwwContest {
         }
     }
 
-    fn build_qso_draft(&self, input: &EntryState, _ctx: &EntryContext) -> Result<QsoDraft, EntryError> {
+    fn build_qso_draft(
+        &self,
+        input: &EntryState,
+        _ctx: &EntryContext,
+    ) -> Result<QsoDraft, EntryError> {
         let call = input
             .get_field_value_by_id(CALL_ID)
             .unwrap_or_default()
@@ -117,12 +121,9 @@ impl ContestEntry for CqwwContest {
             values.insert(spec_field.id.as_str(), value);
         }
 
-        let _rst = values
-            .get("rst")
-            .cloned()
-            .ok_or_else(|| EntryError {
-                message: "missing rst".to_string(),
-            })?;
+        let _rst = values.get("rst").cloned().ok_or_else(|| EntryError {
+            message: "missing rst".to_string(),
+        })?;
         let _zone = values
             .get("zone")
             .ok_or_else(|| EntryError {
@@ -178,11 +179,17 @@ fn validate_value(spec_field: &ReceivedField, value: &str) -> Validation {
             let parsed = value.parse::<i64>().ok();
             match (parsed, &spec_field.domain) {
                 (Some(n), Some(Range { min, max })) if n >= *min && n <= *max => Validation::Valid,
-                (Some(_), Some(Range { min, max })) => {
-                    Validation::Invalid(format!("{} must be {}-{}", spec_field.id.to_ascii_uppercase(), min, max))
-                }
+                (Some(_), Some(Range { min, max })) => Validation::Invalid(format!(
+                    "{} must be {}-{}",
+                    spec_field.id.to_ascii_uppercase(),
+                    min,
+                    max
+                )),
                 (Some(_), None) => Validation::Valid,
-                _ => Validation::Invalid(format!("{} must be numeric", spec_field.id.to_ascii_uppercase())),
+                _ => Validation::Invalid(format!(
+                    "{} must be numeric",
+                    spec_field.id.to_ascii_uppercase()
+                )),
             }
         }
         _ => Validation::Valid,

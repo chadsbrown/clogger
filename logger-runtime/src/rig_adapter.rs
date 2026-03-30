@@ -3,7 +3,6 @@ use riglib::{Rig, RigEvent};
 use tokio::sync::mpsc;
 use tracing::{info, warn};
 
-use crate::adapters::terminal::TerminalEvent;
 use crate::config::RigConfig;
 
 struct LastRigState {
@@ -30,7 +29,7 @@ fn normalize(name: &str) -> String {
 
 pub async fn spawn_rig_adapter(
     config: &RigConfig,
-    tx: mpsc::Sender<TerminalEvent>,
+    tx: mpsc::Sender<AppEvent>,
 ) -> anyhow::Result<Box<dyn Rig>> {
     let rig_def = riglib::find_rig(&config.model)
         .ok_or_else(|| anyhow::anyhow!("unknown rig model: {}", config.model))?;
@@ -79,8 +78,7 @@ pub async fn spawn_rig_adapter(
                 .into_iter()
                 .find(|m| normalize(m.name) == needle)
                 .ok_or_else(|| anyhow::anyhow!("kenwood model not found: {}", config.model))?;
-            let mut builder =
-                riglib::kenwood::KenwoodBuilder::new(model).serial_port(&config.port);
+            let mut builder = riglib::kenwood::KenwoodBuilder::new(model).serial_port(&config.port);
             if let Some(baud) = config.baud_rate {
                 builder = builder.baud_rate(baud);
             }
@@ -102,12 +100,12 @@ pub async fn spawn_rig_adapter(
     let radio_id = primary.index() + 1;
 
     let _ = tx
-        .send(TerminalEvent::App(AppEvent::RigStatus {
+        .send(AppEvent::RigStatus {
             radio: radio_id,
             freq_hz,
             mode: mode_str.clone(),
             is_ptt,
-        }))
+        })
         .await;
 
     // Subscribe and forward events
@@ -125,35 +123,35 @@ pub async fn spawn_rig_adapter(
                     last.freq_hz = freq_hz;
                     let radio = receiver.index() + 1;
                     let _ = tx
-                        .send(TerminalEvent::App(AppEvent::RigStatus {
+                        .send(AppEvent::RigStatus {
                             radio,
                             freq_hz: last.freq_hz,
                             mode: last.mode.clone(),
                             is_ptt: last.is_ptt,
-                        }))
+                        })
                         .await;
                 }
                 Ok(RigEvent::ModeChanged { receiver, mode }) => {
                     last.mode = map_mode(&mode);
                     let radio = receiver.index() + 1;
                     let _ = tx
-                        .send(TerminalEvent::App(AppEvent::RigStatus {
+                        .send(AppEvent::RigStatus {
                             radio,
                             freq_hz: last.freq_hz,
                             mode: last.mode.clone(),
                             is_ptt: last.is_ptt,
-                        }))
+                        })
                         .await;
                 }
                 Ok(RigEvent::PttChanged { on }) => {
                     last.is_ptt = on;
                     let _ = tx
-                        .send(TerminalEvent::App(AppEvent::RigStatus {
+                        .send(AppEvent::RigStatus {
                             radio: 1,
                             freq_hz: last.freq_hz,
                             mode: last.mode.clone(),
                             is_ptt: last.is_ptt,
-                        }))
+                        })
                         .await;
                 }
                 Ok(_) => {}

@@ -25,10 +25,10 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::{
+        CqwwContest,
         contest::traits::ContestEntry,
         entry::state::EntryState,
         state::{AppState, EsmPolicy},
-        CqwwContest,
     };
 
     use super::expand_macro;

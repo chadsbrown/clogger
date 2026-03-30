@@ -1,19 +1,20 @@
-use std::{collections::{BTreeMap, HashMap}, fs};
+use std::{
+    collections::{BTreeMap, HashMap},
+    fs,
+};
 
 use anyhow::{Context, Result, bail};
 use logger_core::{
-    AppEvent, AppState, BeepKind, Effect, EntryState,
-    EsmPolicy, Key, OpMode, Spot, contest_from_id, reduce,
+    AppEvent, AppState, BeepKind, Effect, EntryState, EsmPolicy, Key, OpMode, Spot,
+    contest_from_id, reduce,
 };
 use serde::Serialize;
 use serde_json::Value;
 
+use logger_runtime::{LogAdapter, decode_exchange_pairs};
+
 use crate::{
-    fakes::{
-        fake_keyer::FakeKeyer,
-        fake_rig::FakeRig,
-        qso_log_adapter::{QsoLogAdapter, decode_exchange_pairs},
-    },
+    fakes::{fake_keyer::FakeKeyer, fake_rig::FakeRig},
     script::{KeyValue, Script, ScriptEvent},
 };
 
@@ -37,10 +38,20 @@ struct TraceStep {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type")]
 enum TraceEffect {
-    CwSend { radio: u8, text: String },
-    LogInsert { callsign: String, exchange_pairs: Vec<(String, String)> },
-    Beep { kind: String },
-    UiSetFocus { field_id: u16 },
+    CwSend {
+        radio: u8,
+        text: String,
+    },
+    LogInsert {
+        callsign: String,
+        exchange_pairs: Vec<(String, String)>,
+    },
+    Beep {
+        kind: String,
+    },
+    UiSetFocus {
+        field_id: u16,
+    },
     UiClearEntry,
 }
 
@@ -63,7 +74,8 @@ struct TraceSnapshot {
 
 pub fn run_script_file(path: &str) -> Result<()> {
     let data = fs::read_to_string(path).with_context(|| format!("read script: {path}"))?;
-    let script: Script = serde_json::from_str(&data).with_context(|| format!("parse script: {path}"))?;
+    let script: Script =
+        serde_json::from_str(&data).with_context(|| format!("parse script: {path}"))?;
     run_script(script)
 }
 
@@ -73,7 +85,11 @@ pub fn run_script(script: Script) -> Result<()> {
 }
 
 fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
-    let contest_id = script.contest.as_deref().unwrap_or("cqww").to_ascii_lowercase();
+    let contest_id = script
+        .contest
+        .as_deref()
+        .unwrap_or("cqww")
+        .to_ascii_lowercase();
     let contest = contest_from_id(&contest_id)
         .ok_or_else(|| anyhow::anyhow!("unknown contest: {contest_id}"))?;
     let macros = contest.default_macros();
@@ -102,7 +118,7 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
     }
 
     let mut keyer = FakeKeyer::default();
-    let mut log = QsoLogAdapter::new(contest.contest_id(), st.my_zone);
+    let mut log = LogAdapter::new(contest.contest_id(), st.my_zone);
     let mut rig = FakeRig::default();
     let mut beep_error_count = 0usize;
     let mut trace = Vec::new();
@@ -170,7 +186,9 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
                         }
                     }
                     Effect::UiSetFocus { field_id } => {
-                        if let Some(idx) = st.entry.fields.iter().position(|f| f.field_id == field_id) {
+                        if let Some(idx) =
+                            st.entry.fields.iter().position(|f| f.field_id == field_id)
+                        {
                             st.entry.focus = idx;
                         }
                     }
@@ -188,7 +206,12 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
                 state_after: TraceState {
                     focused_radio: st.focused_radio,
                     entry_focus_index: st.entry.focus,
-                    entry_focus_field_id: st.entry.fields.get(st.entry.focus).map(|f| f.field_id).unwrap_or(0),
+                    entry_focus_field_id: st
+                        .entry
+                        .fields
+                        .get(st.entry.focus)
+                        .map(|f| f.field_id)
+                        .unwrap_or(0),
                     esm_step: format!("{:?}", st.entry.esm_step),
                     is_dupe: st.entry.is_dupe,
                     is_new_mult: st.entry.is_new_mult,
@@ -224,7 +247,12 @@ fn validate_expectations(artifacts: &RunArtifacts, script: &Script) -> Result<()
         );
     }
 
-    for (exp, got) in script.expectations.qsos.iter().zip(artifacts.records.iter()) {
+    for (exp, got) in script
+        .expectations
+        .qsos
+        .iter()
+        .zip(artifacts.records.iter())
+    {
         if exp.call.to_uppercase() != got.callsign_norm {
             bail!(
                 "qso mismatch expected call {} got {}",
@@ -252,18 +280,31 @@ fn validate_expectations(artifacts: &RunArtifacts, script: &Script) -> Result<()
         if let Some(rst) = &exp.rst
             && got_map.get("rst") != Some(rst)
         {
-            bail!("qso mismatch expected rst {} got {:?}", rst, got_map.get("rst"));
+            bail!(
+                "qso mismatch expected rst {} got {:?}",
+                rst,
+                got_map.get("rst")
+            );
         }
         if let Some(zone) = exp.zone {
             let got_zone = got_map.get("zone").and_then(|z| z.parse::<u8>().ok());
             if got_zone != Some(zone) {
-                bail!("qso mismatch expected zone {} got {:?}", zone, got_map.get("zone"));
+                bail!(
+                    "qso mismatch expected zone {} got {:?}",
+                    zone,
+                    got_map.get("zone")
+                );
             }
         }
         if let Some(exchange) = &exp.exchange {
             for (k, v) in exchange {
                 if got_map.get(k) != Some(v) {
-                    bail!("qso mismatch exchange {} expected {} got {:?}", k, v, got_map.get(k));
+                    bail!(
+                        "qso mismatch exchange {} expected {} got {:?}",
+                        k,
+                        v,
+                        got_map.get(k)
+                    );
                 }
             }
         }
@@ -277,7 +318,9 @@ fn validate_expectations(artifacts: &RunArtifacts, script: &Script) -> Result<()
             bail!("expected CW output to contain in order: {needle}");
         }
     }
-    if !script.expectations.cw_sent_exact.is_empty() && artifacts.cw_sent != script.expectations.cw_sent_exact {
+    if !script.expectations.cw_sent_exact.is_empty()
+        && artifacts.cw_sent != script.expectations.cw_sent_exact
+    {
         bail!(
             "expected exact CW {:?}, got {:?}",
             script.expectations.cw_sent_exact,
@@ -421,10 +464,16 @@ mod tests {
                 continue;
             }
 
-            let expected_raw = std::fs::read_to_string(&snapshot_path)
-                .unwrap_or_else(|_| panic!("missing snapshot {} (set UPDATE_SNAPSHOTS=1)", snapshot_path));
-            let expected_val: serde_json::Value = serde_json::from_str(&expected_raw).expect("parse expected snapshot");
-            let actual_val: serde_json::Value = serde_json::from_str(&snapshot_json).expect("parse actual snapshot");
+            let expected_raw = std::fs::read_to_string(&snapshot_path).unwrap_or_else(|_| {
+                panic!(
+                    "missing snapshot {} (set UPDATE_SNAPSHOTS=1)",
+                    snapshot_path
+                )
+            });
+            let expected_val: serde_json::Value =
+                serde_json::from_str(&expected_raw).expect("parse expected snapshot");
+            let actual_val: serde_json::Value =
+                serde_json::from_str(&snapshot_json).expect("parse actual snapshot");
             assert_eq!(
                 expected_val, actual_val,
                 "snapshot mismatch for {} (set UPDATE_SNAPSHOTS=1)",

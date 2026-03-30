@@ -1,0 +1,17 @@
+[package]
+name = "logger-runtime"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+logger-core = { path = "../logger-core" }
+qsolog = { path = "../../qsolog" }
+contest-engine = { path = "../../contest-engine" }
+riglib = { path = "../../riglib/crates/riglib", features = ["full"] }
+winkey = { path = "../../winkey" }
+dxfeed = { path = "../../dxfeed", features = ["serde"] }
+tokio = { version = "1", features = ["sync"] }
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"

@@ -29,29 +29,15 @@ pub fn spawn_terminal_reader(tx: mpsc::Sender<TerminalEvent>) {
                 (_, KeyCode::Char(c)) => TerminalEvent::App(AppEvent::TextInput {
                     s: c.to_uppercase().to_string(),
                 }),
-                (_, KeyCode::Enter) => {
-                    TerminalEvent::App(AppEvent::KeyPress { key: Key::Enter })
-                }
-                (_, KeyCode::Backspace) => {
-                    TerminalEvent::App(AppEvent::KeyPress {
-                        key: Key::Backspace,
-                    })
-                }
-                (_, KeyCode::Esc) => {
-                    TerminalEvent::App(AppEvent::KeyPress { key: Key::Esc })
-                }
-                (_, KeyCode::Tab) => {
-                    TerminalEvent::App(AppEvent::KeyPress { key: Key::Tab })
-                }
-                (_, KeyCode::F(1)) => {
-                    TerminalEvent::App(AppEvent::KeyPress { key: Key::F1 })
-                }
-                (_, KeyCode::F(2)) => {
-                    TerminalEvent::App(AppEvent::KeyPress { key: Key::F2 })
-                }
-                (_, KeyCode::F(3)) => {
-                    TerminalEvent::App(AppEvent::KeyPress { key: Key::F3 })
-                }
+                (_, KeyCode::Enter) => TerminalEvent::App(AppEvent::KeyPress { key: Key::Enter }),
+                (_, KeyCode::Backspace) => TerminalEvent::App(AppEvent::KeyPress {
+                    key: Key::Backspace,
+                }),
+                (_, KeyCode::Esc) => TerminalEvent::App(AppEvent::KeyPress { key: Key::Esc }),
+                (_, KeyCode::Tab) => TerminalEvent::App(AppEvent::KeyPress { key: Key::Tab }),
+                (_, KeyCode::F(1)) => TerminalEvent::App(AppEvent::KeyPress { key: Key::F1 }),
+                (_, KeyCode::F(2)) => TerminalEvent::App(AppEvent::KeyPress { key: Key::F2 }),
+                (_, KeyCode::F(3)) => TerminalEvent::App(AppEvent::KeyPress { key: Key::F3 }),
                 _ => continue,
             };
             if tx.blocking_send(terminal_event).is_err() {

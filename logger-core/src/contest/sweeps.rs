@@ -107,7 +107,8 @@ impl ContestEntry for SweepsContest {
                 }
                 SECTION_ID => {
                     let len = value.len();
-                    let ok = (2..=6).contains(&len) && value.chars().all(|c| c.is_ascii_alphanumeric());
+                    let ok =
+                        (2..=6).contains(&len) && value.chars().all(|c| c.is_ascii_alphanumeric());
                     if ok {
                         Validation::Valid
                     } else {
@@ -133,7 +134,11 @@ impl ContestEntry for SweepsContest {
         }
     }
 
-    fn build_qso_draft(&self, input: &EntryState, ctx: &EntryContext) -> Result<QsoDraft, EntryError> {
+    fn build_qso_draft(
+        &self,
+        input: &EntryState,
+        ctx: &EntryContext,
+    ) -> Result<QsoDraft, EntryError> {
         let call = input
             .get_field_value_by_id(CALL_ID)
             .unwrap_or_default()
@@ -189,11 +194,7 @@ impl ContestEntry for SweepsContest {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        contest::traits::ContestEntry,
-        entry::state::EntryState,
-        SweepsContest,
-    };
+    use crate::{SweepsContest, contest::traits::ContestEntry, entry::state::EntryState};
 
     #[test]
     fn lowercase_prec_is_valid() {

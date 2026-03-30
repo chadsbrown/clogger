@@ -199,8 +199,8 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::{
-        contest::traits::ContestEntry,
         CqwwContest,
+        contest::traits::ContestEntry,
         effects::Effect,
         entry::state::{EntryState, EsmStep, OpMode, Validation},
         events::{AppEvent, Key},
@@ -387,7 +387,11 @@ mod tests {
             AppEvent::KeyPress { key: Key::Enter },
         );
         assert_eq!(st.entry.esm_step, EsmStep::Idle);
-        assert!(effects2.iter().any(|e| matches!(e, Effect::LogInsert { .. })));
+        assert!(
+            effects2
+                .iter()
+                .any(|e| matches!(e, Effect::LogInsert { .. }))
+        );
     }
 
     #[test]
@@ -438,7 +442,11 @@ mod tests {
             &macros,
             AppEvent::KeyPress { key: Key::Enter },
         );
-        assert!(effects.iter().any(|e| matches!(e, Effect::LogInsert { .. })));
+        assert!(
+            effects
+                .iter()
+                .any(|e| matches!(e, Effect::LogInsert { .. }))
+        );
     }
 
     #[test]
@@ -691,8 +699,16 @@ mod tests {
             &macros,
             AppEvent::KeyPress { key: Key::Enter },
         );
-        assert!(effects.iter().any(|e| matches!(e, Effect::LogInsert { .. })));
-        assert!(effects.iter().any(|e| matches!(e, Effect::CwSend { text, .. } if text.starts_with("TU "))));
+        assert!(
+            effects
+                .iter()
+                .any(|e| matches!(e, Effect::LogInsert { .. }))
+        );
+        assert!(
+            effects
+                .iter()
+                .any(|e| matches!(e, Effect::CwSend { text, .. } if text.starts_with("TU ")))
+        );
         assert!(!effects.iter().any(|e| {
             matches!(e, Effect::CwSend { text, .. } if text.contains("599 4") && text.contains("K1ABC"))
         }));
@@ -737,7 +753,9 @@ mod tests {
             &mut st,
             &contest,
             &macros,
-            AppEvent::TextInput { s: "05".to_string() },
+            AppEvent::TextInput {
+                s: "05".to_string(),
+            },
         );
 
         let _ = reduce(
@@ -770,12 +788,16 @@ mod tests {
             &macros,
             AppEvent::KeyPress { key: Key::Enter },
         );
-        assert!(effects_resend.iter().any(|e| {
-            matches!(e, Effect::CwSend { text, .. } if text.contains("K1ABC 599 4"))
-        }));
-        assert!(!effects_resend
-            .iter()
-            .any(|e| matches!(e, Effect::LogInsert { .. })));
+        assert!(
+            effects_resend.iter().any(|e| {
+                matches!(e, Effect::CwSend { text, .. } if text.contains("K1ABC 599 4"))
+            })
+        );
+        assert!(
+            !effects_resend
+                .iter()
+                .any(|e| matches!(e, Effect::LogInsert { .. }))
+        );
 
         let effects_log = reduce(
             &mut st,
@@ -783,11 +805,15 @@ mod tests {
             &macros,
             AppEvent::KeyPress { key: Key::Enter },
         );
-        assert!(effects_log
-            .iter()
-            .any(|e| matches!(e, Effect::LogInsert { .. })));
-        assert!(effects_log
-            .iter()
-            .any(|e| matches!(e, Effect::CwSend { text, .. } if text.starts_with("TU "))));
+        assert!(
+            effects_log
+                .iter()
+                .any(|e| matches!(e, Effect::LogInsert { .. }))
+        );
+        assert!(
+            effects_log
+                .iter()
+                .any(|e| matches!(e, Effect::CwSend { text, .. } if text.starts_with("TU ")))
+        );
     }
 }
