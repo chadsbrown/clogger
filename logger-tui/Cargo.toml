@@ -1,0 +1,23 @@
+[package]
+name = "logger-tui"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+logger-core = { path = "../logger-core" }
+qsolog = { path = "../../qsolog" }
+contest-engine = { path = "../../contest-engine" }
+riglib = { path = "../../riglib/crates/riglib", features = ["full"] }
+winkey = { path = "../../winkey" }
+dxfeed = { path = "../../dxfeed", features = ["serde"] }
+tokio = { version = "1", features = ["full"] }
+crossterm = "0.28"
+ratatui = "0.29"
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+toml = "0.8"
+serde = { version = "1", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+chrono = "0.4"
+serde_json = "1"
