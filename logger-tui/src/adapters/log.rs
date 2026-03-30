@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::Path;
 
 use anyhow::{Context, Result};
 use contest_engine::spec::{
@@ -9,12 +10,15 @@ use contest_engine::types::{Band as CeBand, Callsign, Continent};
 use logger_core::{DupeChecker, MultChecker, QsoDraft};
 use qsolog::{
     core::store::QsoStore,
+    persist::{OpSink, sqlite::SqliteOpSink},
     qso::{ExchangeBlob, QsoDraft as StoreDraft, QsoFlags, QsoRecord},
     types::{Band, Mode, QsoId},
 };
+use tracing::info;
 
 pub struct LogAdapter {
     store: QsoStore,
+    sink: Option<SqliteOpSink>,
     contest_id: String,
     my_zone: u8,
 }
@@ -23,9 +27,25 @@ impl LogAdapter {
     pub fn new(contest_id: impl Into<String>, my_zone: u8) -> Self {
         Self {
             store: QsoStore::new(),
+            sink: None,
             contest_id: contest_id.into(),
             my_zone,
         }
+    }
+
+    pub fn open_db(contest_id: impl Into<String>, my_zone: u8, path: &Path) -> Result<Self> {
+        let sink = SqliteOpSink::open(path)
+            .map_err(|e| anyhow::anyhow!("open db: {e:?}"))?;
+        let store = sink.load_store()
+            .map_err(|e| anyhow::anyhow!("load store: {e:?}"))?;
+        let count = store.ordered_ids().len();
+        info!("loaded {count} QSOs from {}", path.display());
+        Ok(Self {
+            store,
+            sink: Some(sink),
+            contest_id: contest_id.into(),
+            my_zone,
+        })
     }
 
     pub fn insert(
@@ -57,14 +77,20 @@ impl LogAdapter {
             .store
             .insert(store_draft)
             .map_err(|e| anyhow::anyhow!("insert failed: {e:?}"))?;
+
+        // Persist to SQLite if available
+        if let Some(sink) = &mut self.sink {
+            let ops = self.store.drain_pending_ops();
+            if !ops.is_empty() {
+                sink.append_ops(&ops)
+                    .map_err(|e| anyhow::anyhow!("persist failed: {e:?}"))?;
+            }
+        }
+
         Ok(id)
     }
 
-    pub fn recent(&self, n: usize) -> Vec<QsoRecord> {
-        self.store.recent_cloned(n)
-    }
-
-    fn ordered_records(&self) -> Vec<QsoRecord> {
+    pub fn ordered_records(&self) -> Vec<QsoRecord> {
         self.store
             .ordered_ids()
             .iter()
@@ -207,6 +233,45 @@ fn resolved_station_for_call(call: &str) -> ResolvedStation {
     }
 
     ResolvedStation::new("W", Continent::NA, true, true)
+}
+
+pub fn build_log_display(adapter: &LogAdapter) -> Vec<crate::ui::log_tail::LogRow> {
+    adapter
+        .ordered_records()
+        .into_iter()
+        .filter(|r| !r.flags.is_void)
+        .enumerate()
+        .map(|(i, rec)| {
+            let exchange = decode_exchange_pairs(&rec.exchange)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|(_, v)| v)
+                .collect::<Vec<_>>()
+                .join(" ");
+            let band = match rec.band {
+                Band::B160m => "160m",
+                Band::B80m => "80m",
+                Band::B40m => "40m",
+                Band::B20m => "20m",
+                Band::B15m => "15m",
+                Band::B10m => "10m",
+                Band::Other => "other",
+            };
+            let mode = match rec.mode {
+                Mode::CW => "CW",
+                Mode::SSB => "SSB",
+                Mode::Digital => "DIGITAL",
+                Mode::Other => "OTHER",
+            };
+            crate::ui::log_tail::LogRow {
+                nr: i as u64 + 1,
+                call: rec.callsign_norm.clone(),
+                band: band.to_string(),
+                mode: mode.to_string(),
+                exchange,
+            }
+        })
+        .collect()
 }
 
 fn contest_instance_id(contest_id: &str) -> u64 {

@@ -1,3 +1,22 @@
 my_call = "N9UNX"
 my_zone = 4
 contest = "cqww"
+db_path = "n9unx-cqww.db"
+
+# Rig control (optional — omit entire section to run without)
+#[rig]
+#model = "IC-7610"        # any model from riglib: IC-7300, FT-DX10, K4, TS-890S, etc.
+#port = "/dev/ttyUSB0"
+#baud_rate = 115200       # optional, uses model default if omitted
+
+# WinKeyer (optional — omit entire section to run without)
+#[keyer]
+#port = "/dev/ttyUSB1"
+#speed_wpm = 28           # default: 28
+#contest_spacing = true   # default: false
+
+# DX cluster spots (optional — omit entire section to run without)
+#[[dxfeed.sources]]
+#host = "dxc.nc0d.com"
+#port = 7300
+#callsign = "N9UNX"

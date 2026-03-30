@@ -24,6 +24,7 @@ pub async fn run(
     mut log_adapter: LogAdapter,
     keyer: Option<Box<dyn Keyer>>,
     mut rx: mpsc::Receiver<TerminalEvent>,
+    initial_log_display: Vec<LogRow>,
 ) -> Result<()> {
     // Setup terminal
     terminal::enable_raw_mode()?;
@@ -31,7 +32,10 @@ pub async fn run(
     let backend = CrosstermBackend::new(io::stdout());
     let mut terminal = ratatui::Terminal::new(backend)?;
 
-    let mut tui_state = TuiState::default();
+    let mut tui_state = TuiState {
+        log_display: initial_log_display,
+        ..Default::default()
+    };
 
     let mut render_interval = tokio::time::interval(Duration::from_millis(50)); // 20 FPS
     let mut timer_interval = tokio::time::interval(Duration::from_secs(1));

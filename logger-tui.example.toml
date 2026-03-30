@@ -1,0 +1,69 @@
+# logger-tui configuration
+#
+# Required fields:
+#   my_call, my_zone, contest
+#
+# Copy this file and uncomment/edit the values you need:
+#   cp logger-tui.example.toml logger-tui.toml
+
+# Your callsign
+#my_call = "N9UNX"
+
+# Your CQ zone
+#my_zone = 4
+
+# Contest: "cqww" or "sweeps"
+#contest = "cqww"
+
+# RST sent (default: "599")
+#rst_sent = "599"
+
+# SQLite database path for persistent logging (omit for in-memory only)
+#db_path = "n9unx-cqww.db"
+
+# ---------------------------------------------------------------------------
+# Rig control (optional — omit entire section to run without)
+# ---------------------------------------------------------------------------
+#[rig]
+# Model name (case/hyphen insensitive):
+#   Icom:     IC-7300, IC-7610, IC-7600, IC-7700, IC-7800, IC-7850, IC-7851,
+#             IC-9700, IC-705, IC-7300MKII, IC-7100, IC-9100, IC-7410, IC-905
+#   Yaesu:    FT-DX10, FT-DX101, FT-991A, FT-710, FTDX5000, FTDX9000
+#   Elecraft: K4, K3S, K3, KX3, KX2
+#   Kenwood:  TS-890S, TS-590SG, TS-480
+#   Flex:     FLEX-6600, FLEX-6700, FLEX-6400
+#model = "IC-7610"
+#
+# Serial port (or IP address for FlexRadio)
+#port = "/dev/ttyUSB0"
+#
+# Baud rate (optional — uses model default if omitted)
+#baud_rate = 115200
+
+# ---------------------------------------------------------------------------
+# WinKeyer CW keyer (optional — omit entire section to run without)
+# CW messages still appear in the TUI buffer even without a keyer.
+# ---------------------------------------------------------------------------
+#[keyer]
+# Serial port for WinKeyer
+#port = "/dev/ttyUSB1"
+#
+# Speed in words per minute (default: 28)
+#speed_wpm = 28
+#
+# Contest spacing — shortened wordspace (default: false)
+#contest_spacing = true
+
+# ---------------------------------------------------------------------------
+# DX cluster spots (optional — omit entire section to run without)
+# Multiple sources can be added with repeated [[dxfeed.sources]] sections.
+# ---------------------------------------------------------------------------
+#[[dxfeed.sources]]
+#host = "dxc.nc0d.com"
+#port = 7300
+#callsign = "N9UNX"
+#
+#[[dxfeed.sources]]
+#host = "dxc.k3lr.com"
+#port = 7300
+#callsign = "N9UNX"

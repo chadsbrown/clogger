@@ -66,7 +66,11 @@ async fn main() -> Result<()> {
         ContestKind::Cqww => "cqww",
         ContestKind::Sweeps => "sweeps",
     };
-    let log_adapter = adapters::log::LogAdapter::new(contest_id, config.my_zone);
+    let log_adapter = if let Some(db_path) = &config.db_path {
+        adapters::log::LogAdapter::open_db(contest_id, config.my_zone, db_path)?
+    } else {
+        adapters::log::LogAdapter::new(contest_id, config.my_zone)
+    };
 
     // Event channel
     let (tx, rx) = mpsc::channel::<adapters::terminal::TerminalEvent>(256);
@@ -102,6 +106,9 @@ async fn main() -> Result<()> {
         }
     }
 
+    // Rebuild log display from restored QSOs
+    let initial_log_display = adapters::log::build_log_display(&log_adapter);
+
     // Run the event loop
-    event_loop::run(state, contest, macros, log_adapter, keyer, rx).await
+    event_loop::run(state, contest, macros, log_adapter, keyer, rx, initial_log_display).await
 }
