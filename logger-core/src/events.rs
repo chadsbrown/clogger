@@ -13,6 +13,7 @@ pub enum Key {
     F2,
     F3,
     Enter,
+    Equal,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

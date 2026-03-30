@@ -65,6 +65,7 @@ pub enum KeyValue {
     F2,
     F3,
     Enter,
+    Equal,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]

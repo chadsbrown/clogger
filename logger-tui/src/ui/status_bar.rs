@@ -60,7 +60,7 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState) {
 
     // SCP matches
     if !st.entry.scp_matches.is_empty() {
-        let scp_text = st.entry.scp_matches.iter().take(5).cloned().collect::<Vec<_>>().join(" ");
+        let scp_text = st.entry.scp_matches.iter().take(10).cloned().collect::<Vec<_>>().join(" ");
         spans.push(Span::styled(scp_text, Style::default().fg(Color::DarkGray)));
     }
 

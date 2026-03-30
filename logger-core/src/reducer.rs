@@ -118,6 +118,7 @@ pub fn reduce(
             }
             revalidate_after_edit(st, contest);
             if touched_call {
+                st.entry.scp_cycle_index = None;
                 recompute_feedback(st, dupe_checker, mult_checker);
                 apply_call_history(st, contest, call_history, scp);
                 revalidate_after_edit(st, contest);
@@ -142,6 +143,7 @@ pub fn reduce(
                 }
                 revalidate_after_edit(st, contest);
                 if touched_call {
+                    st.entry.scp_cycle_index = None;
                     recompute_feedback(st, dupe_checker, mult_checker);
                     apply_call_history(st, contest, call_history, scp);
                     revalidate_after_edit(st, contest);
@@ -155,6 +157,7 @@ pub fn reduce(
                     field.value.clear();
                 }
                 if touched_call {
+                    st.entry.scp_cycle_index = None;
                     clear_history_fields(st);
                 }
                 revalidate_after_edit(st, contest);
@@ -175,6 +178,30 @@ pub fn reduce(
                 radio: st.focused_radio,
                 text: expand_macro(&macros.f3, st),
             }],
+            Key::Equal => {
+                if st.entry.scp_matches.is_empty() {
+                    return Vec::new();
+                }
+                let len = st.entry.scp_matches.len();
+                let idx = match st.entry.scp_cycle_index {
+                    None => 0,
+                    Some(i) => (i + 1) % len,
+                };
+                st.entry.scp_cycle_index = Some(idx);
+                let new_call = st.entry.scp_matches[idx].clone();
+                if let Some(field) = st.entry.fields.iter_mut().find(|f| f.field_id == 1) {
+                    field.value = new_call;
+                }
+                let saved_matches = st.entry.scp_matches.clone();
+                let saved_index = st.entry.scp_cycle_index;
+                revalidate_after_edit(st, contest);
+                recompute_feedback(st, dupe_checker, mult_checker);
+                apply_call_history(st, contest, call_history, scp);
+                revalidate_after_edit(st, contest);
+                st.entry.scp_matches = saved_matches;
+                st.entry.scp_cycle_index = saved_index;
+                Vec::new()
+            }
             Key::Enter => handle_esm(st, contest, macros),
         },
         AppEvent::EsmTrigger => handle_esm(st, contest, macros),

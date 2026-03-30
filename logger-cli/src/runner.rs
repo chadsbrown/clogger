@@ -218,6 +218,7 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
                     KeyValue::F2 => Key::F2,
                     KeyValue::F3 => Key::F3,
                     KeyValue::Enter => Key::Enter,
+                    KeyValue::Equal => Key::Equal,
                 },
             }),
             ScriptEvent::Esm => Some(AppEvent::EsmTrigger),

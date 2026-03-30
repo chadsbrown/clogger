@@ -50,6 +50,7 @@ pub struct EntryState {
     pub esm_enabled: bool,
     pub esm_step: EsmStep,
     pub scp_matches: Vec<String>,
+    pub scp_cycle_index: Option<usize>,
 }
 
 impl EntryState {
@@ -77,6 +78,7 @@ impl EntryState {
             esm_enabled: true,
             esm_step: EsmStep::Idle,
             scp_matches: Vec::new(),
+            scp_cycle_index: None,
         }
     }
 
@@ -91,6 +93,7 @@ impl EntryState {
         self.is_dupe = false;
         self.is_new_mult = false;
         self.scp_matches.clear();
+        self.scp_cycle_index = None;
     }
 
     pub fn focused_mut(&mut self) -> Option<&mut EntryFieldState> {

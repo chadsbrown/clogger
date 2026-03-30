@@ -26,6 +26,9 @@ pub fn spawn_terminal_reader(tx: mpsc::Sender<TerminalEvent>) {
                 (_, KeyCode::Char(' ')) => {
                     TerminalEvent::App(AppEvent::KeyPress { key: Key::Space })
                 }
+                (_, KeyCode::Char('=')) => {
+                    TerminalEvent::App(AppEvent::KeyPress { key: Key::Equal })
+                }
                 (_, KeyCode::Char(c)) => TerminalEvent::App(AppEvent::TextInput {
                     s: c.to_uppercase().to_string(),
                 }),
