@@ -45,6 +45,7 @@ impl ContestEntry for CqwwContest {
             field_id: CALL_ID,
             label: "CALL".to_string(),
             required: true,
+            width: 12,
         }];
 
         for (idx, field) in self.spec.received_fields.iter().enumerate() {
@@ -52,6 +53,7 @@ impl ContestEntry for CqwwContest {
                 field_id: (idx as u16) + 2,
                 label: field.id.to_ascii_uppercase(),
                 required: field.required,
+                width: field.width,
             });
         }
 
@@ -212,11 +214,22 @@ fn parsed_spec() -> &'static ParsedCqwwSpec {
             .map(|v| {
                 v.fields
                     .iter()
-                    .map(|f| ReceivedField {
-                        id: f.id.clone(),
-                        field_type: f.field_type.clone(),
-                        required: f.required,
-                        domain: f.domain.as_ref().and_then(|d| d.range.clone()),
+                    .map(|f| {
+                        let domain = f.domain.as_ref().and_then(|d| d.range.clone());
+                        let width = match f.field_type.as_str() {
+                            "Rst" => 3,
+                            "Int" => domain.as_ref().map(|r| {
+                                r.max.to_string().len().max(r.min.to_string().len()) as u16
+                            }).unwrap_or(5),
+                            _ => 8,
+                        };
+                        ReceivedField {
+                            id: f.id.clone(),
+                            field_type: f.field_type.clone(),
+                            required: f.required,
+                            domain,
+                            width,
+                        }
                     })
                     .collect::<Vec<_>>()
             })
@@ -237,6 +250,7 @@ struct ReceivedField {
     field_type: String,
     required: bool,
     domain: Option<Range>,
+    width: u16,
 }
 
 #[derive(Debug, Clone, Deserialize)]

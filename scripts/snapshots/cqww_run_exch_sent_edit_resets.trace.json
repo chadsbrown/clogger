@@ -215,7 +215,7 @@
         {
           "type": "CwSend",
           "radio": 1,
-          "text": "TU K1ABC"
+          "text": "TU N0CALL"
         },
         {
           "type": "UiClearEntry"

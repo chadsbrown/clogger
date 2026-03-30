@@ -1,6 +1,7 @@
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
-use logger_core::{AppEvent, Key};
+use logger_core::{AppEvent, Key, OpMode};
 use tokio::sync::mpsc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 pub enum TerminalEvent {
     App(AppEvent),
@@ -9,6 +10,7 @@ pub enum TerminalEvent {
 
 pub fn spawn_terminal_reader(tx: mpsc::Sender<TerminalEvent>) {
     std::thread::spawn(move || {
+        static IS_RUN: AtomicBool = AtomicBool::new(true);
         loop {
             let Ok(ev) = event::read() else {
                 break;
@@ -22,6 +24,11 @@ pub fn spawn_terminal_reader(tx: mpsc::Sender<TerminalEvent>) {
             let terminal_event = match (key_ev.modifiers, key_ev.code) {
                 (m, KeyCode::Char('c')) if m.contains(KeyModifiers::CONTROL) => {
                     TerminalEvent::Shutdown
+                }
+                (_, KeyCode::Insert) => {
+                    let was_run = IS_RUN.fetch_xor(true, Ordering::Relaxed);
+                    let mode = if was_run { OpMode::Sp } else { OpMode::Run };
+                    TerminalEvent::App(AppEvent::SetOpMode { mode })
                 }
                 (_, KeyCode::Char(' ')) => {
                     TerminalEvent::App(AppEvent::KeyPress { key: Key::Space })

@@ -42,7 +42,7 @@ impl ContestEntry for CwtContest {
         Macros {
             f1: "CQ CWT {MYCALL}".to_string(),
             f2: "{CALL} {MYNAME} {MYXCHG}".to_string(),
-            f3: "TU {CALL}".to_string(),
+            f3: "TU {MYCALL}".to_string(),
         }
     }
 
@@ -51,6 +51,7 @@ impl ContestEntry for CwtContest {
             field_id: CALL_ID,
             label: "CALL".to_string(),
             required: true,
+            width: 12,
         }];
 
         for (idx, field) in self.spec.received_fields.iter().enumerate() {
@@ -58,6 +59,7 @@ impl ContestEntry for CwtContest {
                 field_id: (idx as u16) + 2,
                 label: field.id.to_ascii_uppercase(),
                 required: field.required,
+                width: field.width,
             });
         }
 
@@ -166,9 +168,17 @@ fn parsed_spec() -> &'static ParsedCwtSpec {
             .map(|v| {
                 v.fields
                     .iter()
-                    .map(|f| ReceivedField {
-                        id: f.id.clone(),
-                        required: f.required,
+                    .map(|f| {
+                        let width = match f.id.to_ascii_lowercase().as_str() {
+                            "name" => 10,
+                            "xchg" => 6,
+                            _ => 8,
+                        };
+                        ReceivedField {
+                            id: f.id.clone(),
+                            required: f.required,
+                            width,
+                        }
                     })
                     .collect::<Vec<_>>()
             })
@@ -187,6 +197,7 @@ struct ParsedCwtSpec {
 struct ReceivedField {
     id: String,
     required: bool,
+    width: u16,
 }
 
 #[derive(Debug, Clone, Deserialize)]

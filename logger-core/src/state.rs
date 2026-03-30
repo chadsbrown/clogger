@@ -59,7 +59,7 @@ impl Default for Macros {
         Self {
             f1: "CQ TEST {MYCALL}".to_string(),
             f2: "{CALL} {RST_SENT} {MYZONE}".to_string(),
-            f3: "TU {CALL}".to_string(),
+            f3: "TU {MYCALL}".to_string(),
         }
     }
 }

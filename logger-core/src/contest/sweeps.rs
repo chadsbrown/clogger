@@ -29,7 +29,7 @@ impl ContestEntry for SweepsContest {
         Macros {
             f1: "CQ SS {MYCALL}".to_string(),
             f2: "{CALL} {NR} {PREC} {CHECK} {SECTION}".to_string(),
-            f3: "TU {CALL}".to_string(),
+            f3: "TU {MYCALL}".to_string(),
         }
     }
 
@@ -40,26 +40,31 @@ impl ContestEntry for SweepsContest {
                     field_id: CALL_ID,
                     label: "CALL".to_string(),
                     required: true,
+                    width: 12,
                 },
                 EntryFieldSpec {
                     field_id: NR_ID,
                     label: "NR".to_string(),
                     required: true,
+                    width: 5,
                 },
                 EntryFieldSpec {
                     field_id: PREC_ID,
                     label: "PREC".to_string(),
                     required: true,
+                    width: 2,
                 },
                 EntryFieldSpec {
                     field_id: CHECK_ID,
                     label: "CHECK".to_string(),
                     required: true,
+                    width: 3,
                 },
                 EntryFieldSpec {
                     field_id: SECTION_ID,
                     label: "SECTION".to_string(),
                     required: true,
+                    width: 4,
                 },
             ],
         }

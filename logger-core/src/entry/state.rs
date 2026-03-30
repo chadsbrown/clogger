@@ -35,6 +35,7 @@ pub struct EntryFieldState {
     pub label: String,
     pub value: String,
     pub required: bool,
+    pub width: u16,
     pub status: Validation,
     pub from_history: bool,
 }
@@ -64,6 +65,7 @@ impl EntryState {
                 label: f.label.clone(),
                 value: String::new(),
                 required: f.required,
+                width: f.width,
                 status: Validation::Unknown,
                 from_history: false,
             })

@@ -17,17 +17,6 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState) {
     ));
     spans.push(Span::raw(" "));
 
-    // Mode (Run/S&P)
-    let mode_str = match st.entry.mode {
-        logger_core::OpMode::Run => "RUN",
-        logger_core::OpMode::Sp => "S&P",
-    };
-    spans.push(Span::styled(
-        format!(" {} ", mode_str),
-        Style::default().fg(Color::Black).bg(Color::Cyan),
-    ));
-    spans.push(Span::raw(" "));
-
     // Radio freq/mode
     if let Some(rig) = st.radios.get(&st.focused_radio) {
         let freq_mhz = rig.freq_hz as f64 / 1_000_000.0;
@@ -58,7 +47,11 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState) {
         spans.push(Span::raw(" "));
     }
 
-    let mut lines = vec![Line::from(spans)];
+    frame.render_widget(Paragraph::new(Line::from(spans)), area);
+}
+
+pub fn render_scp(frame: &mut Frame, area: Rect, st: &AppState) {
+    let mut lines = Vec::new();
 
     // SCP prefix matches
     if !st.entry.scp_matches.is_empty() {
@@ -78,5 +71,7 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState) {
         ]));
     }
 
-    frame.render_widget(Paragraph::new(lines), area);
+    if !lines.is_empty() {
+        frame.render_widget(Paragraph::new(lines), area);
+    }
 }

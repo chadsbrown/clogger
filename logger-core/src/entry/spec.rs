@@ -3,6 +3,7 @@ pub struct EntryFieldSpec {
     pub field_id: u16,
     pub label: String,
     pub required: bool,
+    pub width: u16,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
