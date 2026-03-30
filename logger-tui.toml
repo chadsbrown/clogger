@@ -2,6 +2,8 @@ my_call = "N9UNX"
 my_zone = 4
 contest = "cwt"
 db_path = "n9unx-cqww.db"
+my_name = "CHAD"
+my_xchg = "3151"
 
 # Rig control (optional — omit entire section to run without)
 #[rig]
@@ -20,6 +22,3 @@ db_path = "n9unx-cqww.db"
 host = "dxc.nc7j.com"
 port = 7373
 callsign = "N9UNX"
-
-my_name="CHAD"
-my_xchg="3151"
