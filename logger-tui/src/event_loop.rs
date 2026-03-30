@@ -6,7 +6,7 @@ use crossterm::{
     cursor,
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use logger_core::{AppState, CallHistoryLookup, ContestEntry, Effect, Macros, reduce};
+use logger_core::{AppState, CallHistoryLookup, ContestEntry, Effect, Macros, ScpLookup, reduce};
 use logger_runtime::LogAdapter;
 use ratatui::backend::CrosstermBackend;
 use tokio::sync::mpsc;
@@ -24,6 +24,7 @@ pub async fn run(
     mut log_adapter: LogAdapter,
     keyer: Option<Box<dyn Keyer>>,
     call_history: Box<dyn CallHistoryLookup>,
+    scp: Box<dyn ScpLookup>,
     mut rx: mpsc::Receiver<TerminalEvent>,
     initial_log_display: Vec<LogRow>,
 ) -> Result<()> {
@@ -53,6 +54,7 @@ pub async fn run(
                             &log_adapter,
                             &log_adapter,
                             call_history.as_ref(),
+                            scp.as_ref(),
                             app_event,
                         );
                         if let Err(e) = dispatch_effects(
@@ -84,6 +86,7 @@ pub async fn run(
                     &log_adapter,
                     &log_adapter,
                     call_history.as_ref(),
+                    scp.as_ref(),
                     logger_core::AppEvent::TimerTick { now_ms },
                 );
                 if let Err(e) = dispatch_effects(

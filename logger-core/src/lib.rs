@@ -17,7 +17,7 @@ pub use entry::state::{EntryFieldState, EntryState, EsmStep, OpMode, Validation}
 pub use events::{AppEvent, Key};
 pub use reducer::{
     CallHistoryLookup, DupeChecker, MultChecker, NoCallHistory, NoDupeChecker, NoMultChecker,
-    reduce,
+    NoScp, ScpLookup, reduce,
 };
 pub use state::{
     AppState, EsmPolicy, Macros, OperatorId, QsoDraft, QsoRef, RadioId, RadioState, Spot,

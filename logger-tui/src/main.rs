@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use anyhow::Result;
 use clap::Parser;
-use logger_core::{AppEvent, AppState, CallHistoryLookup, EntryState, EsmPolicy, NoCallHistory, contest_from_id};
+use logger_core::{AppEvent, AppState, CallHistoryLookup, EntryState, EsmPolicy, NoCallHistory, NoScp, ScpLookup, contest_from_id};
 use tokio::sync::mpsc;
 use tracing::warn;
 use logger_runtime::Keyer;
@@ -105,8 +105,9 @@ async fn main() -> Result<()> {
         }
     });
 
-    // Load call history if configured
-    let call_history: Box<dyn CallHistoryLookup> = if let Some(path) = &config.call_history_file {
+    // Load call history if configured (CLI flag overrides config)
+    let ch_path = cli.call_history.as_ref().or(config.call_history_file.as_ref());
+    let call_history: Box<dyn CallHistoryLookup> = if let Some(path) = ch_path {
         match logger_runtime::CallHistoryDb::load(path) {
             Ok(db) => Box::new(db),
             Err(e) => {
@@ -116,6 +117,20 @@ async fn main() -> Result<()> {
         }
     } else {
         Box::new(NoCallHistory)
+    };
+
+    // Load SCP file if configured (CLI flag overrides config)
+    let scp_path = cli.scp.as_ref().or(config.scp_file.as_ref());
+    let scp: Box<dyn ScpLookup> = if let Some(path) = scp_path {
+        match logger_runtime::ScpDb::load(path) {
+            Ok(db) => Box::new(db),
+            Err(e) => {
+                warn!("SCP file load failed, continuing without: {e}");
+                Box::new(NoScp)
+            }
+        }
+    } else {
+        Box::new(NoScp)
     };
 
     // Rebuild log display from restored QSOs
@@ -129,6 +144,7 @@ async fn main() -> Result<()> {
         log_adapter,
         keyer,
         call_history,
+        scp,
         tui_rx,
         initial_log_display,
     )

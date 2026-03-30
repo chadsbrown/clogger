@@ -6,7 +6,7 @@ use std::{
 use anyhow::{Context, Result, bail};
 use logger_core::{
     AppEvent, AppState, BeepKind, CallHistoryLookup, Effect, EntryState, EsmPolicy, Key,
-    NoCallHistory, OpMode, Spot, contest_from_id, reduce,
+    NoCallHistory, NoScp, OpMode, ScpLookup, Spot, contest_from_id, reduce,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -88,7 +88,6 @@ pub fn run_script(script: Script) -> Result<()> {
 
 struct ScriptCallHistory {
     records: HashMap<String, HashMap<String, String>>,
-    sorted_calls: Vec<String>,
 }
 
 impl ScriptCallHistory {
@@ -103,12 +102,7 @@ impl ScriptCallHistory {
                 .collect();
             records.insert(call, fields);
         }
-        let mut sorted_calls: Vec<String> = records.keys().cloned().collect();
-        sorted_calls.sort();
-        Self {
-            records,
-            sorted_calls,
-        }
+        Self { records }
     }
 }
 
@@ -118,7 +112,13 @@ impl CallHistoryLookup for ScriptCallHistory {
             .get(call_norm)
             .map(|rec| rec.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
     }
+}
 
+struct ScriptScp {
+    sorted_calls: Vec<String>,
+}
+
+impl ScpLookup for ScriptScp {
     fn partial_matches(&self, prefix: &str, limit: usize) -> Vec<String> {
         if prefix.is_empty() {
             return Vec::new();
@@ -178,6 +178,15 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
         Box::new(ScriptCallHistory::from_entries(&script.call_history))
     };
 
+    let scp: Box<dyn ScpLookup> = if script.scp_calls.is_empty() {
+        Box::new(NoScp)
+    } else {
+        let mut sorted = script.scp_calls.iter().map(|c| c.to_ascii_uppercase()).collect::<Vec<_>>();
+        sorted.sort();
+        sorted.dedup();
+        Box::new(ScriptScp { sorted_calls: sorted })
+    };
+
     for script_event in script.events.iter().cloned() {
         let app_event = match script_event.clone() {
             ScriptEvent::RigStatus {
@@ -226,6 +235,7 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
                 &log,
                 &log,
                 call_history.as_ref(),
+                scp.as_ref(),
                 ev,
             );
             if record_trace {

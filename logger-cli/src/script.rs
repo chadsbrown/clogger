@@ -8,6 +8,8 @@ pub struct Script {
     pub esm_policy: EsmPolicyConfig,
     #[serde(default)]
     pub call_history: Vec<CallHistoryEntry>,
+    #[serde(default)]
+    pub scp_calls: Vec<String>,
     pub events: Vec<ScriptEvent>,
     #[serde(default)]
     pub expectations: Expectations,

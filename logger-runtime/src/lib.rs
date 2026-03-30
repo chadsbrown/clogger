@@ -4,8 +4,10 @@ pub mod dxfeed_adapter;
 pub mod keyer_adapter;
 pub mod log_adapter;
 pub mod rig_adapter;
+pub mod scp;
 
 pub use call_history::CallHistoryDb;
+pub use scp::ScpDb;
 pub use config::{DxFeedConfig, DxFeedSourceConfig, KeyerConfig, RigConfig};
 pub use dxfeed_adapter::spawn_dxfeed_adapter;
 pub use keyer_adapter::{connect_keyer, send_cw};

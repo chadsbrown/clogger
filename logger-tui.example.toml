@@ -25,6 +25,14 @@
 # SQLite database path for persistent logging (omit for in-memory only)
 #db_path = "n9unx-cqww.db"
 
+# Call history file (.ch format) for exchange pre-population
+# (can also be set via --call-history CLI flag)
+#call_history_file = "master.ch"
+
+# SCP file (.scp format) for Super Check Partial callsign suggestions
+# (can also be set via --scp CLI flag)
+#scp_file = "master.scp"
+
 # ---------------------------------------------------------------------------
 # Rig control (optional — omit entire section to run without)
 # ---------------------------------------------------------------------------

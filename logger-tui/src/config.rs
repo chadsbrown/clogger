@@ -13,6 +13,14 @@ pub struct Cli {
     /// SQLite database file (overrides db_path in config)
     #[arg(short, long)]
     pub db: Option<PathBuf>,
+
+    /// Call history file (.ch format, overrides call_history_file in config)
+    #[arg(long)]
+    pub call_history: Option<PathBuf>,
+
+    /// SCP file (.scp format, overrides scp_file in config)
+    #[arg(long)]
+    pub scp: Option<PathBuf>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -27,6 +35,7 @@ pub struct Config {
     pub my_xchg: Option<String>,
     pub db_path: Option<PathBuf>,
     pub call_history_file: Option<PathBuf>,
+    pub scp_file: Option<PathBuf>,
     pub rig: Option<logger_runtime::RigConfig>,
     pub keyer: Option<logger_runtime::KeyerConfig>,
     pub dxfeed: Option<logger_runtime::DxFeedConfig>,
