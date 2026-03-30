@@ -9,6 +9,10 @@ pub struct Cli {
     /// Path to TOML config file
     #[arg(short, long)]
     pub config: PathBuf,
+
+    /// SQLite database file (overrides db_path in config)
+    #[arg(short, long)]
+    pub db: Option<PathBuf>,
 }
 
 #[derive(Debug, Deserialize)]

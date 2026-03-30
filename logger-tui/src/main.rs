@@ -66,7 +66,8 @@ async fn main() -> Result<()> {
         ContestKind::Cqww => "cqww",
         ContestKind::Sweeps => "sweeps",
     };
-    let log_adapter = if let Some(db_path) = &config.db_path {
+    let db_path = cli.db.as_ref().or(config.db_path.as_ref());
+    let log_adapter = if let Some(db_path) = db_path {
         adapters::log::LogAdapter::open_db(contest_id, config.my_zone, db_path)?
     } else {
         adapters::log::LogAdapter::new(contest_id, config.my_zone)
