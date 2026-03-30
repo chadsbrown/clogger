@@ -18,10 +18,13 @@ pub struct Cli {
 #[derive(Debug, Deserialize)]
 pub struct Config {
     pub my_call: String,
+    #[serde(default)]
     pub my_zone: u8,
     pub contest: ContestKind,
     #[serde(default = "default_rst_sent")]
     pub rst_sent: String,
+    pub my_name: Option<String>,
+    pub my_xchg: Option<String>,
     pub db_path: Option<PathBuf>,
     pub rig: Option<RigConfig>,
     pub keyer: Option<KeyerConfig>,
@@ -36,6 +39,7 @@ fn default_rst_sent() -> String {
 #[serde(rename_all = "lowercase")]
 pub enum ContestKind {
     Cqww,
+    Cwt,
     Sweeps,
 }
 

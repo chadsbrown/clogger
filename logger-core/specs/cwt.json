@@ -1,0 +1,38 @@
+{
+  "id": "cwt",
+  "name": "CWops CWT",
+  "cabrillo_contest": "CWT",
+  "bands": ["B160", "B80", "B40", "B20", "B15", "B10"],
+  "modes": ["CW"],
+  "dupe_dimension": "Band",
+  "valid_qso": [],
+  "exchange": {
+    "received_variants": [
+      {
+        "when": null,
+        "fields": [
+          {"id": "name", "field_type": "String", "required": true, "domain": null, "accept": [], "normalize_upper_trim": true},
+          {"id": "xchg", "field_type": "String", "required": true, "domain": "Any", "accept": [], "normalize_upper_trim": true}
+        ]
+      }
+    ],
+    "sent_variants": [
+      {
+        "when": null,
+        "fields": [
+          {"id": "name", "value": {"Config": "my_name"}, "normalize_upper_trim": true},
+          {"id": "xchg", "value": {"Config": "my_xchg"}, "normalize_upper_trim": true}
+        ]
+      }
+    ]
+  },
+  "multipliers": [
+    {"id": "call", "dimension": "Global", "variants": [{"when": null, "key": {"scope": "DEST", "key": "call"}, "domain": "Any"}]}
+  ],
+  "points": [{"when": null, "value": 1}],
+  "score": {"formula": "points_times_mults"},
+  "config_fields": [
+    {"id": "my_name", "required": true, "required_when": null, "domain": null},
+    {"id": "my_xchg", "required": true, "required_when": null, "domain": "Any"}
+  ]
+}

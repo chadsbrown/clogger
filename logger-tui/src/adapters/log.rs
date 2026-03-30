@@ -277,6 +277,7 @@ pub fn build_log_display(adapter: &LogAdapter) -> Vec<crate::ui::log_tail::LogRo
 fn contest_instance_id(contest_id: &str) -> u64 {
     match contest_id {
         "sweeps" => 2,
+        "cwt" => 3,
         _ => 1,
     }
 }

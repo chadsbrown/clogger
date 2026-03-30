@@ -48,6 +48,7 @@ pub enum ModeValue {
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 pub enum ContestValue {
     Cqww,
+    Cwt,
     Sweeps,
 }
 

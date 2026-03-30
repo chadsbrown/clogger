@@ -208,6 +208,7 @@ fn resolved_station_for_call(call: &str) -> ResolvedStation {
 fn contest_instance_id(contest_id: &str) -> u64 {
     match contest_id {
         "sweeps" => 2,
+        "cwt" => 3,
         _ => 1,
     }
 }

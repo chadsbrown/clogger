@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use anyhow::Result;
 use clap::Parser;
 use logger_core::{
-    AppState, ContestEntry, CqwwContest, EntryState, EsmPolicy, Macros, SweepsContest,
+    AppState, ContestEntry, CqwwContest, CwtContest, EntryState, EsmPolicy, Macros, SweepsContest,
 };
 use tokio::sync::mpsc;
 use tracing::warn;
@@ -36,6 +36,14 @@ async fn main() -> Result<()> {
     // Build contest + macros
     let (contest, macros): (Box<dyn ContestEntry>, Macros) = match config.contest {
         ContestKind::Cqww => (Box::new(CqwwContest::default()), Macros::default()),
+        ContestKind::Cwt => (
+            Box::new(CwtContest::default()),
+            Macros {
+                f1: "CQ CWT {MYCALL}".to_string(),
+                f2: "{CALL} {NAME} {XCHG}".to_string(),
+                f3: "TU {CALL}".to_string(),
+            },
+        ),
         ContestKind::Sweeps => (
             Box::new(SweepsContest),
             Macros {
@@ -64,6 +72,7 @@ async fn main() -> Result<()> {
     // Build log adapter
     let contest_id = match config.contest {
         ContestKind::Cqww => "cqww",
+        ContestKind::Cwt => "cwt",
         ContestKind::Sweeps => "sweeps",
     };
     let db_path = cli.db.as_ref().or(config.db_path.as_ref());

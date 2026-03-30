@@ -1,7 +1,7 @@
 # logger-tui configuration
 #
 # Required fields:
-#   my_call, my_zone, contest
+#   my_call, contest (plus contest-specific fields below)
 #
 # Copy this file and uncomment/edit the values you need:
 #   cp logger-tui.example.toml logger-tui.toml
@@ -9,14 +9,18 @@
 # Your callsign
 #my_call = "N9UNX"
 
-# Your CQ zone
+# Your CQ zone (required for cqww)
 #my_zone = 4
 
-# Contest: "cqww" or "sweeps"
+# Contest: "cqww", "cwt", or "sweeps"
 #contest = "cqww"
 
-# RST sent (default: "599")
+# RST sent (default: "599", used by cqww)
 #rst_sent = "599"
+
+# CWT-specific fields (required when contest = "cwt")
+#my_name = "CHAD"
+#my_xchg = "2187"
 
 # SQLite database path for persistent logging (omit for in-memory only)
 #db_path = "n9unx-cqww.db"

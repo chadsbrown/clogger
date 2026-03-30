@@ -2,8 +2,8 @@ use std::{collections::{BTreeMap, HashMap}, fs};
 
 use anyhow::{Context, Result, bail};
 use logger_core::{
-    AppEvent, AppState, BeepKind, ContestEntry, CqwwContest, Effect, EntryState, EsmPolicy, Key,
-    Macros, OpMode, Spot, SweepsContest, reduce,
+    AppEvent, AppState, BeepKind, ContestEntry, CqwwContest, CwtContest, Effect, EntryState,
+    EsmPolicy, Key, Macros, OpMode, Spot, SweepsContest, reduce,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -76,6 +76,14 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
     let contest_kind = script.contest.unwrap_or(ContestValue::Cqww);
     let (contest, macros): (Box<dyn ContestEntry>, Macros) = match contest_kind {
         ContestValue::Cqww => (Box::new(CqwwContest::default()), Macros::default()),
+        ContestValue::Cwt => (
+            Box::new(CwtContest::default()),
+            Macros {
+                f1: "CQ CWT {MYCALL}".to_string(),
+                f2: "{CALL} {NAME} {XCHG}".to_string(),
+                f3: "TU {CALL}".to_string(),
+            },
+        ),
         ContestValue::Sweeps => (
             Box::new(SweepsContest),
             Macros {
@@ -113,6 +121,7 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
     let mut log = QsoLogAdapter::new(
         match contest_kind {
             ContestValue::Cqww => "cqww",
+            ContestValue::Cwt => "cwt",
             ContestValue::Sweeps => "sweeps",
         },
         st.my_zone,
