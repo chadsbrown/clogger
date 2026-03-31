@@ -18,11 +18,28 @@ use config::{Cli, load_config};
 use ui::log_tail::LogRow;
 
 #[derive(Default)]
+pub struct AvailSummary {
+    pub by_band: Vec<(String, u32, u32)>, // (band_label, unworked_qsos, new_mults)
+    pub total_qsos: u32,
+    pub total_mults: u32,
+}
+
+#[derive(Default)]
+pub struct RateInfo {
+    pub last_10_minutes: Option<f64>,
+    pub last_100_minutes: Option<f64>,
+    pub rate_per_hour: u32,
+}
+
+#[derive(Default)]
 pub struct TuiState {
     pub cw_history: Vec<String>,
     pub log_display: Vec<LogRow>,
     pub worked_calls: HashSet<String>,
+    pub mult_calls: HashSet<String>,
     pub score: ScoreSummary,
+    pub avail: AvailSummary,
+    pub rate: RateInfo,
     pub rig_connected: bool,
     pub keyer_connected: bool,
     pub dxfeed_connected: bool,

@@ -33,6 +33,7 @@ impl SpecScorer {
     fn build_session(
         &self,
         records: &[QsoRecord],
+        extra_calls: &[&str],
     ) -> anyhow::Result<SpecSession<InMemoryResolver, InMemoryDomainProvider>> {
         let spec_path = format!(
             "{}/../../contest-engine/specs/{}.json",
@@ -55,6 +56,9 @@ impl SpecScorer {
                 resolved_station_for_call(&rec.callsign_norm),
             );
         }
+        for call in extra_calls {
+            resolver.insert(call, resolved_station_for_call(call));
+        }
 
         let source = ResolvedStation::new("W", Continent::NA, true, true);
 
@@ -65,7 +69,7 @@ impl SpecScorer {
 
 impl ContestScorer for SpecScorer {
     fn is_new_mult(&self, records: &[QsoRecord], call_norm: &str, band: &str, mode: &str) -> bool {
-        let mut session = match self.build_session(records) {
+        let mut session = match self.build_session(records, &[call_norm]) {
             Ok(s) => s,
             Err(_) => return false,
         };
@@ -96,7 +100,7 @@ impl ContestScorer for SpecScorer {
     }
 
     fn score_summary(&self, records: &[QsoRecord]) -> ScoreSummary {
-        let mut session = match self.build_session(records) {
+        let mut session = match self.build_session(records, &[]) {
             Ok(s) => s,
             Err(_) => return ScoreSummary::default(),
         };

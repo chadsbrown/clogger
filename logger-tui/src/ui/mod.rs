@@ -1,6 +1,8 @@
+pub mod avail_box;
 pub mod bandmap;
 pub mod entry_line;
 pub mod log_tail;
+pub mod rate_box;
 pub mod score_box;
 pub mod status_bar;
 
@@ -42,8 +44,18 @@ pub fn render(frame: &mut Frame, app: &AppState, tui: &TuiState) {
     ])
     .split(cols[1]);
 
-    // Left: score box
-    score_box::render(frame, cols[0], &tui.score);
+    // Left: score + available + rate
+    let avail_height = tui.avail.by_band.len() as u16 + 4; // header + band rows + totals + 2 borders
+    let left = Layout::vertical([
+        Constraint::Min(4),
+        Constraint::Length(avail_height),
+        Constraint::Length(5),
+    ])
+    .split(cols[0]);
+
+    score_box::render(frame, left[0], &tui.score);
+    avail_box::render(frame, left[1], &tui.avail);
+    rate_box::render(frame, left[2], &tui.rate);
 
     // Center: log + entry + scp
     log_tail::render(frame, center[0], &tui.log_display);

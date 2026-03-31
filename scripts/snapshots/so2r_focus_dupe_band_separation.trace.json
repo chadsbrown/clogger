@@ -83,7 +83,7 @@
         "entry_focus_field_id": 1,
         "esm_step": "Idle",
         "is_dupe": false,
-        "is_new_mult": false,
+        "is_new_mult": true,
         "overall": "Invalid"
       }
     },
@@ -99,7 +99,7 @@
         "entry_focus_field_id": 2,
         "esm_step": "Idle",
         "is_dupe": false,
-        "is_new_mult": false,
+        "is_new_mult": true,
         "overall": "Invalid"
       }
     },
@@ -115,7 +115,7 @@
         "entry_focus_field_id": 2,
         "esm_step": "Idle",
         "is_dupe": false,
-        "is_new_mult": false,
+        "is_new_mult": true,
         "overall": "Invalid"
       }
     },
@@ -131,7 +131,7 @@
         "entry_focus_field_id": 3,
         "esm_step": "Idle",
         "is_dupe": false,
-        "is_new_mult": false,
+        "is_new_mult": true,
         "overall": "Invalid"
       }
     },
@@ -147,7 +147,7 @@
         "entry_focus_field_id": 3,
         "esm_step": "Idle",
         "is_dupe": false,
-        "is_new_mult": false,
+        "is_new_mult": true,
         "overall": "Valid"
       }
     },
@@ -169,7 +169,7 @@
         "entry_focus_field_id": 3,
         "esm_step": "ExchSent",
         "is_dupe": false,
-        "is_new_mult": false,
+        "is_new_mult": true,
         "overall": "Valid"
       }
     },

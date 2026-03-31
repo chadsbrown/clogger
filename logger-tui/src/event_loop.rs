@@ -6,8 +6,9 @@ use crossterm::{
     cursor,
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use logger_core::{AppState, CallHistoryLookup, ContestEntry, DupeChecker, Effect, Macros, ScpLookup, contest::{filtered_bandmap_spots, freq_to_band_label}, reduce};
+use logger_core::{AppState, CallHistoryLookup, ContestEntry, DupeChecker, Effect, Macros, MultChecker, ScpLookup, contest::{band_freq_range, filtered_bandmap_spots, freq_to_band_label}, reduce};
 use logger_runtime::LogAdapter;
+use crate::{AvailSummary, RateInfo};
 use ratatui::backend::CrosstermBackend;
 use tokio::sync::mpsc;
 use std::sync::Arc;
@@ -79,6 +80,8 @@ pub async fn run(
                             break Err(e);
                         }
                         recompute_worked_calls(&state, &log_adapter, &mut tui_state);
+                        recompute_avail(&state, &log_adapter, &mut tui_state);
+                        recompute_rate(&log_adapter, &mut tui_state);
                         tui_state.score = log_adapter.score_summary();
                     }
                     Some(TerminalEvent::Shutdown) | None => {
@@ -114,6 +117,8 @@ pub async fn run(
                     break Err(e);
                 }
                 recompute_worked_calls(&state, &log_adapter, &mut tui_state);
+                recompute_avail(&state, &log_adapter, &mut tui_state);
+                recompute_rate(&log_adapter, &mut tui_state);
                 tui_state.score = log_adapter.score_summary();
             }
         }
@@ -197,14 +202,93 @@ async fn dispatch_effects(
 
 fn recompute_worked_calls(state: &AppState, log_adapter: &LogAdapter, tui_state: &mut TuiState) {
     tui_state.worked_calls.clear();
+    tui_state.mult_calls.clear();
     let Some(radio) = state.radios.get(&state.focused_radio).filter(|r| r.freq_hz > 0) else {
         return;
     };
     let band = freq_to_band_label(radio.freq_hz);
     let mode = &radio.mode;
     for spot in filtered_bandmap_spots(&state.bandmap, &band, mode) {
-        if log_adapter.is_dupe(&spot.call, &band, mode) {
+        let call_norm = spot.call.to_ascii_uppercase();
+        if log_adapter.is_dupe(&call_norm, &band, mode) {
             tui_state.worked_calls.insert(spot.call);
+        } else if log_adapter.is_new_mult(&call_norm, &band, mode) {
+            tui_state.mult_calls.insert(spot.call);
         }
     }
+}
+
+const BANDS: &[&str] = &["160m", "80m", "40m", "20m", "15m", "10m"];
+
+fn recompute_avail(state: &AppState, log_adapter: &LogAdapter, tui_state: &mut TuiState) {
+    let mode = state
+        .radios
+        .get(&state.focused_radio)
+        .map(|r| r.mode.as_str())
+        .unwrap_or("CW");
+
+    let mut by_band = Vec::new();
+    let mut total_qsos = 0u32;
+    let mut total_mults = 0u32;
+    for &band in BANDS {
+        let (min, _max) = band_freq_range(band);
+        if min == 0 {
+            continue;
+        }
+        let spots = filtered_bandmap_spots(&state.bandmap, band, mode);
+        let mut qsos = 0u32;
+        let mut mults = 0u32;
+        for s in &spots {
+            let call_norm = s.call.to_ascii_uppercase();
+            if !log_adapter.is_dupe(&call_norm, band, mode) {
+                qsos += 1;
+                if log_adapter.is_new_mult(&call_norm, band, mode) {
+                    mults += 1;
+                }
+            }
+        }
+        if qsos > 0 {
+            by_band.push((band.to_string(), qsos, mults));
+            total_qsos += qsos;
+            total_mults += mults;
+        }
+    }
+    tui_state.avail = AvailSummary { by_band, total_qsos, total_mults };
+}
+
+fn recompute_rate(log_adapter: &LogAdapter, tui_state: &mut TuiState) {
+    let records = log_adapter.ordered_records();
+    let timestamps: Vec<u64> = records
+        .iter()
+        .filter(|r| !r.flags.is_void)
+        .map(|r| r.ts_ms)
+        .collect();
+
+    let now_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
+    let count = timestamps.len();
+
+    let last_10_minutes = if count >= 10 {
+        let t = timestamps[count - 10];
+        Some((now_ms.saturating_sub(t)) as f64 / 60_000.0)
+    } else {
+        None
+    };
+
+    let last_100_minutes = if count >= 100 {
+        let t = timestamps[count - 100];
+        Some((now_ms.saturating_sub(t)) as f64 / 60_000.0)
+    } else {
+        None
+    };
+
+    let rate_per_hour = match last_10_minutes {
+        Some(mins) if mins > 0.0 => (10.0 / mins * 60.0) as u32,
+        _ => 0,
+    };
+
+    tui_state.rate = RateInfo {
+        last_10_minutes,
+        last_100_minutes,
+        rate_per_hour,
+    };
 }

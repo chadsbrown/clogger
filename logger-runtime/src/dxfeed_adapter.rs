@@ -2,6 +2,7 @@ use dxfeed::{
     domain::DxMode,
     feed::DxFeedBuilder,
     model::{DxEvent, SourceId, SpotEventKind},
+    skimmer::config::SkimmerQualityConfig,
     source::{cluster::ClusterSourceConfig, supervisor::SourceConfig},
 };
 use logger_core::{AppEvent, Spot};
@@ -31,6 +32,7 @@ pub async fn spawn_dxfeed_adapter(
     }
 
     let mut feed = builder
+        .set_skimmer_quality(SkimmerQualityConfig::default())
         .build()
         .map_err(|e| anyhow::anyhow!("dxfeed build: {e:?}"))?;
 

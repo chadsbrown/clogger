@@ -111,6 +111,13 @@ pub fn reduce(
             st.entry.mode = mode;
             Vec::new()
         }
+        AppEvent::ToggleOpMode => {
+            st.entry.mode = match st.entry.mode {
+                OpMode::Run => OpMode::Sp,
+                OpMode::Sp => OpMode::Run,
+            };
+            Vec::new()
+        }
         AppEvent::FocusRadio { radio } => {
             st.focused_radio = radio;
             recompute_feedback(st, dupe_checker, mult_checker);

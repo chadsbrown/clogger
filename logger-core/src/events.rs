@@ -36,6 +36,7 @@ pub enum AppEvent {
     SetOpMode {
         mode: OpMode,
     },
+    ToggleOpMode,
     FocusRadio {
         radio: RadioId,
     },

@@ -37,8 +37,10 @@ pub fn render(frame: &mut Frame, area: Rect, app: &AppState, tui: &TuiState) {
                 row.style(Style::default().add_modifier(Modifier::REVERSED))
             } else if tui.worked_calls.contains(&s.call) {
                 row.style(Style::default().fg(Color::DarkGray))
+            } else if tui.mult_calls.contains(&s.call) {
+                row.style(Style::default().fg(Color::Green))
             } else {
-                row
+                row.style(Style::default().fg(Color::White))
             }
         })
         .collect();
