@@ -5,13 +5,14 @@ mod ui;
 
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
+use std::sync::Arc;
 
 use anyhow::Result;
 use clap::Parser;
 use logger_core::{AppEvent, AppState, CallHistoryLookup, EntryState, EsmPolicy, NoCallHistory, NoScp, ScpLookup, contest_from_id};
 use tokio::sync::mpsc;
 use tracing::warn;
-use logger_runtime::Keyer;
+use logger_runtime::{Keyer, Rig, ScoreSummary};
 
 use config::{Cli, load_config};
 use ui::log_tail::LogRow;
@@ -21,6 +22,10 @@ pub struct TuiState {
     pub cw_history: Vec<String>,
     pub log_display: Vec<LogRow>,
     pub worked_calls: HashSet<String>,
+    pub score: ScoreSummary,
+    pub rig_connected: bool,
+    pub keyer_connected: bool,
+    pub dxfeed_connected: bool,
 }
 
 #[tokio::main]
@@ -66,12 +71,12 @@ async fn main() -> Result<()> {
     };
 
     // Build log adapter
-    let contest_id = contest.contest_id();
+    let scorer = logger_runtime::scorer_for_contest(contest.contest_id(), config.my_zone);
     let db_path = cli.db.as_ref().or(config.db_path.as_ref());
     let log_adapter = if let Some(db_path) = db_path {
-        logger_runtime::LogAdapter::open_db(contest_id, config.my_zone, db_path)?
+        logger_runtime::LogAdapter::open_db(scorer, db_path)?
     } else {
-        logger_runtime::LogAdapter::new(contest_id, config.my_zone)
+        logger_runtime::LogAdapter::new(scorer)
     };
 
     // Two-channel bridge: hardware adapters send AppEvent, terminal sends TerminalEvent
@@ -82,17 +87,26 @@ async fn main() -> Result<()> {
     adapters::terminal::spawn_terminal_reader(tui_tx.clone());
 
     // Optionally connect rig
+    let mut rig_handle: Option<Arc<dyn Rig>> = None;
+    let mut rig_connected = false;
     if let Some(rig_config) = &config.rig {
         match logger_runtime::spawn_rig_adapter(rig_config, app_tx.clone()).await {
-            Ok(_rig) => {}
+            Ok(rig) => {
+                rig_handle = Some(rig);
+                rig_connected = true;
+            }
             Err(e) => warn!("rig connection failed, continuing without: {e}"),
         }
     }
 
     // Optionally connect keyer
+    let mut keyer_connected = false;
     let keyer: Option<Box<dyn Keyer>> = if let Some(keyer_config) = &config.keyer {
         match logger_runtime::connect_keyer(keyer_config).await {
-            Ok(k) => Some(k),
+            Ok(k) => {
+                keyer_connected = true;
+                Some(k)
+            }
             Err(e) => {
                 warn!("keyer connection failed, continuing without: {e}");
                 None
@@ -103,9 +117,11 @@ async fn main() -> Result<()> {
     };
 
     // Optionally connect dxfeed
+    let mut dxfeed_connected = false;
     if let Some(dxfeed_config) = &config.dxfeed {
-        if let Err(e) = logger_runtime::spawn_dxfeed_adapter(dxfeed_config, app_tx.clone()).await {
-            warn!("dxfeed connection failed, continuing without: {e}");
+        match logger_runtime::spawn_dxfeed_adapter(dxfeed_config, app_tx.clone()).await {
+            Ok(()) => { dxfeed_connected = true; }
+            Err(e) => warn!("dxfeed connection failed, continuing without: {e}"),
         }
     }
 
@@ -156,11 +172,15 @@ async fn main() -> Result<()> {
         contest,
         macros,
         log_adapter,
+        rig_handle,
         keyer,
         call_history,
         scp,
         tui_rx,
         initial_log_display,
+        rig_connected,
+        keyer_connected,
+        dxfeed_connected,
     )
     .await
 }

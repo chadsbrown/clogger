@@ -6,15 +6,17 @@ my_name = "CHAD"
 my_xchg = "3151"
 
 # Rig control (optional — omit entire section to run without)
-#[rig]
+[rig]
 #model = "IC-7610"        # any model from riglib: IC-7300, FT-DX10, K4, TS-890S, etc.
+model = "IC-705"
 #port = "/dev/ttyUSB0"
-#baud_rate = 115200       # optional, uses model default if omitted
+port = "/dev/ttyACM0"
+baud_rate = 115200       # optional, uses model default if omitted
 
 # WinKeyer (optional — omit entire section to run without)
-#[keyer]
-#port = "/dev/ttyUSB1"
-#speed_wpm = 28           # default: 28
+[keyer]
+port = "/dev/ttyUSB0"
+speed_wpm = 28           # default: 28
 #contest_spacing = true   # default: false
 
 # DX cluster spots (optional — omit entire section to run without)

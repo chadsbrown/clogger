@@ -28,9 +28,9 @@ pub fn render(frame: &mut Frame, area: Rect, app: &AppState, tui: &TuiState) {
         .enumerate()
         .skip(skip)
         .map(|(i, s)| {
-            let freq_mhz = s.freq_hz as f64 / 1_000_000.0;
+            let freq_khz = s.freq_hz as f64 / 1_000.0;
             let row = Row::new(vec![
-                Cell::from(format!("{freq_mhz:.3}")),
+                Cell::from(format!("{freq_khz:.1}")),
                 Cell::from(s.call.as_str()),
             ]);
             if app.bandmap_cursor == Some(i) {
@@ -45,7 +45,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &AppState, tui: &TuiState) {
 
     let table = Table::new(
         rows,
-        [Constraint::Length(8), Constraint::Min(8)],
+        [Constraint::Length(9), Constraint::Min(8)],
     )
     .block(
         Block::default()

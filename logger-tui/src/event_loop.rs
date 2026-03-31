@@ -10,7 +10,9 @@ use logger_core::{AppState, CallHistoryLookup, ContestEntry, DupeChecker, Effect
 use logger_runtime::LogAdapter;
 use ratatui::backend::CrosstermBackend;
 use tokio::sync::mpsc;
-use logger_runtime::Keyer;
+use std::sync::Arc;
+use logger_runtime::{Keyer, ReceiverId, Rig};
+use tracing::warn;
 
 use crate::TuiState;
 use crate::adapters::terminal::TerminalEvent;
@@ -22,11 +24,15 @@ pub async fn run(
     contest: Box<dyn ContestEntry>,
     macros: Macros,
     mut log_adapter: LogAdapter,
+    rig: Option<Arc<dyn Rig>>,
     keyer: Option<Box<dyn Keyer>>,
     call_history: Box<dyn CallHistoryLookup>,
     scp: Box<dyn ScpLookup>,
     mut rx: mpsc::Receiver<TerminalEvent>,
     initial_log_display: Vec<LogRow>,
+    rig_connected: bool,
+    keyer_connected: bool,
+    dxfeed_connected: bool,
 ) -> Result<()> {
     // Setup terminal
     terminal::enable_raw_mode()?;
@@ -34,8 +40,13 @@ pub async fn run(
     let backend = CrosstermBackend::new(io::stdout());
     let mut terminal = ratatui::Terminal::new(backend)?;
 
+    let initial_score = log_adapter.score_summary();
     let mut tui_state = TuiState {
         log_display: initial_log_display,
+        score: initial_score,
+        rig_connected,
+        keyer_connected,
+        dxfeed_connected,
         ..Default::default()
     };
 
@@ -62,11 +73,13 @@ pub async fn run(
                             &mut state,
                             &mut log_adapter,
                             &mut tui_state,
+                            rig.as_deref(),
                             keyer.as_deref(),
                         ).await {
                             break Err(e);
                         }
                         recompute_worked_calls(&state, &log_adapter, &mut tui_state);
+                        tui_state.score = log_adapter.score_summary();
                     }
                     Some(TerminalEvent::Shutdown) | None => {
                         break Ok(());
@@ -95,11 +108,13 @@ pub async fn run(
                     &mut state,
                     &mut log_adapter,
                     &mut tui_state,
+                    rig.as_deref(),
                     keyer.as_deref(),
                 ).await {
                     break Err(e);
                 }
                 recompute_worked_calls(&state, &log_adapter, &mut tui_state);
+                tui_state.score = log_adapter.score_summary();
             }
         }
     };
@@ -116,6 +131,7 @@ async fn dispatch_effects(
     state: &mut AppState,
     log_adapter: &mut LogAdapter,
     tui_state: &mut TuiState,
+    rig: Option<&dyn Rig>,
     keyer: Option<&dyn Keyer>,
 ) -> Result<()> {
     for effect in effects {
@@ -163,8 +179,13 @@ async fn dispatch_effects(
                     state.entry.focus = idx;
                 }
             }
-            Effect::RigSet { radio: _, freq_hz: _ } => {
-                // TODO: wire up rig.set_frequency() once Rig handle is passed in
+            Effect::RigSet { radio, freq_hz } => {
+                if let Some(rig) = rig {
+                    let rx = ReceiverId::from_index((*radio - 1) as u8);
+                    if let Err(e) = rig.set_frequency(rx, *freq_hz).await {
+                        warn!("rig set_frequency failed: {e}");
+                    }
+                }
             }
             Effect::UiClearEntry => {
                 // State already reflects clear behavior in reducer

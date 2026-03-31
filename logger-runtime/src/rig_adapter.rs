@@ -1,3 +1,6 @@
+use std::sync::Arc;
+use std::time::Duration;
+
 use logger_core::AppEvent;
 use riglib::{Rig, RigEvent};
 use tokio::sync::mpsc;
@@ -30,7 +33,7 @@ fn normalize(name: &str) -> String {
 pub async fn spawn_rig_adapter(
     config: &RigConfig,
     tx: mpsc::Sender<AppEvent>,
-) -> anyhow::Result<Box<dyn Rig>> {
+) -> anyhow::Result<Arc<dyn Rig>> {
     let rig_def = riglib::find_rig(&config.model)
         .ok_or_else(|| anyhow::anyhow!("unknown rig model: {}", config.model))?;
 
@@ -38,7 +41,7 @@ pub async fn spawn_rig_adapter(
 
     let needle = normalize(&config.model);
 
-    let rig: Box<dyn Rig> = match rig_def.manufacturer {
+    let rig: Arc<dyn Rig> = match rig_def.manufacturer {
         riglib::Manufacturer::Icom => {
             let model = riglib::icom::models::all_icom_models()
                 .into_iter()
@@ -48,7 +51,7 @@ pub async fn spawn_rig_adapter(
             if let Some(baud) = config.baud_rate {
                 builder = builder.baud_rate(baud);
             }
-            Box::new(builder.build().await?)
+            Arc::new(builder.build().await?) as Arc<dyn Rig>
         }
         riglib::Manufacturer::Yaesu => {
             let model = riglib::yaesu::models::all_yaesu_models()
@@ -59,7 +62,7 @@ pub async fn spawn_rig_adapter(
             if let Some(baud) = config.baud_rate {
                 builder = builder.baud_rate(baud);
             }
-            Box::new(builder.build().await?)
+            Arc::new(builder.build().await?) as Arc<dyn Rig>
         }
         riglib::Manufacturer::Elecraft => {
             let model = riglib::elecraft::models::all_elecraft_models()
@@ -71,7 +74,7 @@ pub async fn spawn_rig_adapter(
             if let Some(baud) = config.baud_rate {
                 builder = builder.baud_rate(baud);
             }
-            Box::new(builder.build().await?)
+            Arc::new(builder.build().await?) as Arc<dyn Rig>
         }
         riglib::Manufacturer::Kenwood => {
             let model = riglib::kenwood::models::all_kenwood_models()
@@ -82,11 +85,11 @@ pub async fn spawn_rig_adapter(
             if let Some(baud) = config.baud_rate {
                 builder = builder.baud_rate(baud);
             }
-            Box::new(builder.build().await?)
+            Arc::new(builder.build().await?) as Arc<dyn Rig>
         }
         riglib::Manufacturer::FlexRadio => {
             let builder = riglib::flex::FlexRadioBuilder::new().host(&config.port);
-            Box::new(builder.build().await?)
+            Arc::new(builder.build().await?) as Arc<dyn Rig>
         }
     };
 
@@ -162,6 +165,22 @@ pub async fn spawn_rig_adapter(
                     warn!("rig event stream closed");
                     break;
                 }
+            }
+        }
+    });
+
+    // Poll frequency and mode at 4 Hz — get_frequency()/get_mode() emit
+    // events into the broadcast channel, which the subscription task forwards.
+    let poll_rig = Arc::clone(&rig);
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_millis(250));
+        loop {
+            interval.tick().await;
+            if let Err(e) = poll_rig.get_frequency(primary).await {
+                warn!("rig poll get_frequency failed: {e}");
+            }
+            if let Err(e) = poll_rig.get_mode(primary).await {
+                warn!("rig poll get_mode failed: {e}");
             }
         }
     });

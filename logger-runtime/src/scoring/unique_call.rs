@@ -1,0 +1,50 @@
+use std::collections::{HashMap, HashSet};
+
+use qsolog::qso::QsoRecord;
+
+use super::{BandScore, ContestScorer, ScoreSummary, BAND_LABELS, band_label_from_qsolog, count_qsos_by_band};
+
+pub struct UniqueCallScorer;
+
+impl ContestScorer for UniqueCallScorer {
+    fn is_new_mult(&self, records: &[QsoRecord], call_norm: &str, _band: &str, _mode: &str) -> bool {
+        // New mult if callsign not yet worked on any band
+        !records
+            .iter()
+            .any(|q| !q.flags.is_void && q.callsign_norm == call_norm)
+    }
+
+    fn score_summary(&self, records: &[QsoRecord]) -> ScoreSummary {
+        let qsos_by_band = count_qsos_by_band(records);
+
+        // Each unique callsign is a mult once across all bands.
+        // A callsign counts as a mult only on the first band it's worked.
+        let mut seen_calls: HashSet<String> = HashSet::new();
+        let mut mults_by_band: HashMap<String, u32> = HashMap::new();
+        for rec in records.iter().filter(|r| !r.flags.is_void) {
+            if seen_calls.insert(rec.callsign_norm.clone()) {
+                let band_label = band_label_from_qsolog(rec.band);
+                *mults_by_band.entry(band_label).or_default() += 1;
+            }
+        }
+
+        let by_band: Vec<(String, BandScore)> = BAND_LABELS
+            .iter()
+            .map(|label| {
+                let qsos = qsos_by_band.get(*label).copied().unwrap_or(0);
+                let mults = mults_by_band.get(*label).copied().unwrap_or(0);
+                (label.to_string(), BandScore { qsos, mults })
+            })
+            .collect();
+        let total_qsos = by_band.iter().map(|(_, bs)| bs.qsos).sum();
+        let total_mults = by_band.iter().map(|(_, bs)| bs.mults).sum();
+        let claimed_score = total_qsos as i64;
+
+        ScoreSummary {
+            by_band,
+            total_qsos,
+            total_mults,
+            claimed_score,
+        }
+    }
+}

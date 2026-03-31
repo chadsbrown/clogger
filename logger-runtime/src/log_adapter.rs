@@ -1,12 +1,6 @@
-use std::collections::HashMap;
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use contest_engine::spec::{
-    ContestSpec, InMemoryDomainProvider, InMemoryResolver, Mode as CeMode, ResolvedStation,
-    SpecSession, Value, domain_packs,
-};
-use contest_engine::types::{Band as CeBand, Callsign, Continent};
 use logger_core::{DupeChecker, MultChecker, QsoDraft};
 use qsolog::{
     core::store::QsoStore,
@@ -16,24 +10,24 @@ use qsolog::{
 };
 use tracing::info;
 
+use crate::scoring::{ContestScorer, ScoreSummary};
+
 pub struct LogAdapter {
     store: QsoStore,
     sink: Option<SqliteOpSink>,
-    contest_id: String,
-    my_zone: u8,
+    scorer: Box<dyn ContestScorer>,
 }
 
 impl LogAdapter {
-    pub fn new(contest_id: impl Into<String>, my_zone: u8) -> Self {
+    pub fn new(scorer: Box<dyn ContestScorer>) -> Self {
         Self {
             store: QsoStore::new(),
             sink: None,
-            contest_id: contest_id.into(),
-            my_zone,
+            scorer,
         }
     }
 
-    pub fn open_db(contest_id: impl Into<String>, my_zone: u8, path: &Path) -> Result<Self> {
+    pub fn open_db(scorer: Box<dyn ContestScorer>, path: &Path) -> Result<Self> {
         let sink = SqliteOpSink::open(path).map_err(|e| anyhow::anyhow!("open db: {e:?}"))?;
         let store = sink
             .load_store()
@@ -43,8 +37,7 @@ impl LogAdapter {
         Ok(Self {
             store,
             sink: Some(sink),
-            contest_id: contest_id.into(),
-            my_zone,
+            scorer,
         })
     }
 
@@ -112,37 +105,8 @@ impl LogAdapter {
         Ok(())
     }
 
-    fn build_cqww_session(&self) -> Result<SpecSession<InMemoryResolver, InMemoryDomainProvider>> {
-        let spec_path = format!(
-            "{}/../../contest-engine/specs/cqww.json",
-            env!("CARGO_MANIFEST_DIR")
-        );
-        let domain_path = format!(
-            "{}/../../contest-engine/specs/domains",
-            env!("CARGO_MANIFEST_DIR")
-        );
-        let spec = ContestSpec::from_path(spec_path)
-            .map_err(|e| anyhow::anyhow!("load cqww spec: {e}"))?;
-        let domains =
-            domain_packs::load_standard_domain_pack(domain_path).map_err(|e| anyhow::anyhow!(e))?;
-
-        let mut resolver = InMemoryResolver::new();
-        for rec in self.ordered_records() {
-            resolver.insert(
-                &rec.callsign_norm,
-                resolved_station_for_call(&rec.callsign_norm),
-            );
-        }
-
-        let source = ResolvedStation::new("W", Continent::NA, true, true);
-        let mut config: HashMap<String, Value> = HashMap::new();
-        config.insert(
-            "my_cq_zone".to_string(),
-            Value::Int(i64::from(self.my_zone)),
-        );
-
-        SpecSession::new(spec, source, config, resolver, domains)
-            .map_err(|e| anyhow::anyhow!("session: {e:?}"))
+    pub fn score_summary(&self) -> ScoreSummary {
+        self.scorer.score_summary(&self.ordered_records())
     }
 }
 
@@ -159,40 +123,8 @@ impl DupeChecker for LogAdapter {
 
 impl MultChecker for LogAdapter {
     fn is_new_mult(&self, call_norm: &str, band: &str, mode: &str) -> bool {
-        if self.contest_id != "cqww" {
-            return false;
-        }
-
-        let ce_band = to_ce_band(band);
-        let ce_mode = to_ce_mode(mode);
-        let mut session = match self.build_cqww_session() {
-            Ok(s) => s,
-            Err(_) => return false,
-        };
-
-        for rec in self
-            .ordered_records()
-            .into_iter()
-            .filter(|r| !r.flags.is_void && r.contest_instance_id == 1)
-        {
-            if let Some(raw_exchange) = raw_exchange_for_record(&rec)
-                && session
-                    .apply_qso_with_mode(
-                        to_ce_band_from_qsolog(rec.band),
-                        to_ce_mode_from_qsolog(rec.mode),
-                        Callsign::new(&rec.callsign_norm),
-                        &raw_exchange,
-                    )
-                    .is_err()
-            {
-                // Ignore bad historical records for indicator-only queries.
-            }
-        }
-
-        session
-            .classify_call_lite_with_mode(ce_band, ce_mode, Callsign::new(call_norm))
-            .map(|c| !c.new_mults.is_empty())
-            .unwrap_or(false)
+        self.scorer
+            .is_new_mult(&self.ordered_records(), call_norm, band, mode)
     }
 }
 
@@ -202,42 +134,6 @@ pub fn decode_exchange_pairs(blob: &ExchangeBlob) -> Result<Vec<(String, String)
 
 fn encode_exchange_pairs(pairs: &[(String, String)]) -> Result<Vec<u8>> {
     serde_json::to_vec(pairs).context("encode exchange bytes")
-}
-
-fn raw_exchange_for_record(rec: &QsoRecord) -> Option<String> {
-    let pairs = decode_exchange_pairs(&rec.exchange).ok()?;
-    if pairs.is_empty() {
-        return None;
-    }
-    Some(
-        pairs
-            .into_iter()
-            .map(|(_, v)| v)
-            .collect::<Vec<_>>()
-            .join(" "),
-    )
-}
-
-fn resolved_station_for_call(call: &str) -> ResolvedStation {
-    let upper = call.trim().to_ascii_uppercase();
-    if upper.starts_with("DL") {
-        return ResolvedStation::new("DL", Continent::EU, false, false);
-    }
-    if upper.starts_with("JA") {
-        return ResolvedStation::new("JA", Continent::AS, false, false);
-    }
-    if upper.starts_with("VE") {
-        return ResolvedStation::new("VE", Continent::NA, true, true);
-    }
-    if upper.starts_with('K')
-        || upper.starts_with('W')
-        || upper.starts_with('N')
-        || upper.starts_with('A')
-    {
-        return ResolvedStation::new("W", Continent::NA, true, true);
-    }
-
-    ResolvedStation::new("W", Continent::NA, true, true)
 }
 
 fn to_band(s: &str) -> Band {
@@ -261,49 +157,15 @@ fn to_mode(s: &str) -> Mode {
     }
 }
 
-fn to_ce_band(s: &str) -> CeBand {
-    match s.to_ascii_lowercase().as_str() {
-        "160m" => CeBand::B160,
-        "80m" => CeBand::B80,
-        "40m" => CeBand::B40,
-        "20m" => CeBand::B20,
-        "15m" => CeBand::B15,
-        _ => CeBand::B10,
-    }
-}
-
-fn to_ce_mode(s: &str) -> CeMode {
-    match s.to_ascii_uppercase().as_str() {
-        "SSB" => CeMode::SSB,
-        _ => CeMode::CW,
-    }
-}
-
-fn to_ce_band_from_qsolog(b: Band) -> CeBand {
-    match b {
-        Band::B160m => CeBand::B160,
-        Band::B80m => CeBand::B80,
-        Band::B40m => CeBand::B40,
-        Band::B20m => CeBand::B20,
-        Band::B15m => CeBand::B15,
-        _ => CeBand::B10,
-    }
-}
-
-fn to_ce_mode_from_qsolog(m: Mode) -> CeMode {
-    match m {
-        Mode::SSB => CeMode::SSB,
-        _ => CeMode::CW,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::LogAdapter;
+    use crate::scoring::scorer_for_contest;
 
     #[test]
     fn undo_redo_placeholder_roundtrip() {
-        let mut adapter = LogAdapter::new("cqww", 4);
+        let scorer = scorer_for_contest("cqww", 4);
+        let mut adapter = LogAdapter::new(scorer);
         let draft = logger_core::QsoDraft {
             contest_id: "cqww".to_string(),
             callsign: "K1ABC".to_string(),

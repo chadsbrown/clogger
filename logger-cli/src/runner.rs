@@ -220,7 +220,8 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
     }
 
     let mut keyer = FakeKeyer::default();
-    let mut log = LogAdapter::new(contest.contest_id(), st.my_zone);
+    let scorer = logger_runtime::scorer_for_contest(contest.contest_id(), st.my_zone);
+    let mut log = LogAdapter::new(scorer);
     let mut rig = FakeRig::default();
     let mut beep_error_count = 0usize;
     let mut trace = Vec::new();

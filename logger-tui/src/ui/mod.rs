@@ -1,55 +1,65 @@
 pub mod bandmap;
 pub mod entry_line;
 pub mod log_tail;
+pub mod score_box;
 pub mod status_bar;
 
 use logger_core::AppState;
 use ratatui::{
     Frame,
-    layout::{Constraint, Flex, Layout, Rect},
+    layout::{Constraint, Layout},
 };
 
 use crate::TuiState;
 
 pub fn render(frame: &mut Frame, app: &AppState, tui: &TuiState) {
-    let chunks = Layout::vertical([
-        Constraint::Min(3),    // log tail + bandmap
-        Constraint::Length(5), // entry line (bordered, with padding)
-        Constraint::Length(2), // scp / n+1
-        Constraint::Length(1), // status bar
-        Constraint::Length(1), // footer
+    let half_width = frame.area().width / 2;
+    let left_width = (frame.area().width - half_width) / 2;
+    let right_width = frame.area().width - half_width - left_width;
+
+    // Vertical: main_area + status bar + footer
+    let rows = Layout::vertical([
+        Constraint::Min(3),
+        Constraint::Length(1),
+        Constraint::Length(1),
     ])
     .split(frame.area());
 
-    let top = Layout::horizontal([
-        Constraint::Percentage(70), // log tail
-        Constraint::Percentage(30), // bandmap
+    // Horizontal 3-column split
+    let cols = Layout::horizontal([
+        Constraint::Length(left_width),
+        Constraint::Length(half_width),
+        Constraint::Length(right_width),
     ])
-    .split(chunks[0]);
+    .split(rows[0]);
 
-    log_tail::render(frame, top[0], &tui.log_display);
-    bandmap::render(frame, top[1], app, tui);
+    // Center column: log(max 10) + entry(5) + scp(2) + filler
+    let center = Layout::vertical([
+        Constraint::Max(10),
+        Constraint::Length(5),
+        Constraint::Length(2),
+        Constraint::Min(0),
+    ])
+    .split(cols[1]);
 
-    // Center the entry box and SCP area at half screen width
-    let half_width = chunks[1].width / 2;
-    let entry_area = center_horizontal(chunks[1], half_width);
-    entry_line::render(frame, entry_area, app, &tui.cw_history);
+    // Left: score box
+    score_box::render(frame, cols[0], &tui.score);
 
-    let scp_area = center_horizontal(chunks[2], half_width);
-    status_bar::render_scp(frame, scp_area, app);
+    // Center: log + entry + scp
+    log_tail::render(frame, center[0], &tui.log_display);
+    entry_line::render(frame, center[1], app, &tui.cw_history);
+    status_bar::render_scp(frame, center[2], app);
 
-    status_bar::render(frame, chunks[3], app);
+    // Right: bandmap
+    bandmap::render(frame, cols[2], app, tui);
 
+    // Status bar
+    status_bar::render(frame, rows[1], app, tui);
+
+    // Footer
     let footer = ratatui::widgets::Paragraph::new(
         " F1:CQ  F2:Exch  F3:TU  Space:Next  Enter:ESM  Ins:Run/S&P  C-\u{2191}\u{2193}:Bandmap  Esc:Clear  Ctrl-C:Quit",
     )
     .style(ratatui::style::Style::default().fg(ratatui::style::Color::DarkGray));
-    frame.render_widget(footer, chunks[4]);
-}
-
-fn center_horizontal(area: Rect, width: u16) -> Rect {
-    let [centered] = Layout::horizontal([Constraint::Length(width)])
-        .flex(Flex::Center)
-        .areas(area);
-    centered
+    frame.render_widget(footer, rows[2]);
 }
