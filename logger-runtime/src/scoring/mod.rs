@@ -1,8 +1,11 @@
-pub mod cqww;
+mod spec_scorer;
+pub mod sweeps;
 pub mod unique_call;
 
 use std::collections::HashMap;
 
+use contest_engine::spec::Value;
+use logger_core::ContestEntry;
 use qsolog::qso::QsoRecord;
 use qsolog::types::Band;
 
@@ -34,10 +37,36 @@ pub trait ContestScorer: Send + Sync {
     fn score_summary(&self, records: &[QsoRecord]) -> ScoreSummary;
 }
 
-pub fn scorer_for_contest(contest_id: &str, my_zone: u8) -> Box<dyn ContestScorer> {
-    match contest_id {
-        "cqww" => Box::new(cqww::CqwwScorer::new(my_zone)),
-        _ => Box::new(unique_call::UniqueCallScorer),
+pub fn scorer_for_contest(
+    contest: &dyn ContestEntry,
+    my_zone: u8,
+    my_exchange: &HashMap<String, String>,
+) -> Box<dyn ContestScorer> {
+    let contest_id = contest.contest_id();
+    let contest_instance_id = contest.contest_instance_id();
+
+    // Build contest-engine config from my_zone + my_exchange
+    let mut config: HashMap<String, Value> = HashMap::new();
+    config.insert(
+        "my_cq_zone".to_string(),
+        Value::Int(i64::from(my_zone)),
+    );
+    for (k, v) in my_exchange {
+        config.insert(format!("my_{}", k.to_ascii_lowercase()), Value::Text(v.clone()));
+    }
+
+    // Try spec-based scorer; fall back for contests without a spec
+    let spec_path = format!(
+        "{}/../../contest-engine/specs/{}.json",
+        env!("CARGO_MANIFEST_DIR"),
+        contest_id
+    );
+    if std::path::Path::new(&spec_path).exists() {
+        Box::new(spec_scorer::SpecScorer::new(contest_id, contest_instance_id, config))
+    } else if contest_id == "sweeps" {
+        Box::new(sweeps::SweepsScorer)
+    } else {
+        Box::new(unique_call::UniqueCallScorer)
     }
 }
 
@@ -54,12 +83,4 @@ pub(crate) fn band_label_from_qsolog(b: Band) -> String {
         _ => "other",
     }
     .to_string()
-}
-
-pub(crate) fn count_qsos_by_band(records: &[QsoRecord]) -> HashMap<String, u32> {
-    let mut map: HashMap<String, u32> = HashMap::new();
-    for rec in records.iter().filter(|r| !r.flags.is_void) {
-        *map.entry(band_label_from_qsolog(rec.band)).or_default() += 1;
-    }
-    map
 }

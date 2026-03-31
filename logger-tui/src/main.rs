@@ -54,6 +54,9 @@ async fn main() -> Result<()> {
         my_exchange.insert("XCHG".to_string(), xchg.clone());
     }
 
+    // Build log adapter (scorer needs my_exchange before it's moved into state)
+    let scorer = logger_runtime::scorer_for_contest(contest.as_ref(), config.my_zone, &my_exchange);
+
     let state = AppState {
         now_ms: chrono::Utc::now().timestamp_millis(),
         focused_radio: 1,
@@ -69,9 +72,6 @@ async fn main() -> Result<()> {
         esm_policy: EsmPolicy::default(),
         bandmap_cursor: None,
     };
-
-    // Build log adapter
-    let scorer = logger_runtime::scorer_for_contest(contest.contest_id(), config.my_zone);
     let db_path = cli.db.as_ref().or(config.db_path.as_ref());
     let log_adapter = if let Some(db_path) = db_path {
         logger_runtime::LogAdapter::open_db(scorer, db_path)?

@@ -1,12 +1,23 @@
 use logger_runtime::ScoreSummary;
 use ratatui::{
     Frame,
-    layout::{Constraint, Rect},
+    layout::{Constraint, Layout, Rect},
     style::{Color, Style},
-    widgets::{Block, Borders, Cell, Row, Table},
+    widgets::{Block, Borders, Cell, Paragraph, Row, Table},
 };
 
 pub fn render(frame: &mut Frame, area: Rect, score: &ScoreSummary) {
+    // Outer block with borders
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Score ")
+        .style(Style::default().fg(Color::DarkGray));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    // Split inner: table at top, score line at bottom
+    let chunks = Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).split(inner);
+
     let header = Row::new(vec![
         Cell::from(" Band"),
         Cell::from("  Q"),
@@ -40,17 +51,10 @@ pub fn render(frame: &mut Frame, area: Rect, score: &ScoreSummary) {
     let table = Table::new(
         std::iter::once(header).chain(rows),
         [Constraint::Length(5), Constraint::Length(3), Constraint::Length(3)],
-    )
-    .block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(" Score ")
-            .style(Style::default().fg(Color::DarkGray)),
-    )
-    .footer(
-        Row::new(vec![Cell::from(format!(" Score: {}", score.claimed_score))])
-            .style(Style::default().fg(Color::Cyan)),
     );
+    frame.render_widget(table, chunks[0]);
 
-    frame.render_widget(table, area);
+    let score_line = Paragraph::new(format!(" Score: {}", score.claimed_score))
+        .style(Style::default().fg(Color::Cyan));
+    frame.render_widget(score_line, chunks[1]);
 }

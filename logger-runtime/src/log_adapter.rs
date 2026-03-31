@@ -161,10 +161,12 @@ fn to_mode(s: &str) -> Mode {
 mod tests {
     use super::LogAdapter;
     use crate::scoring::scorer_for_contest;
+    use logger_core::contest_from_id;
 
     #[test]
     fn undo_redo_placeholder_roundtrip() {
-        let scorer = scorer_for_contest("cqww", 4);
+        let contest = contest_from_id("cqww").expect("cqww contest");
+        let scorer = scorer_for_contest(contest.as_ref(), 4, &std::collections::HashMap::new());
         let mut adapter = LogAdapter::new(scorer);
         let draft = logger_core::QsoDraft {
             contest_id: "cqww".to_string(),

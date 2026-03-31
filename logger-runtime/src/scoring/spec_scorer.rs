@@ -8,25 +8,26 @@ use contest_engine::types::{Band as CeBand, Callsign, Continent};
 use qsolog::qso::QsoRecord;
 use qsolog::types::{Band, Mode};
 
-use super::{BandScore, ContestScorer, ScoreSummary, count_qsos_by_band};
+use super::{BandScore, ContestScorer, ScoreSummary, BAND_LABELS, band_label_from_qsolog};
 use crate::log_adapter::decode_exchange_pairs;
 
-const BANDS: &[(CeBand, &str)] = &[
-    (CeBand::B160, "160m"),
-    (CeBand::B80, "80m"),
-    (CeBand::B40, "40m"),
-    (CeBand::B20, "20m"),
-    (CeBand::B15, "15m"),
-    (CeBand::B10, "10m"),
-];
-
-pub struct CqwwScorer {
-    my_zone: u8,
+pub struct SpecScorer {
+    spec_id: String,
+    contest_instance_id: u64,
+    config: HashMap<String, Value>,
 }
 
-impl CqwwScorer {
-    pub fn new(my_zone: u8) -> Self {
-        Self { my_zone }
+impl SpecScorer {
+    pub fn new(
+        spec_id: impl Into<String>,
+        contest_instance_id: u64,
+        config: HashMap<String, Value>,
+    ) -> Self {
+        Self {
+            spec_id: spec_id.into(),
+            contest_instance_id,
+            config,
+        }
     }
 
     fn build_session(
@@ -34,15 +35,16 @@ impl CqwwScorer {
         records: &[QsoRecord],
     ) -> anyhow::Result<SpecSession<InMemoryResolver, InMemoryDomainProvider>> {
         let spec_path = format!(
-            "{}/../../contest-engine/specs/cqww.json",
-            env!("CARGO_MANIFEST_DIR")
+            "{}/../../contest-engine/specs/{}.json",
+            env!("CARGO_MANIFEST_DIR"),
+            self.spec_id
         );
         let domain_path = format!(
             "{}/../../contest-engine/specs/domains",
             env!("CARGO_MANIFEST_DIR")
         );
         let spec = ContestSpec::from_path(spec_path)
-            .map_err(|e| anyhow::anyhow!("load cqww spec: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("load {} spec: {e}", self.spec_id))?;
         let domains =
             domain_packs::load_standard_domain_pack(domain_path).map_err(|e| anyhow::anyhow!(e))?;
 
@@ -55,24 +57,23 @@ impl CqwwScorer {
         }
 
         let source = ResolvedStation::new("W", Continent::NA, true, true);
-        let mut config: HashMap<String, Value> = HashMap::new();
-        config.insert(
-            "my_cq_zone".to_string(),
-            Value::Int(i64::from(self.my_zone)),
-        );
 
-        SpecSession::new(spec, source, config, resolver, domains)
+        SpecSession::new(spec, source, self.config.clone(), resolver, domains)
             .map_err(|e| anyhow::anyhow!("session: {e:?}"))
     }
+}
 
-    fn build_session_with_log(
-        &self,
-        records: &[QsoRecord],
-    ) -> anyhow::Result<SpecSession<InMemoryResolver, InMemoryDomainProvider>> {
-        let mut session = self.build_session(records)?;
+impl ContestScorer for SpecScorer {
+    fn is_new_mult(&self, records: &[QsoRecord], call_norm: &str, band: &str, mode: &str) -> bool {
+        let mut session = match self.build_session(records) {
+            Ok(s) => s,
+            Err(_) => return false,
+        };
+
+        // Replay log so the engine knows what's already worked
         for rec in records
             .iter()
-            .filter(|r| !r.flags.is_void && r.contest_instance_id == 1)
+            .filter(|r| !r.flags.is_void && r.contest_instance_id == self.contest_instance_id)
         {
             if let Some(raw_exchange) = raw_exchange_for_record(rec) {
                 let _ = session.apply_qso_with_mode(
@@ -83,42 +84,55 @@ impl CqwwScorer {
                 );
             }
         }
-        Ok(session)
-    }
-}
-
-impl ContestScorer for CqwwScorer {
-    fn is_new_mult(&self, records: &[QsoRecord], call_norm: &str, band: &str, mode: &str) -> bool {
-        let ce_band = to_ce_band(band);
-        let ce_mode = to_ce_mode(mode);
-        let session = match self.build_session_with_log(records) {
-            Ok(s) => s,
-            Err(_) => return false,
-        };
 
         session
-            .classify_call_lite_with_mode(ce_band, ce_mode, Callsign::new(call_norm))
+            .classify_call_lite_with_mode(
+                to_ce_band(band),
+                to_ce_mode(mode),
+                Callsign::new(call_norm),
+            )
             .map(|c| !c.new_mults.is_empty())
             .unwrap_or(false)
     }
 
     fn score_summary(&self, records: &[QsoRecord]) -> ScoreSummary {
-        let qsos_by_band = count_qsos_by_band(records);
-
-        let session = match self.build_session_with_log(records) {
+        let mut session = match self.build_session(records) {
             Ok(s) => s,
             Err(_) => return ScoreSummary::default(),
         };
 
-        let mult_ids = session.engine().multiplier_ids();
-        let by_band: Vec<(String, BandScore)> = BANDS
+        // Replay log, capturing ApplySummary to build per-band breakdown.
+        let mut qsos_by_band: HashMap<String, u32> = HashMap::new();
+        let mut mults_by_band: HashMap<String, u32> = HashMap::new();
+
+        for rec in records
             .iter()
-            .map(|(ce_band, label)| {
+            .filter(|r| !r.flags.is_void && r.contest_instance_id == self.contest_instance_id)
+        {
+            if let Some(raw_exchange) = raw_exchange_for_record(rec) {
+                if let Ok(summary) = session.apply_qso_with_mode(
+                    to_ce_band_from_qsolog(rec.band),
+                    to_ce_mode_from_qsolog(rec.mode),
+                    Callsign::new(&rec.callsign_norm),
+                    &raw_exchange,
+                ) {
+                    let band_label = band_label_from_qsolog(rec.band);
+                    if !summary.is_dupe {
+                        *qsos_by_band.entry(band_label.clone()).or_default() += 1;
+                    }
+                    let new_mult_count = summary.new_mults.len() as u32;
+                    if new_mult_count > 0 {
+                        *mults_by_band.entry(band_label).or_default() += new_mult_count;
+                    }
+                }
+            }
+        }
+
+        let by_band: Vec<(String, BandScore)> = BAND_LABELS
+            .iter()
+            .map(|label| {
                 let qsos = qsos_by_band.get(*label).copied().unwrap_or(0);
-                let mults: u32 = mult_ids
-                    .iter()
-                    .map(|mid| session.worked_mults(mid, Some(*ce_band)).len() as u32)
-                    .sum();
+                let mults = mults_by_band.get(*label).copied().unwrap_or(0);
                 (label.to_string(), BandScore { qsos, mults })
             })
             .collect();

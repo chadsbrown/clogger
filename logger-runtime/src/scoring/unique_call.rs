@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use qsolog::qso::QsoRecord;
 
-use super::{BandScore, ContestScorer, ScoreSummary, BAND_LABELS, band_label_from_qsolog, count_qsos_by_band};
+use super::{BandScore, ContestScorer, ScoreSummary, BAND_LABELS, band_label_from_qsolog};
 
 pub struct UniqueCallScorer;
 
@@ -15,16 +15,19 @@ impl ContestScorer for UniqueCallScorer {
     }
 
     fn score_summary(&self, records: &[QsoRecord]) -> ScoreSummary {
-        let qsos_by_band = count_qsos_by_band(records);
-
-        // Each unique callsign is a mult once across all bands.
-        // A callsign counts as a mult only on the first band it's worked.
+        // Dedupe QSOs by (call, band), attribute each new-call mult to first-worked band.
+        let mut seen_qsos: HashSet<(String, String)> = HashSet::new();
         let mut seen_calls: HashSet<String> = HashSet::new();
+        let mut qsos_by_band: HashMap<String, u32> = HashMap::new();
         let mut mults_by_band: HashMap<String, u32> = HashMap::new();
+
         for rec in records.iter().filter(|r| !r.flags.is_void) {
-            if seen_calls.insert(rec.callsign_norm.clone()) {
-                let band_label = band_label_from_qsolog(rec.band);
-                *mults_by_band.entry(band_label).or_default() += 1;
+            let band_label = band_label_from_qsolog(rec.band);
+            if seen_qsos.insert((rec.callsign_norm.clone(), band_label.clone())) {
+                *qsos_by_band.entry(band_label.clone()).or_default() += 1;
+                if seen_calls.insert(rec.callsign_norm.clone()) {
+                    *mults_by_band.entry(band_label).or_default() += 1;
+                }
             }
         }
 
