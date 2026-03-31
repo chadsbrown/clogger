@@ -1,4 +1,5 @@
 use dxfeed::{
+    domain::DxMode,
     feed::DxFeedBuilder,
     model::{DxEvent, SourceId, SpotEventKind},
     source::{cluster::ClusterSourceConfig, supervisor::SourceConfig},
@@ -36,18 +37,27 @@ pub async fn spawn_dxfeed_adapter(
     tokio::spawn(async move {
         while let Some(event) = feed.next_event().await {
             match event {
-                DxEvent::Spot(spot_event) => {
-                    if matches!(spot_event.kind, SpotEventKind::New | SpotEventKind::Update) {
+                DxEvent::Spot(spot_event) => match spot_event.kind {
+                    SpotEventKind::New | SpotEventKind::Update => {
+                        let mode = dxmode_to_str(spot_event.spot.mode);
                         let _ = tx
                             .send(AppEvent::SpotReceived {
                                 spot: Spot {
                                     call: spot_event.spot.dx_call,
                                     freq_hz: spot_event.spot.freq_hz,
+                                    mode,
                                 },
                             })
                             .await;
                     }
-                }
+                    SpotEventKind::Withdraw => {
+                        let _ = tx
+                            .send(AppEvent::SpotWithdrawn {
+                                call: spot_event.spot.dx_call,
+                            })
+                            .await;
+                    }
+                },
                 DxEvent::SourceStatus(status) => {
                     info!("dxfeed source {}: {:?}", status.source_id.0, status.state);
                 }
@@ -60,4 +70,16 @@ pub async fn spawn_dxfeed_adapter(
     });
 
     Ok(())
+}
+
+fn dxmode_to_str(mode: DxMode) -> String {
+    match mode {
+        DxMode::CW => "CW",
+        DxMode::SSB => "SSB",
+        DxMode::DIG => "DIGITAL",
+        DxMode::AM => "AM",
+        DxMode::FM => "FM",
+        DxMode::Unknown => "CW",
+    }
+    .to_string()
 }

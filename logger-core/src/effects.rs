@@ -11,5 +11,6 @@ pub enum Effect {
     LogInsert { draft: QsoDraft },
     Beep { kind: BeepKind },
     UiSetFocus { field_id: u16 },
+    RigSet { radio: RadioId, freq_hz: u64 },
     UiClearEntry,
 }

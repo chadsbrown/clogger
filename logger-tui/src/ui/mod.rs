@@ -28,7 +28,7 @@ pub fn render(frame: &mut Frame, app: &AppState, tui: &TuiState) {
     .split(chunks[0]);
 
     log_tail::render(frame, top[0], &tui.log_display);
-    bandmap::render(frame, top[1], app);
+    bandmap::render(frame, top[1], app, tui);
 
     // Center the entry box and SCP area at half screen width
     let half_width = chunks[1].width / 2;
@@ -41,7 +41,7 @@ pub fn render(frame: &mut Frame, app: &AppState, tui: &TuiState) {
     status_bar::render(frame, chunks[3], app);
 
     let footer = ratatui::widgets::Paragraph::new(
-        " F1:CQ  F2:Exch  F3:TU  Space:Next  Enter:ESM  Ins:Run/S&P  Esc:Clear  Ctrl-C:Quit",
+        " F1:CQ  F2:Exch  F3:TU  Space:Next  Enter:ESM  Ins:Run/S&P  C-\u{2191}\u{2193}:Bandmap  Esc:Clear  Ctrl-C:Quit",
     )
     .style(ratatui::style::Style::default().fg(ratatui::style::Color::DarkGray));
     frame.render_widget(footer, chunks[4]);

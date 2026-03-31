@@ -55,6 +55,7 @@ mod tests {
             rst_sent: "599".to_string(),
             my_exchange: HashMap::new(),
             esm_policy: EsmPolicy::default(),
+            bandmap_cursor: None,
         };
         st.entry.fields[0].value = "K1ABC".to_string();
 

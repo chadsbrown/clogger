@@ -1,7 +1,13 @@
 use crate::{
-    contest::traits::{ContestEntry, EntryContext},
+    contest::{
+        filtered_bandmap_spots, freq_to_band_label,
+        traits::{ContestEntry, EntryContext},
+    },
     effects::Effect,
-    entry::{esm::handle_esm, state::EsmStep},
+    entry::{
+        esm::handle_esm,
+        state::{EsmStep, OpMode},
+    },
     events::{AppEvent, Key},
     macro_expand::expand_macro,
     state::{AppState, Macros, RadioState},
@@ -95,6 +101,10 @@ pub fn reduce(
         }
         AppEvent::SpotReceived { spot } => {
             st.bandmap.push(spot);
+            Vec::new()
+        }
+        AppEvent::SpotWithdrawn { call } => {
+            st.bandmap.retain(|s| s.call != call);
             Vec::new()
         }
         AppEvent::SetOpMode { mode } => {
@@ -210,6 +220,51 @@ pub fn reduce(
             Key::Enter => handle_esm(st, contest, macros),
         },
         AppEvent::EsmTrigger => handle_esm(st, contest, macros),
+        AppEvent::BandmapUp | AppEvent::BandmapDown => {
+            let radio = st.radios.get(&st.focused_radio).filter(|r| r.freq_hz > 0);
+            let band = radio
+                .map(|r| freq_to_band_label(r.freq_hz))
+                .unwrap_or_else(|| "40m".to_string());
+            let mode = radio.map(|r| r.mode.as_str()).unwrap_or("CW");
+
+            let spots = filtered_bandmap_spots(&st.bandmap, &band, mode);
+            if spots.is_empty() {
+                return Vec::new();
+            }
+
+            let len = spots.len();
+            let idx = match (ev, st.bandmap_cursor) {
+                (AppEvent::BandmapDown, None) => 0,
+                (AppEvent::BandmapDown, Some(i)) => (i + 1) % len,
+                (AppEvent::BandmapUp, None) => len - 1,
+                (AppEvent::BandmapUp, Some(i)) => (i + len - 1) % len,
+                _ => unreachable!(),
+            };
+
+            let spot = &spots[idx];
+            let radio = st.focused_radio;
+            let freq_hz = spot.freq_hz;
+
+            st.bandmap_cursor = Some(idx);
+            st.entry.mode = OpMode::Sp;
+
+            // Set call field to selected spot's callsign
+            if let Some(field) = st.entry.fields.iter_mut().find(|f| f.field_id == 1) {
+                field.value = spot.call.clone();
+            }
+
+            // Reset focus to call field
+            st.entry.focus = 0;
+            st.entry.scp_cycle_index = None;
+
+            // Revalidate + feedback + call history (same pattern as Key::Equal)
+            revalidate_after_edit(st, contest);
+            recompute_feedback(st, dupe_checker, mult_checker);
+            apply_call_history(st, contest, call_history, scp);
+            revalidate_after_edit(st, contest);
+
+            vec![Effect::RigSet { radio, freq_hz }]
+        }
     }
 }
 
@@ -230,7 +285,11 @@ fn revalidate_after_edit(st: &mut AppState, contest: &dyn ContestEntry) {
         }
     }
     st.entry.overall = validation.overall;
-    st.entry.esm_step = EsmStep::Idle;
+    // Reset ExchSent→Idle on edit (forces re-send in Run mode).
+    // Keep CallSent so S&P users can fill exchange after sending their call.
+    if st.entry.esm_step == EsmStep::ExchSent {
+        st.entry.esm_step = EsmStep::Idle;
+    }
 }
 
 fn recompute_feedback(
@@ -393,6 +452,7 @@ mod tests {
             rst_sent: "599".to_string(),
             my_exchange: HashMap::new(),
             esm_policy: EsmPolicy::default(),
+            bandmap_cursor: None,
         }
     }
 
@@ -541,12 +601,13 @@ mod tests {
     }
 
     #[test]
-    fn sp_one_step_logs_immediately_when_valid() {
+    fn sp_three_step_esm() {
         let contest = CqwwContest::default();
         let mut st = mk_state();
         let macros = Macros::default();
         st.entry.mode = OpMode::Sp;
 
+        // Type call
         reduce(
             &mut st,
             &contest,
@@ -555,6 +616,22 @@ mod tests {
                 s: "K1ABC".to_string(),
             },
         );
+
+        // Enter 1: send MYCALL, step → CallSent
+        let effects1 = reduce(
+            &mut st,
+            &contest,
+            &macros,
+            AppEvent::KeyPress { key: Key::Enter },
+        );
+        assert_eq!(st.entry.esm_step, EsmStep::CallSent);
+        assert!(
+            effects1
+                .iter()
+                .any(|e| matches!(e, Effect::CwSend { text, .. } if text == "N0CALL"))
+        );
+
+        // Fill exchange
         reduce(
             &mut st,
             &contest,
@@ -582,16 +659,42 @@ mod tests {
             AppEvent::TextInput { s: "5".to_string() },
         );
 
-        let effects = reduce(
+        // Enter 2: send exchange (sp_exch, no callsign), step → ExchSent
+        let effects2 = reduce(
             &mut st,
             &contest,
             &macros,
             AppEvent::KeyPress { key: Key::Enter },
         );
+        assert_eq!(st.entry.esm_step, EsmStep::ExchSent);
         assert!(
-            effects
+            effects2
+                .iter()
+                .any(|e| matches!(e, Effect::CwSend { text, .. } if text == "599 4"))
+        );
+        assert!(
+            !effects2
                 .iter()
                 .any(|e| matches!(e, Effect::LogInsert { .. }))
+        );
+
+        // Enter 3: log silently, no CW
+        let effects3 = reduce(
+            &mut st,
+            &contest,
+            &macros,
+            AppEvent::KeyPress { key: Key::Enter },
+        );
+        assert_eq!(st.entry.esm_step, EsmStep::Idle);
+        assert!(
+            effects3
+                .iter()
+                .any(|e| matches!(e, Effect::LogInsert { .. }))
+        );
+        assert!(
+            !effects3
+                .iter()
+                .any(|e| matches!(e, Effect::CwSend { .. }))
         );
     }
 
@@ -619,62 +722,6 @@ mod tests {
 
         assert!(effects.iter().any(|e| matches!(e, Effect::Beep { .. })));
         assert_eq!(st.entry.fields[st.entry.focus].field_id, 2);
-    }
-
-    #[test]
-    fn sp_send_tu_policy_emits_tu() {
-        let contest = CqwwContest::default();
-        let mut st = mk_state();
-        let macros = Macros::default();
-        st.entry.mode = OpMode::Sp;
-        st.esm_policy.sp_send_tu = true;
-
-        reduce(
-            &mut st,
-            &contest,
-            &macros,
-            AppEvent::TextInput {
-                s: "K1ABC".to_string(),
-            },
-        );
-        reduce(
-            &mut st,
-            &contest,
-            &macros,
-            AppEvent::KeyPress { key: Key::Space },
-        );
-        reduce(
-            &mut st,
-            &contest,
-            &macros,
-            AppEvent::TextInput {
-                s: "599".to_string(),
-            },
-        );
-        reduce(
-            &mut st,
-            &contest,
-            &macros,
-            AppEvent::KeyPress { key: Key::Space },
-        );
-        reduce(
-            &mut st,
-            &contest,
-            &macros,
-            AppEvent::TextInput { s: "5".to_string() },
-        );
-
-        let effects = reduce(
-            &mut st,
-            &contest,
-            &macros,
-            AppEvent::KeyPress { key: Key::Enter },
-        );
-        assert!(
-            effects
-                .iter()
-                .any(|e| matches!(e, Effect::CwSend { text, .. } if text.contains("TU")))
-        );
     }
 
     #[test]

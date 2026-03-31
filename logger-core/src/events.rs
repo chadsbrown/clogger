@@ -30,6 +30,9 @@ pub enum AppEvent {
     SpotReceived {
         spot: Spot,
     },
+    SpotWithdrawn {
+        call: String,
+    },
     SetOpMode {
         mode: OpMode,
     },
@@ -46,4 +49,6 @@ pub enum AppEvent {
         key: Key,
     },
     EsmTrigger,
+    BandmapUp,
+    BandmapDown,
 }

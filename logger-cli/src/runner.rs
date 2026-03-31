@@ -52,6 +52,10 @@ enum TraceEffect {
     UiSetFocus {
         field_id: u16,
     },
+    RigSet {
+        radio: u8,
+        freq_hz: u64,
+    },
     UiClearEntry,
 }
 
@@ -209,15 +213,10 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
         rst_sent: "599".to_string(),
         my_exchange: HashMap::new(),
         esm_policy: EsmPolicy::default(),
+        bandmap_cursor: None,
     };
     if let Some(v) = script.esm_policy.run_two_step {
         st.esm_policy.run_two_step = v;
-    }
-    if let Some(v) = script.esm_policy.sp_log_on_first_enter {
-        st.esm_policy.sp_log_on_first_enter = v;
-    }
-    if let Some(v) = script.esm_policy.sp_send_tu {
-        st.esm_policy.sp_send_tu = v;
     }
 
     let mut keyer = FakeKeyer::default();
@@ -276,9 +275,10 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
                 },
             }),
             ScriptEvent::Esm => Some(AppEvent::EsmTrigger),
-            ScriptEvent::Spot { call, freq_hz } => Some(AppEvent::SpotReceived {
-                spot: Spot { call, freq_hz },
+            ScriptEvent::Spot { call, freq_hz, mode } => Some(AppEvent::SpotReceived {
+                spot: Spot { call, freq_hz, mode },
             }),
+            ScriptEvent::SpotWithdraw { call } => Some(AppEvent::SpotWithdrawn { call }),
         };
 
         let mut trace_effects = Vec::new();
@@ -320,6 +320,7 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
                             st.entry.focus = idx;
                         }
                     }
+                    Effect::RigSet { .. } => {}
                     Effect::UiClearEntry => {
                         // state already reflects clear behavior in reducer
                     }
@@ -535,6 +536,10 @@ fn normalize_effect(effect: &Effect) -> TraceEffect {
         },
         Effect::UiSetFocus { field_id } => TraceEffect::UiSetFocus {
             field_id: *field_id,
+        },
+        Effect::RigSet { radio, freq_hz } => TraceEffect::RigSet {
+            radio: *radio,
+            freq_hz: *freq_hz,
         },
         Effect::UiClearEntry => TraceEffect::UiClearEntry,
     }

@@ -46,6 +46,11 @@ pub enum ScriptEvent {
     Spot {
         call: String,
         freq_hz: u64,
+        #[serde(default = "default_mode")]
+        mode: String,
+    },
+    SpotWithdraw {
+        call: String,
     },
 }
 
@@ -92,9 +97,11 @@ pub struct ExpectedQso {
     pub exchange: Option<BTreeMap<String, String>>,
 }
 
+fn default_mode() -> String {
+    "CW".to_string()
+}
+
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct EsmPolicyConfig {
     pub run_two_step: Option<bool>,
-    pub sp_log_on_first_enter: Option<bool>,
-    pub sp_send_tu: Option<bool>,
 }

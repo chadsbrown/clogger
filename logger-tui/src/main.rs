@@ -3,7 +3,7 @@ mod config;
 mod event_loop;
 mod ui;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 
 use anyhow::Result;
@@ -20,6 +20,7 @@ use ui::log_tail::LogRow;
 pub struct TuiState {
     pub cw_history: Vec<String>,
     pub log_display: Vec<LogRow>,
+    pub worked_calls: HashSet<String>,
 }
 
 #[tokio::main]
@@ -61,6 +62,7 @@ async fn main() -> Result<()> {
         rst_sent: config.rst_sent.clone(),
         my_exchange,
         esm_policy: EsmPolicy::default(),
+        bandmap_cursor: None,
     };
 
     // Build log adapter

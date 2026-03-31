@@ -9,6 +9,7 @@ pub enum OpMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EsmStep {
     Idle,
+    CallSent,
     ExchSent,
 }
 

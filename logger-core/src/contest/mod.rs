@@ -27,6 +27,18 @@ pub fn freq_to_band_label(freq_hz: u64) -> String {
     .to_string()
 }
 
+pub fn filtered_bandmap_spots(spots: &[crate::state::Spot], band: &str, mode: &str) -> Vec<crate::state::Spot> {
+    let (min, max) = band_freq_range(band);
+    let mut out: Vec<_> = spots
+        .iter()
+        .filter(|s| s.freq_hz >= min && s.freq_hz <= max && s.mode == mode)
+        .cloned()
+        .collect();
+    out.sort_by_key(|s| s.freq_hz);
+    out.dedup_by(|a, b| a.call == b.call);
+    out
+}
+
 pub fn band_freq_range(band: &str) -> (u64, u64) {
     match band {
         "160m" => (1_800_000, 2_000_000),

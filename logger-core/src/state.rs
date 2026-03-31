@@ -9,16 +9,12 @@ pub type QsoRef = u64;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EsmPolicy {
     pub run_two_step: bool,
-    pub sp_log_on_first_enter: bool,
-    pub sp_send_tu: bool,
 }
 
 impl Default for EsmPolicy {
     fn default() -> Self {
         Self {
             run_two_step: true,
-            sp_log_on_first_enter: true,
-            sp_send_tu: false,
         }
     }
 }
@@ -34,6 +30,7 @@ pub struct RadioState {
 pub struct Spot {
     pub call: String,
     pub freq_hz: u64,
+    pub mode: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,6 +49,7 @@ pub struct Macros {
     pub f1: String,
     pub f2: String,
     pub f3: String,
+    pub sp_exch: String,
 }
 
 impl Default for Macros {
@@ -60,6 +58,7 @@ impl Default for Macros {
             f1: "CQ TEST {MYCALL}".to_string(),
             f2: "{CALL} {RST_SENT} {MYZONE}".to_string(),
             f3: "TU {MYCALL}".to_string(),
+            sp_exch: "{RST_SENT} {MYZONE}".to_string(),
         }
     }
 }
@@ -78,6 +77,7 @@ pub struct AppState {
     pub rst_sent: String,
     pub my_exchange: HashMap<String, String>,
     pub esm_policy: EsmPolicy,
+    pub bandmap_cursor: Option<usize>,
 }
 
 impl AppState {

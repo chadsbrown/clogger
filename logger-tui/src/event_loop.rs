@@ -6,7 +6,7 @@ use crossterm::{
     cursor,
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use logger_core::{AppState, CallHistoryLookup, ContestEntry, Effect, Macros, ScpLookup, reduce};
+use logger_core::{AppState, CallHistoryLookup, ContestEntry, DupeChecker, Effect, Macros, ScpLookup, contest::{filtered_bandmap_spots, freq_to_band_label}, reduce};
 use logger_runtime::LogAdapter;
 use ratatui::backend::CrosstermBackend;
 use tokio::sync::mpsc;
@@ -66,6 +66,7 @@ pub async fn run(
                         ).await {
                             break Err(e);
                         }
+                        recompute_worked_calls(&state, &log_adapter, &mut tui_state);
                     }
                     Some(TerminalEvent::Shutdown) | None => {
                         break Ok(());
@@ -98,6 +99,7 @@ pub async fn run(
                 ).await {
                     break Err(e);
                 }
+                recompute_worked_calls(&state, &log_adapter, &mut tui_state);
             }
         }
     };
@@ -161,10 +163,27 @@ async fn dispatch_effects(
                     state.entry.focus = idx;
                 }
             }
+            Effect::RigSet { radio: _, freq_hz: _ } => {
+                // TODO: wire up rig.set_frequency() once Rig handle is passed in
+            }
             Effect::UiClearEntry => {
                 // State already reflects clear behavior in reducer
             }
         }
     }
     Ok(())
+}
+
+fn recompute_worked_calls(state: &AppState, log_adapter: &LogAdapter, tui_state: &mut TuiState) {
+    tui_state.worked_calls.clear();
+    let Some(radio) = state.radios.get(&state.focused_radio).filter(|r| r.freq_hz > 0) else {
+        return;
+    };
+    let band = freq_to_band_label(radio.freq_hz);
+    let mode = &radio.mode;
+    for spot in filtered_bandmap_spots(&state.bandmap, &band, mode) {
+        if log_adapter.is_dupe(&spot.call, &band, mode) {
+            tui_state.worked_calls.insert(spot.call);
+        }
+    }
 }

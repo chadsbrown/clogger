@@ -25,6 +25,12 @@ pub fn spawn_terminal_reader(tx: mpsc::Sender<TerminalEvent>) {
                 (m, KeyCode::Char('c')) if m.contains(KeyModifiers::CONTROL) => {
                     TerminalEvent::Shutdown
                 }
+                (m, KeyCode::Up) if m.contains(KeyModifiers::CONTROL) => {
+                    TerminalEvent::App(AppEvent::BandmapUp)
+                }
+                (m, KeyCode::Down) if m.contains(KeyModifiers::CONTROL) => {
+                    TerminalEvent::App(AppEvent::BandmapDown)
+                }
                 (_, KeyCode::Insert) => {
                     let was_run = IS_RUN.fetch_xor(true, Ordering::Relaxed);
                     let mode = if was_run { OpMode::Sp } else { OpMode::Run };

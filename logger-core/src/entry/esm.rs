@@ -42,23 +42,29 @@ fn handle_run(st: &mut AppState, contest: &dyn ContestEntry, macros: &Macros) ->
 }
 
 fn handle_sp(st: &mut AppState, contest: &dyn ContestEntry, macros: &Macros) -> Vec<Effect> {
-    if st.entry.overall.is_invalid() {
-        return invalid_focus_effects(st);
+    match st.entry.esm_step {
+        EsmStep::Idle => {
+            if st.current_call().is_empty() {
+                return Vec::new();
+            }
+            st.entry.esm_step = EsmStep::CallSent;
+            vec![Effect::CwSend {
+                radio: st.focused_radio,
+                text: expand_macro("{MYCALL}", st),
+            }]
+        }
+        EsmStep::CallSent => {
+            if st.entry.overall.is_invalid() {
+                return invalid_focus_effects(st);
+            }
+            st.entry.esm_step = EsmStep::ExchSent;
+            vec![Effect::CwSend {
+                radio: st.focused_radio,
+                text: expand_macro(&macros.sp_exch, st),
+            }]
+        }
+        EsmStep::ExchSent => log_and_clear(st, contest, macros, false, false),
     }
-
-    if st.esm_policy.sp_log_on_first_enter {
-        return log_and_clear(st, contest, macros, st.esm_policy.sp_send_tu, true);
-    }
-
-    if st.entry.esm_step == EsmStep::Idle {
-        st.entry.esm_step = EsmStep::ExchSent;
-        return vec![Effect::CwSend {
-            radio: st.focused_radio,
-            text: expand_macro(&macros.f2, st),
-        }];
-    }
-
-    log_and_clear(st, contest, macros, st.esm_policy.sp_send_tu, false)
 }
 
 fn log_and_clear(
