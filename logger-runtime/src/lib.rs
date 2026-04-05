@@ -20,8 +20,9 @@ pub use scoring::{BandScore, ScoreSummary, scorer_for_contest};
 pub use qsolog::qso::{ExchangeBlob, QsoRecord};
 pub use qsolog::types::{Band, Mode};
 
-// Re-export winkey::Keyer so TUI doesn't need a direct winkey dep
+// Re-export winkey types so TUI doesn't need a direct winkey dep
 pub use winkey::Keyer;
+pub use winkey::KeyerEvent;
 
 // Re-export riglib types so TUI doesn't need a direct riglib dep
 pub use riglib::Rig;

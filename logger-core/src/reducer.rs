@@ -99,6 +99,7 @@ pub fn reduce(
             }
             Vec::new()
         }
+        AppEvent::RigDisconnected { .. } => Vec::new(),
         AppEvent::SpotReceived { spot } => {
             st.bandmap.push(spot);
             Vec::new()

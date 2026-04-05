@@ -57,10 +57,15 @@ pub fn render(frame: &mut Frame, app: &AppState, tui: &TuiState) {
     avail_box::render(frame, left[1], &tui.avail);
     rate_box::render(frame, left[2], &tui.rate);
 
-    // Center: log + entry + scp
+    // Center: log + entry + scp + error
     log_tail::render(frame, center[0], &tui.log_display);
-    entry_line::render(frame, center[1], app, &tui.cw_history);
+    entry_line::render(frame, center[1], app, &tui.cw_history, &tui.cw_echo, tui.cw_echo_enabled, tui.cw_transmitting);
     status_bar::render_scp(frame, center[2], app);
+    if let Some(ref msg) = tui.error_message {
+        let error = ratatui::widgets::Paragraph::new(format!(" {msg}"))
+            .style(ratatui::style::Style::default().fg(ratatui::style::Color::Red));
+        frame.render_widget(error, center[3]);
+    }
 
     // Right: bandmap
     bandmap::render(frame, cols[2], app, tui);

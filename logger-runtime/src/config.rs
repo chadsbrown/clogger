@@ -14,6 +14,9 @@ pub struct KeyerConfig {
     pub speed_wpm: u8,
     #[serde(default)]
     pub contest_spacing: bool,
+    /// Show CW characters in real-time as the WinKeyer echoes them back.
+    #[serde(default)]
+    pub cw_echo: bool,
 }
 
 fn default_speed() -> u8 {

@@ -7,12 +7,12 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
 };
 
-pub fn render(frame: &mut Frame, area: Rect, st: &AppState, cw_history: &[String]) {
+pub fn render(frame: &mut Frame, area: Rect, st: &AppState, cw_history: &[String], cw_echo: &str, cw_echo_enabled: bool, cw_transmitting: bool) {
     let mode_str = match st.entry.mode {
         logger_core::OpMode::Run => "RUN",
         logger_core::OpMode::Sp => "S&P",
     };
-    let title = Line::from(vec![
+    let mut title_spans = vec![
         Span::raw(" R"),
         Span::raw(st.focused_radio.to_string()),
         Span::raw(" "),
@@ -21,7 +21,15 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState, cw_history: &[String
             Style::default().fg(Color::Black).bg(Color::Cyan),
         ),
         Span::raw(" "),
-    ]);
+    ];
+    if cw_transmitting {
+        title_spans.push(Span::styled(
+            " TX ",
+            Style::default().fg(Color::White).bg(Color::Red),
+        ));
+        title_spans.push(Span::raw(" "));
+    }
+    let title = Line::from(title_spans);
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::DarkGray))
@@ -66,13 +74,18 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState, cw_history: &[String
         col += 1;
     }
 
-    let cw_line = if let Some(last) = cw_history.last() {
+    let cw_text = if cw_echo_enabled {
+        if cw_echo.is_empty() { None } else { Some(cw_echo) }
+    } else {
+        cw_history.last().map(|s| s.as_str())
+    };
+    let cw_line = if let Some(text) = cw_text {
         let w = inner.width as usize;
-        let text_len = last.len().min(w);
+        let text_len = text.len().min(w);
         let pad = (w.saturating_sub(text_len)) / 2;
         Line::from(vec![
             Span::raw(" ".repeat(pad)),
-            Span::styled(&last[..text_len], Style::default().fg(Color::Cyan)),
+            Span::styled(&text[..text_len], Style::default().fg(Color::Cyan)),
         ])
     } else {
         Line::default()

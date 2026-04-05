@@ -17,6 +17,7 @@ baud_rate = 115200       # optional, uses model default if omitted
 [keyer]
 port = "/dev/ttyUSB0"
 speed_wpm = 28           # default: 28
+cw_echo = true
 #contest_spacing = true   # default: false
 
 # DX cluster spots (optional — omit entire section to run without)

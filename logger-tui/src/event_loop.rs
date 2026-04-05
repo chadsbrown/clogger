@@ -10,9 +10,9 @@ use logger_core::{AppState, CallHistoryLookup, ContestEntry, DupeChecker, Effect
 use logger_runtime::LogAdapter;
 use crate::{AvailSummary, RateInfo};
 use ratatui::backend::CrosstermBackend;
-use tokio::sync::mpsc;
+use tokio::sync::{broadcast, mpsc};
 use std::sync::Arc;
-use logger_runtime::{Keyer, ReceiverId, Rig};
+use logger_runtime::{Keyer, KeyerEvent, ReceiverId, Rig};
 use tracing::warn;
 
 use crate::TuiState;
@@ -27,6 +27,8 @@ pub async fn run(
     mut log_adapter: LogAdapter,
     rig: Option<Arc<dyn Rig>>,
     keyer: Option<Box<dyn Keyer>>,
+    mut keyer_rx: Option<broadcast::Receiver<KeyerEvent>>,
+    cw_echo_enabled: bool,
     call_history: Box<dyn CallHistoryLookup>,
     scp: Box<dyn ScpLookup>,
     mut rx: mpsc::Receiver<TerminalEvent>,
@@ -48,6 +50,7 @@ pub async fn run(
         rig_connected,
         keyer_connected,
         dxfeed_connected,
+        cw_echo_enabled,
         ..Default::default()
     };
 
@@ -59,6 +62,10 @@ pub async fn run(
             ev = rx.recv() => {
                 match ev {
                     Some(TerminalEvent::App(app_event)) => {
+                        if matches!(&app_event, logger_core::AppEvent::RigDisconnected { .. }) {
+                            tui_state.rig_connected = false;
+                            tui_state.error_message = Some("ERROR: RIG CONNECTION LOST".to_string());
+                        }
                         let effects = reduce(
                             &mut state,
                             contest.as_ref(),
@@ -87,6 +94,22 @@ pub async fn run(
                     Some(TerminalEvent::Shutdown) | None => {
                         break Ok(());
                     }
+                }
+            }
+            ev = recv_keyer_event(&mut keyer_rx) => {
+                match ev {
+                    KeyerEvent::CharacterSent(ch) => {
+                        tui_state.cw_echo.push(ch);
+                        if let Some(full) = tui_state.cw_history.last() {
+                            if tui_state.cw_echo.len() >= full.len() {
+                                tui_state.cw_transmitting = false;
+                            }
+                        }
+                    }
+                    KeyerEvent::StatusChanged(status) if !status.busy => {
+                        tui_state.cw_transmitting = false;
+                    }
+                    _ => {}
                 }
             }
             _ = render_interval.tick() => {
@@ -142,6 +165,8 @@ async fn dispatch_effects(
     for effect in effects {
         match effect {
             Effect::CwSend { radio: _, text } => {
+                tui_state.cw_echo.clear();
+                tui_state.cw_transmitting = tui_state.cw_echo_enabled;
                 tui_state.cw_history.push(text.clone());
                 logger_runtime::send_cw(keyer, text).await;
             }
@@ -291,4 +316,17 @@ fn recompute_rate(log_adapter: &LogAdapter, tui_state: &mut TuiState) {
         last_100_minutes,
         rate_per_hour,
     };
+}
+
+async fn recv_keyer_event(rx: &mut Option<broadcast::Receiver<KeyerEvent>>) -> KeyerEvent {
+    match rx {
+        Some(rx) => loop {
+            match rx.recv().await {
+                Ok(ev) => return ev,
+                Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(broadcast::error::RecvError::Closed) => std::future::pending().await,
+            }
+        },
+        None => std::future::pending().await,
+    }
 }

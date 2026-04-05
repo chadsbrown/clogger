@@ -49,6 +49,9 @@ pub enum AppEvent {
     KeyPress {
         key: Key,
     },
+    RigDisconnected {
+        radio: RadioId,
+    },
     EsmTrigger,
     BandmapUp,
     BandmapDown,

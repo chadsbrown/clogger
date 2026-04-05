@@ -119,13 +119,14 @@ pub async fn spawn_rig_adapter(
         is_ptt,
     };
 
+    let event_tx = tx.clone();
     tokio::spawn(async move {
         loop {
             match events.recv().await {
                 Ok(RigEvent::FrequencyChanged { receiver, freq_hz }) => {
                     last.freq_hz = freq_hz;
                     let radio = receiver.index() + 1;
-                    let _ = tx
+                    let _ = event_tx
                         .send(AppEvent::RigStatus {
                             radio,
                             freq_hz: last.freq_hz,
@@ -137,7 +138,7 @@ pub async fn spawn_rig_adapter(
                 Ok(RigEvent::ModeChanged { receiver, mode }) => {
                     last.mode = map_mode(&mode);
                     let radio = receiver.index() + 1;
-                    let _ = tx
+                    let _ = event_tx
                         .send(AppEvent::RigStatus {
                             radio,
                             freq_hz: last.freq_hz,
@@ -148,7 +149,7 @@ pub async fn spawn_rig_adapter(
                 }
                 Ok(RigEvent::PttChanged { on }) => {
                     last.is_ptt = on;
-                    let _ = tx
+                    let _ = event_tx
                         .send(AppEvent::RigStatus {
                             radio: 1,
                             freq_hz: last.freq_hz,
@@ -157,12 +158,22 @@ pub async fn spawn_rig_adapter(
                         })
                         .await;
                 }
+                Ok(RigEvent::Disconnected) => {
+                    warn!("rig disconnected");
+                    let _ = event_tx
+                        .send(AppEvent::RigDisconnected { radio: radio_id })
+                        .await;
+                    break;
+                }
                 Ok(_) => {}
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
                     warn!("rig event stream lagged, dropped {n} events");
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => {
                     warn!("rig event stream closed");
+                    let _ = event_tx
+                        .send(AppEvent::RigDisconnected { radio: radio_id })
+                        .await;
                     break;
                 }
             }
@@ -172,15 +183,26 @@ pub async fn spawn_rig_adapter(
     // Poll frequency and mode at 4 Hz — get_frequency()/get_mode() emit
     // events into the broadcast channel, which the subscription task forwards.
     let poll_rig = Arc::clone(&rig);
+    let poll_tx = tx;
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_millis(250));
+        let mut consecutive_errors = 0u32;
         loop {
             interval.tick().await;
-            if let Err(e) = poll_rig.get_frequency(primary).await {
-                warn!("rig poll get_frequency failed: {e}");
-            }
-            if let Err(e) = poll_rig.get_mode(primary).await {
-                warn!("rig poll get_mode failed: {e}");
+            let freq_ok = poll_rig.get_frequency(primary).await.is_ok();
+            let mode_ok = poll_rig.get_mode(primary).await.is_ok();
+            if freq_ok && mode_ok {
+                consecutive_errors = 0;
+            } else {
+                consecutive_errors += 1;
+                warn!("rig poll failed ({consecutive_errors} consecutive)");
+                if consecutive_errors >= 3 {
+                    warn!("rig poll: too many consecutive errors, stopping");
+                    let _ = poll_tx
+                        .send(AppEvent::RigDisconnected { radio: radio_id })
+                        .await;
+                    break;
+                }
             }
         }
     });

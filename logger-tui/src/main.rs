@@ -34,12 +34,16 @@ pub struct RateInfo {
 #[derive(Default)]
 pub struct TuiState {
     pub cw_history: Vec<String>,
+    pub cw_echo: String,
+    pub cw_echo_enabled: bool,
+    pub cw_transmitting: bool,
     pub log_display: Vec<LogRow>,
     pub worked_calls: HashSet<String>,
     pub mult_calls: HashSet<String>,
     pub score: ScoreSummary,
     pub avail: AvailSummary,
     pub rate: RateInfo,
+    pub error_message: Option<String>,
     pub rig_connected: bool,
     pub keyer_connected: bool,
     pub dxfeed_connected: bool,
@@ -133,6 +137,12 @@ async fn main() -> Result<()> {
         None
     };
 
+    // Subscribe to keyer echo events if cw_echo is enabled
+    let (keyer_rx, cw_echo_enabled) = match (&keyer, &config.keyer) {
+        (Some(k), Some(kc)) if kc.cw_echo => (Some(k.subscribe()), true),
+        _ => (None, false),
+    };
+
     // Optionally connect dxfeed
     let mut dxfeed_connected = false;
     if let Some(dxfeed_config) = &config.dxfeed {
@@ -191,6 +201,8 @@ async fn main() -> Result<()> {
         log_adapter,
         rig_handle,
         keyer,
+        keyer_rx,
+        cw_echo_enabled,
         call_history,
         scp,
         tui_rx,
