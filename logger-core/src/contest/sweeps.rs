@@ -31,6 +31,7 @@ impl ContestEntry for SweepsContest {
             f2: "{CALL} {NR} {PREC} {CHECK} {SECTION}".to_string(),
             f3: "TU {MYCALL}".to_string(),
             sp_exch: "{NR} {PREC} {CHECK} {SECTION}".to_string(),
+            ..Macros::default()
         }
     }
 

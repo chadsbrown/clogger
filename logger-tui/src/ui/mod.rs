@@ -75,7 +75,7 @@ pub fn render(frame: &mut Frame, app: &AppState, tui: &TuiState) {
 
     // Footer
     let footer = ratatui::widgets::Paragraph::new(
-        " F1:CQ  F2:Exch  F3:TU  Space:Next  Enter:ESM  Ins:Run/S&P  C-\u{2191}\u{2193}:Bandmap  Esc:Clear  Ctrl-C:Quit",
+        " F1:CQ  F2:Exch  F3:TU  F5:Call  Esc:Stop  F12:Wipe  Enter:ESM  Ins:Run/S&P  C-\u{2191}\u{2193}:Bandmap  Ctrl-C:Quit",
     )
     .style(ratatui::style::Style::default().fg(ratatui::style::Color::DarkGray));
     frame.render_widget(footer, rows[2]);

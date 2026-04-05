@@ -11,7 +11,7 @@ pub use call_history::CallHistoryDb;
 pub use scp::ScpDb;
 pub use config::{DxFeedConfig, DxFeedSourceConfig, KeyerConfig, RigConfig};
 pub use dxfeed_adapter::spawn_dxfeed_adapter;
-pub use keyer_adapter::{connect_keyer, send_cw};
+pub use keyer_adapter::{abort_cw, connect_keyer, send_cw};
 pub use log_adapter::{LogAdapter, decode_exchange_pairs};
 pub use rig_adapter::spawn_rig_adapter;
 pub use scoring::{BandScore, ScoreSummary, scorer_for_contest};

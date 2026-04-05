@@ -50,6 +50,11 @@ pub fn spawn_terminal_reader(tx: mpsc::Sender<TerminalEvent>) {
                 (_, KeyCode::F(1)) => TerminalEvent::App(AppEvent::KeyPress { key: Key::F1 }),
                 (_, KeyCode::F(2)) => TerminalEvent::App(AppEvent::KeyPress { key: Key::F2 }),
                 (_, KeyCode::F(3)) => TerminalEvent::App(AppEvent::KeyPress { key: Key::F3 }),
+                (_, KeyCode::F(5)) => TerminalEvent::App(AppEvent::KeyPress { key: Key::F5 }),
+                (_, KeyCode::F(7)) => TerminalEvent::App(AppEvent::KeyPress { key: Key::F7 }),
+                (_, KeyCode::F(8)) => TerminalEvent::App(AppEvent::KeyPress { key: Key::F8 }),
+                (_, KeyCode::F(9)) => TerminalEvent::App(AppEvent::KeyPress { key: Key::F9 }),
+                (_, KeyCode::F(12)) => TerminalEvent::App(AppEvent::KeyPress { key: Key::F12 }),
                 _ => continue,
             };
             if tx.blocking_send(terminal_event).is_err() {

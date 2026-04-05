@@ -8,6 +8,7 @@ pub enum BeepKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Effect {
     CwSend { radio: RadioId, text: String },
+    CwAbort,
     LogInsert { draft: QsoDraft },
     Beep { kind: BeepKind },
     UiSetFocus { field_id: u16 },

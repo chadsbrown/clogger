@@ -13,7 +13,9 @@
     { "type": "Key", "key": "Space" },
     { "type": "Text", "s": "EMA" },
     { "type": "Key", "key": "Enter" },
-    { "type": "Key", "key": "Esc" },
+    { "type": "Key", "key": "Backspace" },
+    { "type": "Key", "key": "Backspace" },
+    { "type": "Key", "key": "Backspace" },
     { "type": "Text", "s": "WMA" },
     { "type": "Key", "key": "Enter" },
     { "type": "Key", "key": "Enter" }

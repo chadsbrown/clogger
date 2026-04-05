@@ -49,6 +49,10 @@ pub struct Macros {
     pub f1: String,
     pub f2: String,
     pub f3: String,
+    pub f5: String,
+    pub f7: String,
+    pub f8: String,
+    pub f9: String,
     pub sp_exch: String,
 }
 
@@ -58,6 +62,10 @@ impl Default for Macros {
             f1: "CQ TEST {MYCALL}".to_string(),
             f2: "{CALL} {RST_SENT} {MYZONE}".to_string(),
             f3: "TU {MYCALL}".to_string(),
+            f5: "{CALL}".to_string(),
+            f7: String::new(),
+            f8: String::new(),
+            f9: String::new(),
             sp_exch: "{RST_SENT} {MYZONE}".to_string(),
         }
     }

@@ -171,22 +171,7 @@ pub fn reduce(
                 }
                 Vec::new()
             }
-            Key::Esc => {
-                let mut touched_call = false;
-                if let Some(field) = st.entry.focused_mut() {
-                    touched_call = field.field_id == 1;
-                    field.value.clear();
-                }
-                if touched_call {
-                    st.entry.scp_cycle_index = None;
-                    clear_history_fields(st);
-                }
-                revalidate_after_edit(st, contest);
-                if touched_call {
-                    recompute_feedback(st, dupe_checker, mult_checker);
-                }
-                Vec::new()
-            }
+            Key::Esc => vec![Effect::CwAbort],
             Key::F1 => vec![Effect::CwSend {
                 radio: st.focused_radio,
                 text: expand_macro(&macros.f1, st),
@@ -199,6 +184,34 @@ pub fn reduce(
                 radio: st.focused_radio,
                 text: expand_macro(&macros.f3, st),
             }],
+            Key::F5 => vec![Effect::CwSend {
+                radio: st.focused_radio,
+                text: expand_macro(&macros.f5, st),
+            }],
+            Key::F7 | Key::F8 | Key::F9 => {
+                let text = match key {
+                    Key::F7 => &macros.f7,
+                    Key::F8 => &macros.f8,
+                    Key::F9 => &macros.f9,
+                    _ => unreachable!(),
+                };
+                if text.is_empty() {
+                    Vec::new()
+                } else {
+                    vec![Effect::CwSend {
+                        radio: st.focused_radio,
+                        text: expand_macro(text, st),
+                    }]
+                }
+            }
+            Key::F12 => {
+                st.entry.clear_values();
+                st.entry.esm_step = EsmStep::Idle;
+                st.entry.scp_matches.clear();
+                st.entry.scp_n1_matches.clear();
+                st.entry.scp_cycle_index = None;
+                Vec::new()
+            }
             Key::Equal => {
                 if st.entry.scp_matches.is_empty() {
                     return Vec::new();

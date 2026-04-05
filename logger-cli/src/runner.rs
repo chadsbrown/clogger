@@ -56,6 +56,7 @@ enum TraceEffect {
         radio: u8,
         freq_hz: u64,
     },
+    CwAbort,
     UiClearEntry,
 }
 
@@ -321,6 +322,7 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
                             st.entry.focus = idx;
                         }
                     }
+                    Effect::CwAbort => {}
                     Effect::RigSet { .. } => {}
                     Effect::UiClearEntry => {
                         // state already reflects clear behavior in reducer
@@ -542,6 +544,7 @@ fn normalize_effect(effect: &Effect) -> TraceEffect {
             radio: *radio,
             freq_hz: *freq_hz,
         },
+        Effect::CwAbort => TraceEffect::CwAbort,
         Effect::UiClearEntry => TraceEffect::UiClearEntry,
     }
 }

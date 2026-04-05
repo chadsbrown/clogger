@@ -12,6 +12,11 @@ pub enum Key {
     F1,
     F2,
     F3,
+    F5,
+    F7,
+    F8,
+    F9,
+    F12,
     Enter,
     Equal,
 }

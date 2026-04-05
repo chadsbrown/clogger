@@ -21,3 +21,11 @@ pub async fn send_cw(keyer: Option<&dyn Keyer>, text: &str) {
         }
     }
 }
+
+pub async fn abort_cw(keyer: Option<&dyn Keyer>) {
+    if let Some(k) = keyer {
+        if let Err(e) = k.abort().await {
+            warn!("keyer abort failed: {e}");
+        }
+    }
+}

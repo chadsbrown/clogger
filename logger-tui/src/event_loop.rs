@@ -217,6 +217,9 @@ async fn dispatch_effects(
                     }
                 }
             }
+            Effect::CwAbort => {
+                logger_runtime::abort_cw(keyer).await;
+            }
             Effect::UiClearEntry => {
                 // State already reflects clear behavior in reducer
             }
