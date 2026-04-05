@@ -65,6 +65,10 @@
 #
 # Contest spacing — shortened wordspace (default: false)
 #contest_spacing = true
+#
+# Real-time CW echo — display characters one-by-one as the WinKeyer
+# echoes them back, instead of showing the full message at once (default: false)
+#cw_echo = true
 
 # ---------------------------------------------------------------------------
 # DX cluster spots (optional — omit entire section to run without)
