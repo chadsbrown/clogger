@@ -2,12 +2,24 @@ use crate::state::AppState;
 
 pub fn expand_macro(template: &str, st: &AppState) -> String {
     let call = st.current_call();
+
+    // When call is empty, fall back to last logged context for repeats
+    let (effective_call, prev_fields) = if call.is_empty() {
+        if let Some(ctx) = &st.last_logged_context {
+            (ctx.call.as_str(), Some(&ctx.fields))
+        } else {
+            (call.as_str(), None)
+        }
+    } else {
+        (call.as_str(), None)
+    };
+
     let my_zone = st.my_zone.to_string();
     let base = [
         ("{MYCALL}", st.my_call.as_str()),
         ("{MYZONE}", my_zone.as_str()),
         ("{RST_SENT}", st.rst_sent.as_str()),
-        ("{CALL}", call.as_str()),
+        ("{CALL}", effective_call),
     ];
 
     let mut out = base
@@ -20,10 +32,18 @@ pub fn expand_macro(template: &str, st: &AppState) -> String {
         out = out.replace(&token, val);
     }
 
-    let out = st.entry.fields.iter().fold(out, |acc, f| {
-        let token = format!("{{{}}}", f.label.to_ascii_uppercase());
-        acc.replace(&token, f.value.trim())
-    });
+    // Expand field labels — use previous context if available (repeat mode)
+    let out = if let Some(fields) = prev_fields {
+        fields.iter().fold(out, |acc, (label, value)| {
+            let token = format!("{{{}}}", label);
+            acc.replace(&token, value.trim())
+        })
+    } else {
+        st.entry.fields.iter().fold(out, |acc, f| {
+            let token = format!("{{{}}}", f.label.to_ascii_uppercase());
+            acc.replace(&token, f.value.trim())
+        })
+    };
 
     // Convert < and > speed markers to absolute {WPM} commands.
     // Known prosigns (<AR>, <SK>, <BT>, <KN>, <AS>) are preserved.
@@ -106,6 +126,7 @@ mod tests {
             esm_policy: EsmPolicy::default(),
             bandmap_cursor: None,
             default_cw_speed: 28,
+            last_logged_context: None,
         };
         st.radios.insert(1, RadioState {
             freq_hz: 14_025_000,
@@ -149,6 +170,7 @@ mod tests {
             esm_policy: EsmPolicy::default(),
             bandmap_cursor: None,
             default_cw_speed: 28,
+            last_logged_context: None,
         };
 
         let out = expand_macro("CQ TEST <AR>", &st);
@@ -173,6 +195,7 @@ mod tests {
             esm_policy: EsmPolicy::default(),
             bandmap_cursor: None,
             default_cw_speed: 1,
+            last_logged_context: None,
         };
 
         let out = expand_macro("<5NN>", &st);
@@ -197,6 +220,7 @@ mod tests {
             esm_policy: EsmPolicy::default(),
             bandmap_cursor: None,
             default_cw_speed: 28,
+            last_logged_context: None,
         };
         st.entry.fields[0].value = "K1ABC".to_string();
 

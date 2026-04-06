@@ -3,7 +3,7 @@ use crate::{
     effects::{BeepKind, Effect},
     entry::state::{EsmStep, OpMode},
     macro_expand::expand_macro,
-    state::{AppState, Macros},
+    state::{AppState, LastLoggedContext, Macros},
 };
 
 pub fn handle_esm(st: &mut AppState, contest: &dyn ContestEntry, macros: &Macros) -> Vec<Effect> {
@@ -93,6 +93,14 @@ fn log_and_clear(
             } else {
                 None
             };
+
+            // Snapshot context before clearing for repeat-to-previous
+            st.last_logged_context = Some(LastLoggedContext {
+                call: st.current_call(),
+                fields: st.entry.fields.iter()
+                    .map(|f| (f.label.to_ascii_uppercase(), f.value.clone()))
+                    .collect(),
+            });
 
             st.entry.clear_values();
             st.entry.esm_step = EsmStep::Idle;

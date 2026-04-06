@@ -104,6 +104,7 @@ async fn main() -> Result<()> {
         default_cw_speed: config.rig.as_ref().and_then(|r| r.cw_speed)
             .or(config.keyer.as_ref().map(|k| k.speed_wpm))
             .unwrap_or(28),
+        last_logged_context: None,
     };
     let db_path = cli.db.as_ref().or(config.db_path.as_ref());
     let log_adapter = if let Some(db_path) = db_path {

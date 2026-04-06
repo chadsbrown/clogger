@@ -216,6 +216,7 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
         esm_policy: EsmPolicy::default(),
         bandmap_cursor: None,
         default_cw_speed: 28,
+        last_logged_context: None,
     };
     if let Some(v) = script.esm_policy.run_two_step {
         st.esm_policy.run_two_step = v;

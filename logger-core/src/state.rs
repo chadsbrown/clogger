@@ -28,6 +28,12 @@ pub struct RadioState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LastLoggedContext {
+    pub call: String,
+    pub fields: Vec<(String, String)>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Spot {
     pub call: String,
     pub freq_hz: u64,
@@ -79,6 +85,7 @@ pub struct AppState {
     pub entry: EntryState,
     pub bandmap: Vec<Spot>,
     pub last_logged: Option<QsoRef>,
+    pub last_logged_context: Option<LastLoggedContext>,
     pub my_call: String,
     pub my_zone: u8,
     pub rst_sent: String,

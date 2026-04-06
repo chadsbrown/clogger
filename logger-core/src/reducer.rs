@@ -545,6 +545,7 @@ mod tests {
             esm_policy: EsmPolicy::default(),
             bandmap_cursor: None,
             default_cw_speed: 28,
+            last_logged_context: None,
         }
     }
 
