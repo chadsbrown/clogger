@@ -28,9 +28,8 @@ impl ContestEntry for SweepsContest {
     fn default_macros(&self) -> Macros {
         Macros {
             f1: "CQ SS {MYCALL}".to_string(),
-            f2: "{CALL} {NR} {PREC} {CHECK} {SECTION}".to_string(),
+            f2: "{NR} {PREC} {CHECK} {SECTION}".to_string(),
             f3: "TU {MYCALL}".to_string(),
-            sp_exch: "{NR} {PREC} {CHECK} {SECTION}".to_string(),
             ..Macros::default()
         }
     }

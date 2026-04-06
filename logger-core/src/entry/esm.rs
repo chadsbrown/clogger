@@ -32,35 +32,46 @@ fn handle_run(st: &mut AppState, contest: &dyn ContestEntry, macros: &Macros) ->
 
     if st.entry.esm_step == EsmStep::Idle && st.esm_policy.run_two_step {
         st.entry.esm_step = EsmStep::ExchSent;
-        return vec![Effect::CwSend {
+        let mut effects = vec![Effect::CwSend {
             radio: st.focused_radio,
-            text: expand_macro(&macros.f2, st),
+            text: compose_call_exchange(st, macros),
         }];
+        // Auto-advance cursor past CALL field so operator can enter received exchange
+        if focused_field_id(st) == Some(1) {
+            if let Some(next_id) = next_field_id(st) {
+                st.entry.focus += 1;
+                effects.push(Effect::UiSetFocus { field_id: next_id });
+            }
+        }
+        return effects;
     }
 
     log_and_clear(st, contest, macros, true, !st.esm_policy.run_two_step)
 }
 
 fn handle_sp(st: &mut AppState, contest: &dyn ContestEntry, macros: &Macros) -> Vec<Effect> {
-    match st.entry.esm_step {
-        EsmStep::Idle => {
-            if st.current_call().is_empty() {
-                return Vec::new();
-            }
-            st.entry.esm_step = EsmStep::CallSent;
-            vec![Effect::CwSend {
-                radio: st.focused_radio,
-                text: expand_macro("{MYCALL}", st),
-            }]
+    // Cursor in CALL field: send MYCALL (repeatable)
+    if focused_field_id(st) == Some(1) {
+        if st.current_call().is_empty() {
+            return Vec::new();
         }
-        EsmStep::CallSent => {
+        st.entry.esm_step = EsmStep::CallSent;
+        return vec![Effect::CwSend {
+            radio: st.focused_radio,
+            text: expand_macro("{MYCALL}", st),
+        }];
+    }
+
+    // Cursor past CALL field: exchange or log based on EsmStep
+    match st.entry.esm_step {
+        EsmStep::Idle | EsmStep::CallSent => {
             if st.entry.overall.is_invalid() {
                 return invalid_focus_effects(st);
             }
             st.entry.esm_step = EsmStep::ExchSent;
             vec![Effect::CwSend {
                 radio: st.focused_radio,
-                text: expand_macro(&macros.sp_exch, st),
+                text: expand_macro(&macros.f2, st),
             }]
         }
         EsmStep::ExchSent => log_and_clear(st, contest, macros, false, false),
@@ -76,7 +87,7 @@ fn log_and_clear(
 ) -> Vec<Effect> {
     match contest.build_qso_draft(&st.entry, &entry_ctx(st)) {
         Ok(draft) => {
-            let exch_text = expand_macro(&macros.f2, st);
+            let exch_text = compose_call_exchange(st, macros);
             let tu_text = if send_tu {
                 Some(expand_macro(&macros.f3, st))
             } else {
@@ -108,6 +119,20 @@ fn log_and_clear(
             kind: BeepKind::Error,
         }],
     }
+}
+
+fn focused_field_id(st: &AppState) -> Option<u16> {
+    st.entry.fields.get(st.entry.focus).map(|f| f.field_id)
+}
+
+fn next_field_id(st: &AppState) -> Option<u16> {
+    st.entry.fields.get(st.entry.focus + 1).map(|f| f.field_id)
+}
+
+fn compose_call_exchange(st: &AppState, macros: &Macros) -> String {
+    let call = expand_macro(&macros.f5, st);
+    let exch = expand_macro(&macros.f2, st);
+    format!("{call} {exch}")
 }
 
 fn invalid_focus_effects(st: &mut AppState) -> Vec<Effect> {

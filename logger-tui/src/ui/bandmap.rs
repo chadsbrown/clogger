@@ -21,7 +21,15 @@ pub fn render(frame: &mut Frame, area: Rect, app: &AppState, tui: &TuiState) {
     let spots = filtered_bandmap_spots(&app.bandmap, &band, mode);
 
     let visible = area.height.saturating_sub(2) as usize; // borders
-    let skip = spots.len().saturating_sub(visible);
+    let skip = if let Some(cursor) = app.bandmap_cursor {
+        if cursor < visible / 2 {
+            0
+        } else {
+            (cursor - visible / 2).min(spots.len().saturating_sub(visible))
+        }
+    } else {
+        spots.len().saturating_sub(visible)
+    };
 
     let rows: Vec<Row> = spots
         .iter()
