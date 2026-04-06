@@ -733,6 +733,7 @@ name = "logger-runtime"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "contest-engine 0.1.0",
  "dxfeed",
  "logger-core",

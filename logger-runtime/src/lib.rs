@@ -1,3 +1,5 @@
+pub mod analytics;
+pub mod bootstrap;
 pub mod call_history;
 pub mod config;
 pub mod dxfeed_adapter;
@@ -14,6 +16,8 @@ pub use dxfeed_adapter::spawn_dxfeed_adapter;
 pub use keyer_adapter::{abort_cw, connect_keyer, send_cw};
 pub use log_adapter::{LogAdapter, decode_exchange_pairs};
 pub use rig_adapter::spawn_rig_adapter;
+pub use analytics::{AvailSummary, RateInfo, WorkedCalls, compute_avail, compute_rate, compute_worked_calls};
+pub use bootstrap::{MacroOverrides, Session, SessionConfig, bootstrap};
 pub use scoring::{BandScore, ScoreSummary, scorer_for_contest};
 
 // Re-export qsolog types needed by consumers of LogAdapter

@@ -12,6 +12,7 @@ winkey = { path = "../../winkey" }
 dxfeed = { path = "../../dxfeed", features = ["serde"] }
 station-data = { path = "../../station-data" }
 tokio = { version = "1", features = ["sync"] }
+chrono = "0.4"
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

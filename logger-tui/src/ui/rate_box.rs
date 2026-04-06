@@ -1,4 +1,4 @@
-use crate::RateInfo;
+use logger_runtime::RateInfo;
 use ratatui::{
     Frame,
     layout::Rect,

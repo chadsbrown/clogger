@@ -1,4 +1,4 @@
-use crate::AvailSummary;
+use logger_runtime::AvailSummary;
 use ratatui::{
     Frame,
     layout::{Constraint, Rect},

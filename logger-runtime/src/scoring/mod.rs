@@ -70,7 +70,7 @@ pub fn scorer_for_contest(
     }
 }
 
-pub(crate) const BAND_LABELS: &[&str] = &["160m", "80m", "40m", "20m", "15m", "10m"];
+pub const BAND_LABELS: &[&str] = &["160m", "80m", "40m", "20m", "15m", "10m"];
 
 pub(crate) fn band_label_from_qsolog(b: Band) -> String {
     match b {
