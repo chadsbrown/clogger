@@ -61,10 +61,16 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     let config = load_config(&cli)?;
 
-    // Build contest + macros
+    // Build contest + macros (config overrides contest defaults)
     let contest = contest_from_id(&config.contest)
         .ok_or_else(|| anyhow::anyhow!("unknown contest: {}", config.contest))?;
-    let macros = contest.default_macros();
+    let mut macros = contest.default_macros();
+    if let Some(ref overrides) = config.macros {
+        if let Some(ref v) = overrides.f1 { macros.f1 = v.clone(); }
+        if let Some(ref v) = overrides.f7 { macros.f7 = v.clone(); }
+        if let Some(ref v) = overrides.f8 { macros.f8 = v.clone(); }
+        if let Some(ref v) = overrides.f9 { macros.f9 = v.clone(); }
+    }
 
     // Build initial state
     let mut my_exchange = HashMap::new();
@@ -92,6 +98,9 @@ async fn main() -> Result<()> {
         my_exchange,
         esm_policy: EsmPolicy::default(),
         bandmap_cursor: None,
+        default_cw_speed: config.rig.as_ref().and_then(|r| r.cw_speed)
+            .or(config.keyer.as_ref().map(|k| k.speed_wpm))
+            .unwrap_or(28),
     };
     let db_path = cli.db.as_ref().or(config.db_path.as_ref());
     let log_adapter = if let Some(db_path) = db_path {
@@ -120,10 +129,11 @@ async fn main() -> Result<()> {
         }
     }
 
-    // Optionally connect keyer
+    // Optionally connect keyer (rig cw_speed overrides keyer speed_wpm)
     let mut keyer_connected = false;
+    let rig_cw_speed = config.rig.as_ref().and_then(|r| r.cw_speed);
     let keyer: Option<Box<dyn Keyer>> = if let Some(keyer_config) = &config.keyer {
-        match logger_runtime::connect_keyer(keyer_config).await {
+        match logger_runtime::connect_keyer(keyer_config, rig_cw_speed).await {
             Ok(k) => {
                 keyer_connected = true;
                 Some(k)

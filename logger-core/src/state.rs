@@ -24,6 +24,7 @@ pub struct RadioState {
     pub freq_hz: u64,
     pub mode: String,
     pub is_ptt: bool,
+    pub cw_speed: u8,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -84,6 +85,7 @@ pub struct AppState {
     pub my_exchange: HashMap<String, String>,
     pub esm_policy: EsmPolicy,
     pub bandmap_cursor: Option<usize>,
+    pub default_cw_speed: u8,
 }
 
 impl AppState {

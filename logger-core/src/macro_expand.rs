@@ -20,10 +20,57 @@ pub fn expand_macro(template: &str, st: &AppState) -> String {
         out = out.replace(&token, val);
     }
 
-    st.entry.fields.iter().fold(out, |acc, f| {
+    let out = st.entry.fields.iter().fold(out, |acc, f| {
         let token = format!("{{{}}}", f.label.to_ascii_uppercase());
         acc.replace(&token, f.value.trim())
-    })
+    });
+
+    // Convert < and > speed markers to absolute {WPM} commands.
+    // Known prosigns (<AR>, <SK>, <BT>, <KN>, <AS>) are preserved.
+    let cw_speed = st
+        .radios
+        .get(&st.focused_radio)
+        .map(|r| r.cw_speed)
+        .unwrap_or(st.default_cw_speed);
+    expand_speed_markers(&out, cw_speed)
+}
+
+const SPEED_STEP: u8 = 2;
+const PROSIGNS: &[&str] = &["AR", "SK", "BT", "KN", "AS"];
+
+fn expand_speed_markers(input: &str, cw_speed: u8) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+    let mut current = cw_speed as i16;
+
+    while let Some(ch) = chars.next() {
+        if ch == '<' {
+            // Check if this is a prosign: <XX> where XX is a known prosign
+            let rest: String = chars.clone().take_while(|&c| c != '>').collect();
+            if PROSIGNS.contains(&rest.to_ascii_uppercase().as_str()) {
+                // Consume through '>'
+                for _ in 0..rest.len() {
+                    chars.next();
+                }
+                chars.next(); // consume '>'
+                out.push('<');
+                out.push_str(&rest);
+                out.push('>');
+            } else {
+                // Speed down
+                current = (current - SPEED_STEP as i16).max(0);
+                out.push_str(&format!("{{{current}}}"));
+            }
+        } else if ch == '>' {
+            // Speed up
+            current = (current + SPEED_STEP as i16).min(99);
+            out.push_str(&format!("{{{current}}}"));
+        } else {
+            out.push(ch);
+        }
+    }
+
+    out
 }
 
 #[cfg(test)]
@@ -38,6 +85,99 @@ mod tests {
     };
 
     use super::expand_macro;
+
+    use crate::state::RadioState;
+
+    #[test]
+    fn speed_markers_converted() {
+        let contest = CqwwContest::default();
+        let mut st = AppState {
+            now_ms: 0,
+            focused_radio: 1,
+            active_operator: 1,
+            radios: HashMap::new(),
+            entry: EntryState::from_spec(&contest.form_spec()),
+            bandmap: Vec::new(),
+            last_logged: None,
+            my_call: "N0CALL".to_string(),
+            my_zone: 4,
+            rst_sent: "599".to_string(),
+            my_exchange: HashMap::new(),
+            esm_policy: EsmPolicy::default(),
+            bandmap_cursor: None,
+            default_cw_speed: 28,
+        };
+        st.radios.insert(1, RadioState {
+            freq_hz: 14_025_000,
+            mode: "CW".to_string(),
+            is_ptt: false,
+            cw_speed: 36,
+        });
+
+        // < slows by 2, > speeds by 2 (tracking running speed)
+        // {0} restores original speed
+        let out = expand_macro("<5NN{0}", &st);
+        assert_eq!(out, "{34}5NN{0}");
+
+        let out = expand_macro(">TU {MYCALL}{0}", &st);
+        assert_eq!(out, "{38}TU N0CALL{0}");
+
+        // < and > as wrapper: <5NN> = slow down, send, restore
+        let out = expand_macro("<5NN>", &st);
+        assert_eq!(out, "{34}5NN{36}");
+
+        // Stacking: << = -4
+        let out = expand_macro("<<5NN>>", &st);
+        assert_eq!(out, "{34}{32}5NN{34}{36}");
+    }
+
+    #[test]
+    fn prosigns_preserved() {
+        let contest = CqwwContest::default();
+        let st = AppState {
+            now_ms: 0,
+            focused_radio: 1,
+            active_operator: 1,
+            radios: HashMap::new(),
+            entry: EntryState::from_spec(&contest.form_spec()),
+            bandmap: Vec::new(),
+            last_logged: None,
+            my_call: "N0CALL".to_string(),
+            my_zone: 4,
+            rst_sent: "599".to_string(),
+            my_exchange: HashMap::new(),
+            esm_policy: EsmPolicy::default(),
+            bandmap_cursor: None,
+            default_cw_speed: 28,
+        };
+
+        let out = expand_macro("CQ TEST <AR>", &st);
+        assert_eq!(out, "CQ TEST <AR>");
+    }
+
+    #[test]
+    fn speed_down_saturates() {
+        let contest = CqwwContest::default();
+        let st = AppState {
+            now_ms: 0,
+            focused_radio: 1,
+            active_operator: 1,
+            radios: HashMap::new(),
+            entry: EntryState::from_spec(&contest.form_spec()),
+            bandmap: Vec::new(),
+            last_logged: None,
+            my_call: "N0CALL".to_string(),
+            my_zone: 4,
+            rst_sent: "599".to_string(),
+            my_exchange: HashMap::new(),
+            esm_policy: EsmPolicy::default(),
+            bandmap_cursor: None,
+            default_cw_speed: 1,
+        };
+
+        let out = expand_macro("<5NN>", &st);
+        assert_eq!(out, "{0}5NN{2}");
+    }
 
     #[test]
     fn expands_placeholders() {
@@ -56,6 +196,7 @@ mod tests {
             my_exchange: HashMap::new(),
             esm_policy: EsmPolicy::default(),
             bandmap_cursor: None,
+            default_cw_speed: 28,
         };
         st.entry.fields[0].value = "K1ABC".to_string();
 

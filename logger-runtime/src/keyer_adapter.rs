@@ -1,12 +1,13 @@
 use tracing::{info, warn};
-use winkey::{Keyer, WinKeyerBuilder};
+use winkey::{Keyer, WinKeyerBuilder, message::build_contest_message};
 
 use crate::config::KeyerConfig;
 
-pub async fn connect_keyer(config: &KeyerConfig) -> anyhow::Result<Box<dyn Keyer>> {
-    info!("connecting to WinKeyer on {}", config.port);
+pub async fn connect_keyer(config: &KeyerConfig, speed_override: Option<u8>) -> anyhow::Result<Box<dyn Keyer>> {
+    let speed = speed_override.unwrap_or(config.speed_wpm);
+    info!("connecting to WinKeyer on {} at {speed} WPM", config.port);
     let keyer = WinKeyerBuilder::new(&config.port)
-        .speed(config.speed_wpm)
+        .speed(speed)
         .contest_spacing(config.contest_spacing)
         .build()
         .await?;
@@ -16,7 +17,8 @@ pub async fn connect_keyer(config: &KeyerConfig) -> anyhow::Result<Box<dyn Keyer
 
 pub async fn send_cw(keyer: Option<&dyn Keyer>, text: &str) {
     if let Some(k) = keyer {
-        if let Err(e) = k.send_message(text).await {
+        let bytes = build_contest_message(text);
+        if let Err(e) = k.send_raw(&bytes).await {
             warn!("keyer send failed: {e}");
         }
     }

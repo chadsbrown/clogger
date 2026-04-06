@@ -39,6 +39,22 @@
 #cursor_style = "steady_underline"
 
 # ---------------------------------------------------------------------------
+# CW macro overrides (optional — omit to use contest defaults)
+# Available placeholders: {MYCALL}, {MYZONE}, {RST_SENT}, {CALL},
+#   {MY<KEY>} (e.g. {MYNAME}, {MYXCHG}), {LABEL} (entry field values)
+# Speed control: < slows by 2 WPM, > speeds by 2 WPM (relative, stackable).
+#   e.g. "<5NN>" sends report 2 WPM slower then restores.
+#   Use {0} to explicitly restore original speed.
+# Prosigns: <AR>, <SK>, <BT>, <KN>, <AS> are sent as merged characters.
+# F2 (exchange), F3 (TU), F5 (call) are contest-driven and not overridable.
+# ---------------------------------------------------------------------------
+#[macros]
+#f1 = "CQ TEST {MYCALL}"
+#f7 = "?"
+#f8 = "NR {MYZONE} {MYZONE}"
+#f9 = "QRL?"
+
+# ---------------------------------------------------------------------------
 # Rig control (optional — omit entire section to run without)
 # ---------------------------------------------------------------------------
 #[rig]
@@ -56,6 +72,10 @@
 #
 # Baud rate (optional — uses model default if omitted)
 #baud_rate = 115200
+#
+# CW sending speed in WPM for this radio (used for < and > speed markers
+# in macros; falls back to keyer speed_wpm if omitted)
+#cw_speed = 36
 
 # ---------------------------------------------------------------------------
 # WinKeyer CW keyer (optional — omit entire section to run without)

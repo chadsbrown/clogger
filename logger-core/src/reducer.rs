@@ -86,12 +86,16 @@ pub fn reduce(
             mode,
             is_ptt,
         } => {
+            let cw_speed = st.radios.get(&radio)
+                .map(|r| r.cw_speed)
+                .unwrap_or(st.default_cw_speed);
             st.radios.insert(
                 radio,
                 RadioState {
                     freq_hz,
                     mode,
                     is_ptt,
+                    cw_speed,
                 },
             );
             if radio == st.focused_radio {
@@ -474,6 +478,7 @@ mod tests {
             my_exchange: HashMap::new(),
             esm_policy: EsmPolicy::default(),
             bandmap_cursor: None,
+            default_cw_speed: 28,
         }
     }
 

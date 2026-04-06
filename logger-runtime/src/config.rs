@@ -5,6 +5,8 @@ pub struct RigConfig {
     pub model: String,
     pub port: String,
     pub baud_rate: Option<u32>,
+    /// CW sending speed for this radio (used for < and > speed markers in macros)
+    pub cw_speed: Option<u8>,
 }
 
 #[derive(Debug, Deserialize)]

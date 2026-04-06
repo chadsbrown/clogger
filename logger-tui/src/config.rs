@@ -38,6 +38,7 @@ pub struct Config {
     pub scp_file: Option<PathBuf>,
     #[serde(default)]
     pub cursor_style: CursorStyle,
+    pub macros: Option<MacroOverrides>,
     pub rig: Option<logger_runtime::RigConfig>,
     pub keyer: Option<logger_runtime::KeyerConfig>,
     pub dxfeed: Option<logger_runtime::DxFeedConfig>,
@@ -53,6 +54,14 @@ pub enum CursorStyle {
     SteadyUnderline,
     BlinkingBar,
     SteadyBar,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct MacroOverrides {
+    pub f1: Option<String>,
+    pub f7: Option<String>,
+    pub f8: Option<String>,
+    pub f9: Option<String>,
 }
 
 fn default_rst_sent() -> String {
