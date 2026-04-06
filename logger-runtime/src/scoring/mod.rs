@@ -1,3 +1,4 @@
+pub mod mst;
 mod spec_scorer;
 pub mod sweeps;
 pub mod unique_call;
@@ -65,6 +66,8 @@ pub fn scorer_for_contest(
         Box::new(spec_scorer::SpecScorer::new(contest_id, contest_instance_id, config))
     } else if contest_id == "sweeps" {
         Box::new(sweeps::SweepsScorer)
+    } else if contest_id == "mst" {
+        Box::new(mst::MstScorer)
     } else {
         Box::new(unique_call::UniqueCallScorer)
     }

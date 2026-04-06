@@ -639,6 +639,7 @@ mod tests {
             "cwt_call_history_prepopulate.json",
             "cqww_call_history_operator_override.json",
             "cqww_serial_number.json",
+            "mst_run_two_step.json",
         ];
 
         for script in scripts {

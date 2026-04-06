@@ -1,0 +1,36 @@
+{
+  "contest": "mst",
+  "call_history": [
+    { "call": "W2XYZ", "fields": { "Name": "BOB" } }
+  ],
+  "events": [
+    { "type": "RigStatus", "radio": 1, "freq_hz": 14025000, "mode": "CW", "is_ptt": false },
+    { "type": "SetMode", "mode": "Run" },
+
+    { "type": "Text", "s": "K1ABC" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "VINCE" },
+    { "type": "Key", "key": "Enter" },
+    { "type": "Key", "key": "Enter" },
+
+    { "type": "Text", "s": "W2XYZ" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Key", "key": "Enter" },
+    { "type": "Key", "key": "Enter" }
+  ],
+  "expectations": {
+    "qsos": [
+      { "call": "K1ABC", "exchange": { "name": "VINCE", "serial": "1" } },
+      { "call": "W2XYZ", "exchange": { "name": "BOB", "serial": "2" } }
+    ],
+    "cw_sent_contains": [
+      "K1ABC",
+      "1",
+      "TU",
+      "W2XYZ",
+      "2",
+      "TU"
+    ],
+    "final_serial_counter": 3
+  }
+}

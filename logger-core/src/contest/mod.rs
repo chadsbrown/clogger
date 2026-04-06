@@ -1,5 +1,6 @@
 pub mod cqww;
 pub mod cwt;
+pub mod mst;
 pub mod sweeps;
 pub mod traits;
 
@@ -9,6 +10,7 @@ pub fn contest_from_id(id: &str) -> Option<Box<dyn ContestEntry>> {
     match id.to_ascii_lowercase().as_str() {
         "cqww" => Some(Box::new(cqww::CqwwContest::default())),
         "cwt" => Some(Box::new(cwt::CwtContest::default())),
+        "mst" => Some(Box::new(mst::MstContest)),
         "sweeps" => Some(Box::new(sweeps::SweepsContest)),
         _ => None,
     }
