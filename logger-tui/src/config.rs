@@ -59,6 +59,9 @@ pub enum CursorStyle {
 #[derive(Debug, Deserialize, Default)]
 pub struct MacroOverrides {
     pub f1: Option<String>,
+    pub f2: Option<String>,
+    pub f3: Option<String>,
+    pub f5: Option<String>,
     pub f7: Option<String>,
     pub f8: Option<String>,
     pub f9: Option<String>,

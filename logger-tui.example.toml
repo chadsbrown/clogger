@@ -46,10 +46,13 @@
 #   e.g. "<5NN>" sends report 2 WPM slower then restores.
 #   Use {0} to explicitly restore original speed.
 # Prosigns: <AR>, <SK>, <BT>, <KN>, <AS> are sent as merged characters.
-# F2 (exchange), F3 (TU), F5 (call) are contest-driven and not overridable.
+# All keys use contest defaults if not specified.
 # ---------------------------------------------------------------------------
 #[macros]
 #f1 = "CQ TEST {MYCALL}"
+#f2 = ">{RST_SENT} {MYZONE}<"    # exchange (faster)
+#f3 = "TU {MYCALL}"               # thank you
+#f5 = "{CALL}"                     # other station's call
 #f7 = "?"
 #f8 = "NR {MYZONE} {MYZONE}"
 #f9 = "QRL?"

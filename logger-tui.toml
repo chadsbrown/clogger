@@ -12,6 +12,10 @@ cursor_style = "steady_block"
 
 [macros]
 f1 = "TEST {MYCALL}"
+#f2 = ">{RST_SENT} {MYZONE}<"    # exchange (faster)
+f2 = ">>{MYNAME} {MYXCHG}<<"
+#f3 = "TU {MYCALL}"               # thank you
+#f5 = "{CALL}"                     # other station's call
 f7 = "?"
 f8 = "<<<<CHAD>>>>"
 f9 = "QRL?"

@@ -67,6 +67,9 @@ async fn main() -> Result<()> {
     let mut macros = contest.default_macros();
     if let Some(ref overrides) = config.macros {
         if let Some(ref v) = overrides.f1 { macros.f1 = v.clone(); }
+        if let Some(ref v) = overrides.f2 { macros.f2 = v.clone(); }
+        if let Some(ref v) = overrides.f3 { macros.f3 = v.clone(); }
+        if let Some(ref v) = overrides.f5 { macros.f5 = v.clone(); }
         if let Some(ref v) = overrides.f7 { macros.f7 = v.clone(); }
         if let Some(ref v) = overrides.f8 { macros.f8 = v.clone(); }
         if let Some(ref v) = overrides.f9 { macros.f9 = v.clone(); }
