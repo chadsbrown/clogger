@@ -34,8 +34,8 @@
     ],
     "cw_sent_exact": [
       "K1ABC 123 A 77 EMA",
-      "K1ABC 123 A 77 WMA",
-      "TU N0CALL"
+      "TU N0CALL",
+      "CQ SS N0CALL"
     ]
   }
 }

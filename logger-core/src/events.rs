@@ -9,6 +9,8 @@ pub enum Key {
     Tab,
     Backspace,
     Esc,
+    Left,
+    Right,
     F1,
     F2,
     F3,

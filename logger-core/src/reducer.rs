@@ -139,10 +139,15 @@ pub fn reduce(
                 if !touched_call {
                     field.from_history = false;
                 }
-                field.value.push_str(&s);
+                field.value.insert_str(field.cursor, &s);
+                field.cursor += s.len();
             }
             revalidate_after_edit(st, contest);
             if touched_call {
+                // Editing the call after exchange was sent forces a resend
+                if st.entry.esm_step == EsmStep::ExchSent {
+                    st.entry.esm_step = EsmStep::Idle;
+                }
                 st.entry.scp_cycle_index = None;
                 recompute_feedback(st, dupe_checker, mult_checker);
                 apply_call_history(st, contest, call_history, scp);
@@ -164,14 +169,35 @@ pub fn reduce(
                     if !touched_call {
                         field.from_history = false;
                     }
-                    field.value.pop();
+                    if field.cursor > 0 {
+                        field.cursor -= 1;
+                        field.value.remove(field.cursor);
+                    }
                 }
                 revalidate_after_edit(st, contest);
                 if touched_call {
+                    // Editing the call after exchange was sent forces a resend
+                    if st.entry.esm_step == EsmStep::ExchSent {
+                        st.entry.esm_step = EsmStep::Idle;
+                    }
                     st.entry.scp_cycle_index = None;
                     recompute_feedback(st, dupe_checker, mult_checker);
                     apply_call_history(st, contest, call_history, scp);
                     revalidate_after_edit(st, contest);
+                }
+                Vec::new()
+            }
+            Key::Left => {
+                if let Some(field) = st.entry.focused_mut() {
+                    field.cursor = field.cursor.saturating_sub(1);
+                }
+                Vec::new()
+            }
+            Key::Right => {
+                if let Some(field) = st.entry.focused_mut() {
+                    if field.cursor < field.value.len() {
+                        field.cursor += 1;
+                    }
                 }
                 Vec::new()
             }
@@ -228,6 +254,7 @@ pub fn reduce(
                 st.entry.scp_cycle_index = Some(idx);
                 let new_call = st.entry.scp_matches[idx].clone();
                 if let Some(field) = st.entry.fields.iter_mut().find(|f| f.field_id == 1) {
+                    field.cursor = new_call.len();
                     field.value = new_call;
                 }
                 let saved_matches = st.entry.scp_matches.clone();
@@ -281,6 +308,7 @@ pub fn reduce(
 
             // Set call field to selected spot's callsign
             if let Some(field) = st.entry.fields.iter_mut().find(|f| f.field_id == 1) {
+                field.cursor = spot.call.len();
                 field.value = spot.call.clone();
             }
 
@@ -327,6 +355,7 @@ fn try_frequency_entry(st: &mut AppState) -> Option<Vec<Effect>> {
     // Clear the call field
     if let Some(field) = st.entry.fields.iter_mut().find(|f| f.field_id == 1) {
         field.value.clear();
+        field.cursor = 0;
     }
 
     Some(vec![Effect::RigSet { radio, freq_hz }])
@@ -349,11 +378,6 @@ fn revalidate_after_edit(st: &mut AppState, contest: &dyn ContestEntry) {
         }
     }
     st.entry.overall = validation.overall;
-    // Reset ExchSent→Idle on edit (forces re-send in Run mode).
-    // Keep CallSent so S&P users can fill exchange after sending their call.
-    if st.entry.esm_step == EsmStep::ExchSent {
-        st.entry.esm_step = EsmStep::Idle;
-    }
 }
 
 fn recompute_feedback(
@@ -402,6 +426,7 @@ fn apply_call_history(
         for field in &mut st.entry.fields {
             if field.from_history {
                 field.value.clear();
+                field.cursor = 0;
                 field.from_history = false;
             }
         }
@@ -423,6 +448,7 @@ fn apply_call_history(
                     } else {
                         value.to_ascii_uppercase()
                     };
+                    field.cursor = field.value.len();
                     field.from_history = true;
                 }
             }
@@ -434,6 +460,7 @@ fn clear_history_fields(st: &mut AppState) {
     for field in &mut st.entry.fields {
         if field.from_history {
             field.value.clear();
+            field.cursor = 0;
             field.from_history = false;
         }
     }
@@ -764,7 +791,7 @@ mod tests {
     }
 
     #[test]
-    fn invalid_enter_beeps_and_focuses_first_invalid() {
+    fn run_enter_with_call_sends_exchange() {
         let contest = CqwwContest::default();
         let mut st = mk_state();
         let macros = Macros::default();
@@ -785,8 +812,9 @@ mod tests {
             AppEvent::KeyPress { key: Key::Enter },
         );
 
-        assert!(effects.iter().any(|e| matches!(e, Effect::Beep { .. })));
-        assert_eq!(st.entry.fields[st.entry.focus].field_id, 2);
+        // In RUN mode, Enter sends exchange immediately (no validation gate)
+        assert!(effects.iter().any(|e| matches!(e, Effect::CwSend { .. })));
+        assert_eq!(st.entry.esm_step, EsmStep::ExchSent);
     }
 
     #[test]
@@ -985,7 +1013,9 @@ mod tests {
     }
 
     #[test]
-    fn run_edit_after_exch_sent_requires_resend_then_log() {
+    fn run_edit_received_exch_does_not_reset_esm() {
+        // Editing the received exchange fields should NOT reset ESM —
+        // only editing the CALL field should force a resend.
         let contest = CqwwContest::default();
         let mut st = mk_state();
         let macros = Macros::default();
@@ -1036,6 +1066,7 @@ mod tests {
         );
         assert_eq!(st.entry.esm_step, EsmStep::ExchSent);
 
+        // Edit zone field (received exchange) — ESM should stay ExchSent
         reduce(
             &mut st,
             &contest,
@@ -1050,40 +1081,104 @@ mod tests {
             &macros,
             AppEvent::TextInput { s: "4".to_string() },
         );
+        assert_eq!(st.entry.esm_step, EsmStep::ExchSent);
+
+        // Enter should log (not resend)
+        let effects = reduce(
+            &mut st,
+            &contest,
+            &macros,
+            AppEvent::KeyPress { key: Key::Enter },
+        );
+        assert!(effects
+            .iter()
+            .any(|e| matches!(e, Effect::LogInsert { .. })));
+        assert!(effects
+            .iter()
+            .any(|e| matches!(e, Effect::CwSend { text, .. } if text.starts_with("TU "))));
+    }
+
+    #[test]
+    fn run_edit_call_after_exch_sent_resets_esm() {
+        // Editing the CALL field after exchange sent should force a resend.
+        let contest = CqwwContest::default();
+        let mut st = mk_state();
+        let macros = Macros::default();
+        st.entry.mode = OpMode::Run;
+
+        reduce(
+            &mut st,
+            &contest,
+            &macros,
+            AppEvent::TextInput {
+                s: "K1ABC".to_string(),
+            },
+        );
+        reduce(
+            &mut st,
+            &contest,
+            &macros,
+            AppEvent::KeyPress { key: Key::Space },
+        );
+        reduce(
+            &mut st,
+            &contest,
+            &macros,
+            AppEvent::TextInput {
+                s: "599".to_string(),
+            },
+        );
+        reduce(
+            &mut st,
+            &contest,
+            &macros,
+            AppEvent::KeyPress { key: Key::Space },
+        );
+        reduce(
+            &mut st,
+            &contest,
+            &macros,
+            AppEvent::TextInput {
+                s: "05".to_string(),
+            },
+        );
+
+        let _ = reduce(
+            &mut st,
+            &contest,
+            &macros,
+            AppEvent::KeyPress { key: Key::Enter },
+        );
+        assert_eq!(st.entry.esm_step, EsmStep::ExchSent);
+
+        // Move focus back to call field and edit it
+        st.entry.focus = 0;
+        reduce(
+            &mut st,
+            &contest,
+            &macros,
+            AppEvent::KeyPress {
+                key: Key::Backspace,
+            },
+        );
         assert_eq!(st.entry.esm_step, EsmStep::Idle);
 
-        let effects_resend = reduce(
+        // Enter should resend (not log)
+        reduce(
+            &mut st,
+            &contest,
+            &macros,
+            AppEvent::TextInput { s: "D".to_string() },
+        );
+        let effects = reduce(
             &mut st,
             &contest,
             &macros,
             AppEvent::KeyPress { key: Key::Enter },
         );
-        assert!(
-            effects_resend.iter().any(|e| {
-                matches!(e, Effect::CwSend { text, .. } if text.contains("K1ABC 599 4"))
-            })
-        );
-        assert!(
-            !effects_resend
-                .iter()
-                .any(|e| matches!(e, Effect::LogInsert { .. }))
-        );
-
-        let effects_log = reduce(
-            &mut st,
-            &contest,
-            &macros,
-            AppEvent::KeyPress { key: Key::Enter },
-        );
-        assert!(
-            effects_log
-                .iter()
-                .any(|e| matches!(e, Effect::LogInsert { .. }))
-        );
-        assert!(
-            effects_log
-                .iter()
-                .any(|e| matches!(e, Effect::CwSend { text, .. } if text.starts_with("TU ")))
-        );
+        assert!(effects.iter().any(|e| matches!(e, Effect::CwSend { .. })));
+        assert!(!effects
+            .iter()
+            .any(|e| matches!(e, Effect::LogInsert { .. })));
     }
 }

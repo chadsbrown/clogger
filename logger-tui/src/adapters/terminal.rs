@@ -46,6 +46,8 @@ pub fn spawn_terminal_reader(tx: mpsc::Sender<TerminalEvent>) {
                     key: Key::Backspace,
                 }),
                 (_, KeyCode::Esc) => TerminalEvent::App(AppEvent::KeyPress { key: Key::Esc }),
+                (_, KeyCode::Left) => TerminalEvent::App(AppEvent::KeyPress { key: Key::Left }),
+                (_, KeyCode::Right) => TerminalEvent::App(AppEvent::KeyPress { key: Key::Right }),
                 (_, KeyCode::Tab) => TerminalEvent::App(AppEvent::KeyPress { key: Key::Tab }),
                 (_, KeyCode::F(1)) => TerminalEvent::App(AppEvent::KeyPress { key: Key::F1 }),
                 (_, KeyCode::F(2)) => TerminalEvent::App(AppEvent::KeyPress { key: Key::F2 }),

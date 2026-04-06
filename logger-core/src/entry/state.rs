@@ -35,6 +35,7 @@ pub struct EntryFieldState {
     pub field_id: u16,
     pub label: String,
     pub value: String,
+    pub cursor: usize,
     pub required: bool,
     pub width: u16,
     pub status: Validation,
@@ -65,6 +66,7 @@ impl EntryState {
                 field_id: f.field_id,
                 label: f.label.clone(),
                 value: String::new(),
+                cursor: 0,
                 required: f.required,
                 width: f.width,
                 status: Validation::Unknown,
@@ -90,6 +92,7 @@ impl EntryState {
     pub fn clear_values(&mut self) {
         for field in &mut self.fields {
             field.value.clear();
+            field.cursor = 0;
             field.status = Validation::Unknown;
             field.from_history = false;
         }

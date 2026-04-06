@@ -26,10 +26,6 @@ fn handle_run(st: &mut AppState, contest: &dyn ContestEntry, macros: &Macros) ->
         }];
     }
 
-    if st.entry.overall.is_invalid() {
-        return invalid_focus_effects(st);
-    }
-
     if st.entry.esm_step == EsmStep::Idle && st.esm_policy.run_two_step {
         st.entry.esm_step = EsmStep::ExchSent;
         let mut effects = vec![Effect::CwSend {
@@ -44,6 +40,10 @@ fn handle_run(st: &mut AppState, contest: &dyn ContestEntry, macros: &Macros) ->
             }
         }
         return effects;
+    }
+
+    if st.entry.overall.is_invalid() {
+        return invalid_focus_effects(st);
     }
 
     log_and_clear(st, contest, macros, true, !st.esm_policy.run_two_step)

@@ -61,7 +61,7 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState, cw_history: &[String
         let style = Style::default().fg(fg);
 
         if is_focused {
-            cursor_col = Some(col + field.value.len() as u16);
+            cursor_col = Some(col + field.cursor as u16);
         }
 
         let scp_check = field.field_id == 1
