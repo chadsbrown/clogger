@@ -7,6 +7,10 @@ pub struct Script {
     #[serde(default)]
     pub esm_policy: EsmPolicyConfig,
     #[serde(default)]
+    pub uses_serial: bool,
+    #[serde(default)]
+    pub macro_overrides: MacroOverrides,
+    #[serde(default)]
     pub call_history: Vec<CallHistoryEntry>,
     #[serde(default)]
     pub scp_calls: Vec<String>,
@@ -86,6 +90,7 @@ pub struct Expectations {
     pub final_is_dupe: Option<bool>,
     pub final_is_new_mult: Option<bool>,
     pub final_field_values: Option<BTreeMap<u16, String>>,
+    pub final_serial_counter: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -104,4 +109,15 @@ fn default_mode() -> String {
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct EsmPolicyConfig {
     pub run_two_step: Option<bool>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct MacroOverrides {
+    pub f1: Option<String>,
+    pub f2: Option<String>,
+    pub f3: Option<String>,
+    pub f5: Option<String>,
+    pub f7: Option<String>,
+    pub f8: Option<String>,
+    pub f9: Option<String>,
 }

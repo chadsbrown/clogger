@@ -28,6 +28,7 @@ fn handle_run(st: &mut AppState, contest: &dyn ContestEntry, macros: &Macros) ->
 
     if st.entry.esm_step == EsmStep::Idle && st.esm_policy.run_two_step {
         st.entry.esm_step = EsmStep::ExchSent;
+        claim_serial(st, contest);
         let mut effects = vec![Effect::CwSend {
             radio: st.focused_radio,
             text: compose_call_exchange(st, macros),
@@ -69,6 +70,7 @@ fn handle_sp(st: &mut AppState, contest: &dyn ContestEntry, macros: &Macros) -> 
                 return invalid_focus_effects(st);
             }
             st.entry.esm_step = EsmStep::ExchSent;
+            claim_serial(st, contest);
             vec![Effect::CwSend {
                 radio: st.focused_radio,
                 text: expand_macro(&macros.f2, st),
@@ -85,8 +87,13 @@ fn log_and_clear(
     send_tu: bool,
     send_exch: bool,
 ) -> Vec<Effect> {
+    claim_serial(st, contest);
     match contest.build_qso_draft(&st.entry, &entry_ctx(st)) {
-        Ok(draft) => {
+        Ok(mut draft) => {
+            // Append serial to exchange if assigned
+            if let Some(serial) = st.entry.assigned_serial {
+                draft.exchange_pairs.push(("serial".to_string(), serial.to_string()));
+            }
             let exch_text = compose_call_exchange(st, macros);
             let tu_text = if send_tu {
                 Some(expand_macro(&macros.f3, st))
@@ -155,11 +162,27 @@ fn invalid_focus_effects(st: &mut AppState) -> Vec<Effect> {
     effects
 }
 
+/// Claim the next serial number from the counter, storing it in entry state.
+/// No-op if the contest doesn't use serials or a serial is already claimed.
+fn claim_serial(st: &mut AppState, contest: &dyn ContestEntry) {
+    if !contest.uses_serial() {
+        return;
+    }
+    if st.entry.assigned_serial.is_some() {
+        return;
+    }
+    if let Some(ref mut counter) = st.serial_counter {
+        st.entry.assigned_serial = Some(*counter);
+        *counter += 1;
+    }
+}
+
 fn entry_ctx(st: &AppState) -> EntryContext {
     EntryContext {
         my_call: st.my_call.clone(),
         my_zone: st.my_zone,
         rst_sent: st.rst_sent.clone(),
         rig: st.radios.get(&st.focused_radio).cloned(),
+        serial: st.entry.assigned_serial,
     }
 }

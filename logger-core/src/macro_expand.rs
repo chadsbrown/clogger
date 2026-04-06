@@ -15,11 +15,17 @@ pub fn expand_macro(template: &str, st: &AppState) -> String {
     };
 
     let my_zone = st.my_zone.to_string();
+    let serial_str = st
+        .entry
+        .assigned_serial
+        .map(|n| n.to_string())
+        .unwrap_or_default();
     let base = [
         ("{MYCALL}", st.my_call.as_str()),
         ("{MYZONE}", my_zone.as_str()),
         ("{RST_SENT}", st.rst_sent.as_str()),
         ("{CALL}", effective_call),
+        ("{SERIAL}", serial_str.as_str()),
     ];
 
     let mut out = base
@@ -126,6 +132,7 @@ mod tests {
             esm_policy: EsmPolicy::default(),
             bandmap_cursor: None,
             default_cw_speed: 28,
+            serial_counter: None,
             last_logged_context: None,
         };
         st.radios.insert(1, RadioState {
@@ -170,6 +177,7 @@ mod tests {
             esm_policy: EsmPolicy::default(),
             bandmap_cursor: None,
             default_cw_speed: 28,
+            serial_counter: None,
             last_logged_context: None,
         };
 
@@ -195,6 +203,7 @@ mod tests {
             esm_policy: EsmPolicy::default(),
             bandmap_cursor: None,
             default_cw_speed: 1,
+            serial_counter: None,
             last_logged_context: None,
         };
 
@@ -220,6 +229,7 @@ mod tests {
             esm_policy: EsmPolicy::default(),
             bandmap_cursor: None,
             default_cw_speed: 28,
+            serial_counter: None,
             last_logged_context: None,
         };
         st.entry.fields[0].value = "K1ABC".to_string();

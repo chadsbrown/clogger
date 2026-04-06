@@ -34,6 +34,7 @@ pub struct SessionConfig {
     pub db_path: Option<PathBuf>,
     pub call_history_path: Option<PathBuf>,
     pub scp_path: Option<PathBuf>,
+    pub start_serial: Option<u32>,
 }
 
 pub struct Session {
@@ -71,7 +72,7 @@ pub fn bootstrap(config: SessionConfig) -> Result<Session> {
     let scorer =
         crate::scoring::scorer_for_contest(contest.as_ref(), config.my_zone, &my_exchange);
 
-    let state = AppState {
+    let mut state = AppState {
         now_ms: chrono::Utc::now().timestamp_millis(),
         focused_radio: 1,
         active_operator: 1,
@@ -86,6 +87,7 @@ pub fn bootstrap(config: SessionConfig) -> Result<Session> {
         esm_policy: EsmPolicy::default(),
         bandmap_cursor: None,
         default_cw_speed: config.default_cw_speed,
+        serial_counter: None,
         last_logged_context: None,
     };
 
@@ -94,6 +96,14 @@ pub fn bootstrap(config: SessionConfig) -> Result<Session> {
     } else {
         LogAdapter::new(scorer)
     };
+
+    // Initialize serial counter for contests that use it
+    if contest.uses_serial() {
+        let start = config
+            .start_serial
+            .unwrap_or_else(|| log_adapter.max_sent_serial() + 1);
+        state.serial_counter = Some(start);
+    }
 
     let call_history = load_call_history(config.call_history_path.as_deref());
     let scp = load_scp(config.scp_path.as_deref());

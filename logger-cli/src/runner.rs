@@ -5,8 +5,8 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 use logger_core::{
-    AppEvent, AppState, BeepKind, CallHistoryLookup, Effect, EntryState, EsmPolicy, Key,
-    NoCallHistory, NoScp, OpMode, ScpLookup, Spot, contest_from_id, reduce,
+    AppEvent, AppState, BeepKind, CallHistoryLookup, ContestEntry, Effect, EntryState, EsmPolicy,
+    Key, Macros, NoCallHistory, NoScp, OpMode, ScpLookup, Spot, contest_from_id, reduce,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -191,15 +191,56 @@ fn is_edit_distance_one(a: &str, b: &str) -> bool {
     }
 }
 
+/// Wrapper that overrides `uses_serial()` on an inner contest.
+struct SerialContest(Box<dyn ContestEntry>);
+
+impl ContestEntry for SerialContest {
+    fn contest_id(&self) -> &str { self.0.contest_id() }
+    fn contest_instance_id(&self) -> u64 { self.0.contest_instance_id() }
+    fn default_macros(&self) -> Macros { self.0.default_macros() }
+    fn form_spec(&self) -> logger_core::entry::spec::EntryFormSpec { self.0.form_spec() }
+    fn validate_entry(
+        &self,
+        input: &EntryState,
+        ctx: &logger_core::EntryContext,
+    ) -> logger_core::entry::validation::EntryValidation {
+        self.0.validate_entry(input, ctx)
+    }
+    fn build_qso_draft(
+        &self,
+        input: &EntryState,
+        ctx: &logger_core::EntryContext,
+    ) -> Result<logger_core::QsoDraft, logger_core::EntryError> {
+        self.0.build_qso_draft(input, ctx)
+    }
+    fn history_field_mapping(&self) -> Vec<(&str, u16)> { self.0.history_field_mapping() }
+    fn uses_serial(&self) -> bool { true }
+}
+
 fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
     let contest_id = script
         .contest
         .as_deref()
         .unwrap_or("cqww")
         .to_ascii_lowercase();
-    let contest = contest_from_id(&contest_id)
-        .ok_or_else(|| anyhow::anyhow!("unknown contest: {contest_id}"))?;
-    let macros = contest.default_macros();
+    let contest: Box<dyn ContestEntry> = {
+        let base = contest_from_id(&contest_id)
+            .ok_or_else(|| anyhow::anyhow!("unknown contest: {contest_id}"))?;
+        if script.uses_serial {
+            Box::new(SerialContest(base))
+        } else {
+            base
+        }
+    };
+    let mut macros = contest.default_macros();
+    let ov = &script.macro_overrides;
+    if let Some(ref v) = ov.f1 { macros.f1 = v.clone(); }
+    if let Some(ref v) = ov.f2 { macros.f2 = v.clone(); }
+    if let Some(ref v) = ov.f3 { macros.f3 = v.clone(); }
+    if let Some(ref v) = ov.f5 { macros.f5 = v.clone(); }
+    if let Some(ref v) = ov.f7 { macros.f7 = v.clone(); }
+    if let Some(ref v) = ov.f8 { macros.f8 = v.clone(); }
+    if let Some(ref v) = ov.f9 { macros.f9 = v.clone(); }
 
     let mut st = AppState {
         now_ms: 0,
@@ -216,10 +257,14 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
         esm_policy: EsmPolicy::default(),
         bandmap_cursor: None,
         default_cw_speed: 28,
+        serial_counter: None,
         last_logged_context: None,
     };
     if let Some(v) = script.esm_policy.run_two_step {
         st.esm_policy.run_two_step = v;
+    }
+    if contest.uses_serial() {
+        st.serial_counter = Some(1);
     }
 
     let mut keyer = FakeKeyer::default();
@@ -523,6 +568,16 @@ fn validate_expectations(artifacts: &RunArtifacts, script: &Script) -> Result<()
         }
     }
 
+    if let Some(expected) = script.expectations.final_serial_counter
+        && artifacts.st.serial_counter != Some(expected)
+    {
+        bail!(
+            "expected serial_counter {:?}, got {:?}",
+            expected,
+            artifacts.st.serial_counter
+        );
+    }
+
     Ok(())
 }
 
@@ -583,6 +638,7 @@ mod tests {
             "so2r_focus_mult_per_band.json",
             "cwt_call_history_prepopulate.json",
             "cqww_call_history_operator_override.json",
+            "cqww_serial_number.json",
         ];
 
         for script in scripts {

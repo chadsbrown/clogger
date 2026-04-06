@@ -9,6 +9,7 @@ pub struct EntryContext {
     pub my_zone: u8,
     pub rst_sent: String,
     pub rig: Option<RadioState>,
+    pub serial: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,5 +32,10 @@ pub trait ContestEntry {
     /// Maps .ch column names to form field_ids for history pre-population.
     fn history_field_mapping(&self) -> Vec<(&str, u16)> {
         vec![]
+    }
+
+    /// Whether this contest uses auto-incrementing serial numbers in the sent exchange.
+    fn uses_serial(&self) -> bool {
+        false
     }
 }

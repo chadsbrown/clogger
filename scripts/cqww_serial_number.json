@@ -1,0 +1,46 @@
+{
+  "uses_serial": true,
+  "macro_overrides": {
+    "f2": "{RST_SENT} {SERIAL}"
+  },
+  "events": [
+    { "type": "RigStatus", "radio": 1, "freq_hz": 14025000, "mode": "CW", "is_ptt": false },
+    { "type": "SetMode", "mode": "Run" },
+
+    { "type": "Text", "s": "K1ABC" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "599" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "5" },
+    { "type": "Key", "key": "Enter" },
+    { "type": "Key", "key": "Enter" },
+
+    { "type": "Text", "s": "W2XYZ" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "599" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "3" },
+    { "type": "Key", "key": "Enter" },
+    { "type": "Key", "key": "Enter" },
+
+    { "type": "Text", "s": "N3ABC" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "599" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "5" },
+    { "type": "Key", "key": "Enter" },
+    { "type": "Key", "key": "Esc" }
+  ],
+  "expectations": {
+    "qsos": [
+      { "call": "K1ABC", "exchange": { "serial": "1" } },
+      { "call": "W2XYZ", "exchange": { "serial": "2" } }
+    ],
+    "cw_sent_contains": [
+      "599 1",
+      "599 2",
+      "599 3"
+    ],
+    "final_serial_counter": 4
+  }
+}

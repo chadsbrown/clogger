@@ -63,6 +63,7 @@ async fn main() -> Result<()> {
         db_path: cli.db.as_ref().or(config.db_path.as_ref()).cloned(),
         call_history_path: cli.call_history.as_ref().or(config.call_history_file.as_ref()).cloned(),
         scp_path: cli.scp.as_ref().or(config.scp_file.as_ref()).cloned(),
+        start_serial: None,
     })?;
 
     // Two-channel bridge: hardware adapters send AppEvent, terminal sends TerminalEvent

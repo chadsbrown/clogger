@@ -242,6 +242,7 @@ mod tests {
                 my_zone: 4,
                 rst_sent: "599".to_string(),
                 rig: None,
+                serial: None,
             },
         );
         assert!(out.overall.is_valid());
@@ -261,6 +262,7 @@ mod tests {
                 my_zone: 4,
                 rst_sent: "599".to_string(),
                 rig: None,
+                serial: None,
             },
         );
         assert!(out.overall.is_invalid());

@@ -108,6 +108,22 @@ impl LogAdapter {
     pub fn score_summary(&self) -> ScoreSummary {
         self.scorer.score_summary(&self.ordered_records())
     }
+
+    /// Returns the highest serial number found in logged exchange_pairs, or 0 if none.
+    pub fn max_sent_serial(&self) -> u32 {
+        self.ordered_records()
+            .iter()
+            .filter(|r| !r.flags.is_void)
+            .filter_map(|r| {
+                decode_exchange_pairs(&r.exchange)
+                    .ok()?
+                    .into_iter()
+                    .find(|(k, _)| k == "serial")
+                    .and_then(|(_, v)| v.parse::<u32>().ok())
+            })
+            .max()
+            .unwrap_or(0)
+    }
 }
 
 impl DupeChecker for LogAdapter {

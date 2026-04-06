@@ -369,6 +369,7 @@ fn revalidate_after_edit(st: &mut AppState, contest: &dyn ContestEntry) {
             my_zone: st.my_zone,
             rst_sent: st.rst_sent.clone(),
             rig: st.radios.get(&st.focused_radio).cloned(),
+            serial: st.entry.assigned_serial,
         },
     );
 
@@ -545,6 +546,7 @@ mod tests {
             esm_policy: EsmPolicy::default(),
             bandmap_cursor: None,
             default_cw_speed: 28,
+            serial_counter: None,
             last_logged_context: None,
         }
     }

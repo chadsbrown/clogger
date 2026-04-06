@@ -55,6 +55,7 @@ pub struct EntryState {
     pub scp_matches: Vec<String>,
     pub scp_n1_matches: Vec<String>,
     pub scp_cycle_index: Option<usize>,
+    pub assigned_serial: Option<u32>,
 }
 
 impl EntryState {
@@ -86,6 +87,7 @@ impl EntryState {
             scp_matches: Vec::new(),
             scp_n1_matches: Vec::new(),
             scp_cycle_index: None,
+            assigned_serial: None,
         }
     }
 
@@ -103,6 +105,7 @@ impl EntryState {
         self.scp_matches.clear();
         self.scp_n1_matches.clear();
         self.scp_cycle_index = None;
+        self.assigned_serial = None;
     }
 
     pub fn focused_mut(&mut self) -> Option<&mut EntryFieldState> {

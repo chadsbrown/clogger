@@ -29,6 +29,13 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState, cw_history: &[String
         ));
         title_spans.push(Span::raw(" "));
     }
+    // Show serial number if contest uses serials
+    if let Some(serial) = st.entry.assigned_serial.or(st.serial_counter) {
+        title_spans.push(Span::styled(
+            format!("NR:{serial} "),
+            Style::default().fg(Color::Yellow),
+        ));
+    }
     let title = Line::from(title_spans);
     let block = Block::default()
         .borders(Borders::ALL)

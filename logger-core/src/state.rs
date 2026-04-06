@@ -93,6 +93,7 @@ pub struct AppState {
     pub esm_policy: EsmPolicy,
     pub bandmap_cursor: Option<usize>,
     pub default_cw_speed: u8,
+    pub serial_counter: Option<u32>,
 }
 
 impl AppState {
