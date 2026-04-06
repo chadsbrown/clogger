@@ -33,6 +33,11 @@
 # (can also be set via --scp CLI flag)
 #scp_file = "master.scp"
 
+# Cursor style (default: blinking_block)
+# Options: blinking_block, steady_block, blinking_underline, steady_underline,
+#          blinking_bar, steady_bar
+#cursor_style = "steady_underline"
+
 # ---------------------------------------------------------------------------
 # Rig control (optional — omit entire section to run without)
 # ---------------------------------------------------------------------------

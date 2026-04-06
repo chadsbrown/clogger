@@ -203,6 +203,7 @@ async fn main() -> Result<()> {
         keyer,
         keyer_rx,
         cw_echo_enabled,
+        config.cursor_style,
         call_history,
         scp,
         tui_rx,

@@ -36,9 +36,23 @@ pub struct Config {
     pub db_path: Option<PathBuf>,
     pub call_history_file: Option<PathBuf>,
     pub scp_file: Option<PathBuf>,
+    #[serde(default)]
+    pub cursor_style: CursorStyle,
     pub rig: Option<logger_runtime::RigConfig>,
     pub keyer: Option<logger_runtime::KeyerConfig>,
     pub dxfeed: Option<logger_runtime::DxFeedConfig>,
+}
+
+#[derive(Debug, Default, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CursorStyle {
+    #[default]
+    BlinkingBlock,
+    SteadyBlock,
+    BlinkingUnderline,
+    SteadyUnderline,
+    BlinkingBar,
+    SteadyBar,
 }
 
 fn default_rst_sent() -> String {

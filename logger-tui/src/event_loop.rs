@@ -29,6 +29,7 @@ pub async fn run(
     keyer: Option<Box<dyn Keyer>>,
     mut keyer_rx: Option<broadcast::Receiver<KeyerEvent>>,
     cw_echo_enabled: bool,
+    cursor_style: crate::config::CursorStyle,
     call_history: Box<dyn CallHistoryLookup>,
     scp: Box<dyn ScpLookup>,
     mut rx: mpsc::Receiver<TerminalEvent>,
@@ -39,7 +40,15 @@ pub async fn run(
 ) -> Result<()> {
     // Setup terminal
     terminal::enable_raw_mode()?;
-    crossterm::execute!(io::stdout(), EnterAlternateScreen, cursor::Hide)?;
+    let cs = match cursor_style {
+        crate::config::CursorStyle::BlinkingBlock => cursor::SetCursorStyle::BlinkingBlock,
+        crate::config::CursorStyle::SteadyBlock => cursor::SetCursorStyle::SteadyBlock,
+        crate::config::CursorStyle::BlinkingUnderline => cursor::SetCursorStyle::BlinkingUnderScore,
+        crate::config::CursorStyle::SteadyUnderline => cursor::SetCursorStyle::SteadyUnderScore,
+        crate::config::CursorStyle::BlinkingBar => cursor::SetCursorStyle::BlinkingBar,
+        crate::config::CursorStyle::SteadyBar => cursor::SetCursorStyle::SteadyBar,
+    };
+    crossterm::execute!(io::stdout(), EnterAlternateScreen, cs)?;
     let backend = CrosstermBackend::new(io::stdout());
     let mut terminal = ratatui::Terminal::new(backend)?;
 
@@ -149,7 +158,7 @@ pub async fn run(
 
     // Restore terminal
     terminal::disable_raw_mode()?;
-    crossterm::execute!(io::stdout(), LeaveAlternateScreen, cursor::Show)?;
+    crossterm::execute!(io::stdout(), LeaveAlternateScreen, cursor::Show, cursor::SetCursorStyle::DefaultUserShape)?;
 
     result
 }

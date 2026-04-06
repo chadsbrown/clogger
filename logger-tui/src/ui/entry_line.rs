@@ -64,10 +64,23 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState, cw_history: &[String
             cursor_col = Some(col + field.value.len() as u16);
         }
 
-        let display_val = format!("{:<width$}", field.value, width = field_width);
-        let val_len = display_val.len() as u16;
-        spans.push(Span::styled(display_val, style));
-        col += val_len;
+        let scp_check = field.field_id == 1
+            && !field.value.is_empty()
+            && st.entry.scp_matches.contains(&field.value);
+
+        if scp_check {
+            // Value + checkmark + remaining padding, all within field_width
+            let used = field.value.len() + 2; // value + space + checkmark
+            let pad = field_width.saturating_sub(used);
+            spans.push(Span::styled(&field.value, style));
+            spans.push(Span::raw(" "));
+            spans.push(Span::styled("\u{2713}", Style::default().fg(Color::Green)));
+            spans.push(Span::styled(format!("{:<pad$}", ""), style));
+        } else {
+            let display_val = format!("{:<width$}", field.value, width = field_width);
+            spans.push(Span::styled(display_val, style));
+        }
+        col += field_width as u16;
 
         // Separator
         spans.push(Span::raw(" "));
