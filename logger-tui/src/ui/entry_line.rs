@@ -104,8 +104,21 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState, cw_history: &[String
         Line::default()
     };
 
+    let freq_line = if let Some(radio) = st.radios.get(&st.focused_radio) {
+        let freq_khz = radio.freq_hz as f64 / 1_000.0;
+        let text = format!("{:.1} kHz  {}", freq_khz, radio.mode);
+        let w = inner.width as usize;
+        let pad = w.saturating_sub(text.len());
+        Line::from(vec![
+            Span::raw(" ".repeat(pad)),
+            Span::styled(text, Style::default().fg(Color::Yellow)),
+        ])
+    } else {
+        Line::default()
+    };
+
     let lines = vec![
-        Line::default(),
+        freq_line,
         Line::from(spans),
         cw_line,
     ];

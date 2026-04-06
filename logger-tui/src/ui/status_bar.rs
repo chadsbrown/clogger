@@ -19,18 +19,6 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState, tui: &TuiState) {
     ));
     left_spans.push(Span::raw(" "));
 
-    // Radio freq/mode
-    if let Some(rig) = st.radios.get(&st.focused_radio) {
-        let freq_khz = rig.freq_hz as f64 / 1_000.0;
-        left_spans.push(Span::styled(
-            format!("{:.1} kHz", freq_khz),
-            Style::default().fg(Color::Yellow),
-        ));
-        left_spans.push(Span::raw(" "));
-        left_spans.push(Span::styled(&rig.mode, Style::default().fg(Color::Yellow)));
-        left_spans.push(Span::raw(" "));
-    }
-
     // Dupe indicator
     if st.entry.is_dupe {
         left_spans.push(Span::styled(

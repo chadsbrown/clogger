@@ -242,7 +242,13 @@ pub fn reduce(
                 st.entry.scp_cycle_index = saved_index;
                 Vec::new()
             }
-            Key::Enter => handle_esm(st, contest, macros),
+            Key::Enter => {
+                if let Some(effects) = try_frequency_entry(st) {
+                    effects
+                } else {
+                    handle_esm(st, contest, macros)
+                }
+            }
         },
         AppEvent::EsmTrigger => handle_esm(st, contest, macros),
         AppEvent::BandmapUp | AppEvent::BandmapDown => {
@@ -291,6 +297,39 @@ pub fn reduce(
             vec![Effect::RigSet { radio, freq_hz }]
         }
     }
+}
+
+fn try_frequency_entry(st: &mut AppState) -> Option<Vec<Effect>> {
+    let call = st.current_call();
+    if call.is_empty() {
+        return None;
+    }
+
+    // Must be all digits with optional single decimal point
+    let mut has_dot = false;
+    for ch in call.chars() {
+        if ch == '.' {
+            if has_dot { return None; }
+            has_dot = true;
+        } else if !ch.is_ascii_digit() {
+            return None;
+        }
+    }
+
+    let khz: f64 = call.parse().ok()?;
+    if !(1800.0..=30000.0).contains(&khz) {
+        return None;
+    }
+
+    let freq_hz = (khz * 1000.0) as u64;
+    let radio = st.focused_radio;
+
+    // Clear the call field
+    if let Some(field) = st.entry.fields.iter_mut().find(|f| f.field_id == 1) {
+        field.value.clear();
+    }
+
+    Some(vec![Effect::RigSet { radio, freq_hz }])
 }
 
 fn revalidate_after_edit(st: &mut AppState, contest: &dyn ContestEntry) {
