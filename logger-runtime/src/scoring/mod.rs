@@ -56,13 +56,10 @@ pub fn scorer_for_contest(
         config.insert(format!("my_{}", k.to_ascii_lowercase()), Value::Text(v.clone()));
     }
 
-    // Try spec-based scorer; fall back for contests without a spec
-    let spec_path = format!(
-        "{}/../../contest-engine/specs/{}.json",
-        env!("CARGO_MANIFEST_DIR"),
-        contest_id
-    );
-    if std::path::Path::new(&spec_path).exists() {
+    // Try spec-based scorer; fall back for contests without an embedded spec.
+    // spec_by_id() is a compile-time embedded lookup — no filesystem access,
+    // so the release binary is self-contained.
+    if contest_engine::spec::embedded::spec_by_id(contest_id).is_some() {
         Box::new(spec_scorer::SpecScorer::new(contest_id, contest_instance_id, config))
     } else if contest_id == "sweeps" {
         Box::new(sweeps::SweepsScorer)

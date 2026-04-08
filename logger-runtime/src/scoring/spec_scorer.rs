@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use contest_engine::spec::{
-    ContestSpec, InMemoryDomainProvider, InMemoryResolver, Mode as CeMode, ResolvedStation,
-    SpecSession, Value, domain_packs,
+    InMemoryDomainProvider, InMemoryResolver, Mode as CeMode, ResolvedStation, SpecSession, Value,
+    embedded,
 };
 use contest_engine::types::{Band as CeBand, Callsign, Continent};
 use qsolog::qso::QsoRecord;
@@ -35,19 +35,11 @@ impl SpecScorer {
         records: &[QsoRecord],
         extra_calls: &[&str],
     ) -> anyhow::Result<SpecSession<InMemoryResolver, InMemoryDomainProvider>> {
-        let spec_path = format!(
-            "{}/../../contest-engine/specs/{}.json",
-            env!("CARGO_MANIFEST_DIR"),
-            self.spec_id
-        );
-        let domain_path = format!(
-            "{}/../../contest-engine/specs/domains",
-            env!("CARGO_MANIFEST_DIR")
-        );
-        let spec = ContestSpec::from_path(spec_path)
-            .map_err(|e| anyhow::anyhow!("load {} spec: {e}", self.spec_id))?;
-        let domains =
-            domain_packs::load_standard_domain_pack(domain_path).map_err(|e| anyhow::anyhow!(e))?;
+        // Load spec from the embedded (compile-time baked) specs in contest-engine.
+        // No filesystem access — the release binary is self-contained.
+        let spec = embedded::spec_by_id(&self.spec_id)
+            .ok_or_else(|| anyhow::anyhow!("no embedded spec for contest '{}'", self.spec_id))?;
+        let domains = embedded::standard_domain_pack();
 
         let mut resolver = InMemoryResolver::new();
         for rec in records {
