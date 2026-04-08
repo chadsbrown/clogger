@@ -118,6 +118,11 @@
 # Real-time CW echo — display characters one-by-one as the WinKeyer
 # echoes them back, instead of showing the full message at once (default: false)
 #cw_echo = true
+#
+# Enable the WinKeyer's audio sidetone output (default: true).
+# Set to false to silence the WinKeyer's speaker — useful when your rig
+# provides its own sidetone, or for silent operation.
+#sidetone = false
 
 # ---------------------------------------------------------------------------
 # OTRSP SO2R hardware switch (optional — omit entire section to run without)

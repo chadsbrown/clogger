@@ -26,10 +26,19 @@ pub struct KeyerConfig {
     /// Show CW characters in real-time as the WinKeyer echoes them back.
     #[serde(default)]
     pub cw_echo: bool,
+    /// Enable the WinKeyer's audio sidetone output. When false, no audio
+    /// is produced while sending CW (useful when the rig provides its own
+    /// sidetone or for silent operation). Default: true.
+    #[serde(default = "default_sidetone")]
+    pub sidetone: bool,
 }
 
 fn default_speed() -> u8 {
     28
+}
+
+fn default_sidetone() -> bool {
+    true
 }
 
 #[derive(Debug, Deserialize)]
