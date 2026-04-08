@@ -1,3 +1,33 @@
 [workspace]
 members = ["logger-core", "logger-runtime", "logger-cli", "logger-tui"]
 resolver = "2"
+
+# ---------------------------------------------------------------------------
+# Local dependency overrides for simultaneous development.
+#
+# Uncomment any [patch."..."] block below to point at a local working copy
+# instead of fetching from GitHub. Cargo will use the local path without
+# any other Cargo.toml changes. Remember to comment back out (or run
+# `cargo update -p <name>`) after you've pushed the dependency changes.
+# ---------------------------------------------------------------------------
+
+# [patch."https://github.com/chadsbrown/qsolog"]
+# qsolog = { path = "../qsolog" }
+#
+# [patch."https://github.com/chadsbrown/contest-engine"]
+# contest-engine = { path = "../contest-engine" }
+#
+# [patch."https://github.com/chadsbrown/riglib"]
+# riglib = { path = "../riglib/crates/riglib" }
+#
+# [patch."https://github.com/chadsbrown/winkey"]
+# winkey = { path = "../winkey" }
+#
+# [patch."https://github.com/chadsbrown/otrsp"]
+# otrsp = { path = "../otrsp" }
+#
+# [patch."https://github.com/chadsbrown/dxfeed"]
+# dxfeed = { path = "../dxfeed" }
+#
+# [patch."https://github.com/chadsbrown/station-data"]
+# station-data = { path = "../station-data" }

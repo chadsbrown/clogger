@@ -267,6 +267,7 @@ dependencies = [
 [[package]]
 name = "contest-engine"
 version = "0.1.0"
+source = "git+https://github.com/chadsbrown/contest-engine?branch=master#6772d9fbd76fe49558145ffe56403b196c17bec2"
 dependencies = [
  "adif_parser",
  "serde",
@@ -384,6 +385,7 @@ dependencies = [
 [[package]]
 name = "dxfeed"
 version = "0.1.0"
+source = "git+https://github.com/chadsbrown/dxfeed?branch=master#1f344f207fc6c79c42228bf010308a0837eb18b8"
 dependencies = [
  "chrono",
  "globset",
@@ -794,7 +796,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
- "contest-engine 0.1.0",
+ "contest-engine 0.1.0 (git+https://github.com/chadsbrown/contest-engine?branch=master)",
  "csv",
  "dxfeed",
  "logger-core",
@@ -933,6 +935,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 [[package]]
 name = "otrsp"
 version = "0.1.0"
+source = "git+https://github.com/chadsbrown/otrsp?branch=master#b8e150a14aaa3fa39907c50af7593c065f6e74be"
 dependencies = [
  "async-trait",
  "thiserror 2.0.18",
@@ -1005,6 +1008,7 @@ dependencies = [
 [[package]]
 name = "qsolog"
 version = "0.1.0"
+source = "git+https://github.com/chadsbrown/qsolog?branch=master#63cd580ae9f1d3cf62a6d3292e3da7c96ebfacf6"
 dependencies = [
  "hashbrown 0.15.5",
  "rusqlite",
@@ -1090,6 +1094,7 @@ checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 [[package]]
 name = "riglib"
 version = "0.1.0"
+source = "git+https://github.com/chadsbrown/riglib?branch=master#0a371076f8f5138d5a4fded3fae0671efb27f7a9"
 dependencies = [
  "riglib-core",
  "riglib-elecraft",
@@ -1103,6 +1108,7 @@ dependencies = [
 [[package]]
 name = "riglib-core"
 version = "0.1.0"
+source = "git+https://github.com/chadsbrown/riglib?branch=master#0a371076f8f5138d5a4fded3fae0671efb27f7a9"
 dependencies = [
  "async-trait",
  "thiserror 2.0.18",
@@ -1112,6 +1118,7 @@ dependencies = [
 [[package]]
 name = "riglib-elecraft"
 version = "0.1.0"
+source = "git+https://github.com/chadsbrown/riglib?branch=master#0a371076f8f5138d5a4fded3fae0671efb27f7a9"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1126,6 +1133,7 @@ dependencies = [
 [[package]]
 name = "riglib-flex"
 version = "0.1.0"
+source = "git+https://github.com/chadsbrown/riglib?branch=master#0a371076f8f5138d5a4fded3fae0671efb27f7a9"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1139,6 +1147,7 @@ dependencies = [
 [[package]]
 name = "riglib-icom"
 version = "0.1.0"
+source = "git+https://github.com/chadsbrown/riglib?branch=master#0a371076f8f5138d5a4fded3fae0671efb27f7a9"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1153,6 +1162,7 @@ dependencies = [
 [[package]]
 name = "riglib-kenwood"
 version = "0.1.0"
+source = "git+https://github.com/chadsbrown/riglib?branch=master#0a371076f8f5138d5a4fded3fae0671efb27f7a9"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1167,6 +1177,7 @@ dependencies = [
 [[package]]
 name = "riglib-text-io"
 version = "0.1.0"
+source = "git+https://github.com/chadsbrown/riglib?branch=master#0a371076f8f5138d5a4fded3fae0671efb27f7a9"
 dependencies = [
  "riglib-core",
  "tokio",
@@ -1177,6 +1188,7 @@ dependencies = [
 [[package]]
 name = "riglib-transport"
 version = "0.1.0"
+source = "git+https://github.com/chadsbrown/riglib?branch=master#0a371076f8f5138d5a4fded3fae0671efb27f7a9"
 dependencies = [
  "async-trait",
  "riglib-core",
@@ -1189,6 +1201,7 @@ dependencies = [
 [[package]]
 name = "riglib-yaesu"
 version = "0.1.0"
+source = "git+https://github.com/chadsbrown/riglib?branch=master#0a371076f8f5138d5a4fded3fae0671efb27f7a9"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1424,6 +1437,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 [[package]]
 name = "station-data"
 version = "0.1.0"
+source = "git+https://github.com/chadsbrown/station-data?branch=master#1b0f4345527d9479af749f62acd3229e941311d9"
 dependencies = [
  "contest-engine 0.1.0 (git+https://github.com/chadsbrown/contest-engine)",
  "thiserror 2.0.18",
@@ -2041,6 +2055,7 @@ checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
 [[package]]
 name = "winkey"
 version = "0.1.0"
+source = "git+https://github.com/chadsbrown/winkey?branch=master#01cb09b41c84cbb27a87b7c5005780f1ce462a07"
 dependencies = [
  "async-trait",
  "bitflags 2.11.0",
