@@ -41,9 +41,18 @@ pub struct TuiState {
     pub avail: AvailSummary,
     pub rate: RateInfo,
     pub error_message: Option<String>,
+    /// Whether each hardware backend was *configured* in TOML (regardless of
+    /// whether the connection succeeded). Used by the status bar to render a
+    /// red "configured but not connected" indicator distinct from the empty
+    /// "not configured at all" state.
+    pub rig_configured: bool,
+    pub keyer_configured: bool,
+    pub dxfeed_configured: bool,
+    pub so2r_configured: bool,
     pub rig_connected: bool,
     pub keyer_connected: bool,
     pub dxfeed_connected: bool,
+    pub so2r_connected: bool,
 }
 
 impl Default for TuiState {
@@ -60,9 +69,14 @@ impl Default for TuiState {
             avail: AvailSummary::default(),
             rate: RateInfo::default(),
             error_message: None,
+            rig_configured: false,
+            keyer_configured: false,
+            dxfeed_configured: false,
+            so2r_configured: false,
             rig_connected: false,
             keyer_connected: false,
             dxfeed_connected: false,
+            so2r_connected: false,
         }
     }
 }
@@ -110,6 +124,7 @@ async fn main() -> Result<()> {
     adapters::terminal::spawn_terminal_reader(tui_tx.clone());
 
     // Spawn rig adapters (one per configured rig, indexed by radio_id)
+    let rig_configured = !config.rigs.is_empty();
     let mut rigs: HashMap<RadioId, Arc<dyn Rig>> = HashMap::new();
     let mut rig_connected = false;
     for rig_config in &config.rigs {
@@ -123,6 +138,7 @@ async fn main() -> Result<()> {
     }
 
     // Optionally connect keyer (first rig's cw_speed overrides keyer speed_wpm)
+    let keyer_configured = config.keyer.is_some();
     let mut keyer_connected = false;
     let rig_cw_speed = config.rigs.iter().find_map(|r| r.cw_speed);
     let keyer: Option<Box<dyn Keyer>> = if let Some(keyer_config) = &config.keyer {
@@ -147,6 +163,7 @@ async fn main() -> Result<()> {
     };
 
     // Optionally connect dxfeed
+    let dxfeed_configured = config.dxfeed.is_some();
     let mut dxfeed_connected = false;
     if let Some(dxfeed_config) = &config.dxfeed {
         match logger_runtime::spawn_dxfeed_adapter(dxfeed_config, app_tx.clone()).await {
@@ -156,11 +173,16 @@ async fn main() -> Result<()> {
     }
 
     // Optionally connect OTRSP SO2R switch
+    let so2r_configured = config.so2r.is_some();
+    let mut so2r_connected = false;
     let (so2r_switch, so2r_default_rx_mode): (Option<Box<dyn So2rSwitch>>, logger_core::So2rRxMode) =
         if let Some(so2r_config) = &config.so2r {
             let mode = logger_runtime::so2r_adapter::parse_rx_mode(&so2r_config.default_rx_mode);
             match logger_runtime::so2r_adapter::connect_so2r(so2r_config).await {
-                Ok(switch) => (Some(switch), mode),
+                Ok(switch) => {
+                    so2r_connected = true;
+                    (Some(switch), mode)
+                }
                 Err(e) => {
                     warn!("OTRSP connection failed, continuing without: {e}");
                     (None, mode)
@@ -198,11 +220,29 @@ async fn main() -> Result<()> {
         session.scp,
         tui_rx,
         initial_log_display,
-        rig_connected,
-        keyer_connected,
-        dxfeed_connected,
+        ConnectionStatus {
+            rig_configured,
+            rig_connected,
+            keyer_configured,
+            keyer_connected,
+            dxfeed_configured,
+            dxfeed_connected,
+            so2r_configured,
+            so2r_connected,
+        },
         so2r_switch,
         so2r_default_rx_mode,
     )
     .await
+}
+
+pub struct ConnectionStatus {
+    pub rig_configured: bool,
+    pub rig_connected: bool,
+    pub keyer_configured: bool,
+    pub keyer_connected: bool,
+    pub dxfeed_configured: bool,
+    pub dxfeed_connected: bool,
+    pub so2r_configured: bool,
+    pub so2r_connected: bool,
 }

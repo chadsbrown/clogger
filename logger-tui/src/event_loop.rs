@@ -34,9 +34,7 @@ pub async fn run(
     scp: Box<dyn ScpLookup>,
     mut rx: mpsc::Receiver<TerminalEvent>,
     initial_log_display: Vec<LogRow>,
-    rig_connected: bool,
-    keyer_connected: bool,
-    dxfeed_connected: bool,
+    conn: crate::ConnectionStatus,
     so2r_switch: Option<Box<dyn So2rSwitch>>,
     so2r_default_rx_mode: logger_core::So2rRxMode,
 ) -> Result<()> {
@@ -58,9 +56,14 @@ pub async fn run(
     let mut tui_state = TuiState {
         log_display: initial_log_display,
         score: initial_score,
-        rig_connected,
-        keyer_connected,
-        dxfeed_connected,
+        rig_configured: conn.rig_configured,
+        rig_connected: conn.rig_connected,
+        keyer_configured: conn.keyer_configured,
+        keyer_connected: conn.keyer_connected,
+        dxfeed_configured: conn.dxfeed_configured,
+        dxfeed_connected: conn.dxfeed_connected,
+        so2r_configured: conn.so2r_configured,
+        so2r_connected: conn.so2r_connected,
         cw_echo_enabled,
         tx_radio: state.focused_radio,
         ..Default::default()

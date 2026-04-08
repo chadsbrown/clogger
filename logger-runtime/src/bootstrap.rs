@@ -95,10 +95,11 @@ pub fn bootstrap(config: SessionConfig) -> Result<Session> {
         serial_counter: None,
     };
 
+    let contest_instance_id = contest.contest_instance_id();
     let log_adapter = if let Some(db_path) = &config.db_path {
-        LogAdapter::open_db(scorer, db_path)?
+        LogAdapter::open_db(scorer, contest_instance_id, db_path)?
     } else {
-        LogAdapter::new(scorer)
+        LogAdapter::new(scorer, contest_instance_id)
     };
 
     // Initialize serial counter for contests that use it

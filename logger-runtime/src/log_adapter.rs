@@ -16,18 +16,27 @@ pub struct LogAdapter {
     store: QsoStore,
     sink: Option<SqliteOpSink>,
     scorer: Box<dyn ContestScorer>,
+    /// The contest this adapter is logging for. All inserted QSOs are
+    /// tagged with this id in the qsolog store. A log session always
+    /// represents one contest, so this is set at construction time.
+    contest_instance_id: u64,
 }
 
 impl LogAdapter {
-    pub fn new(scorer: Box<dyn ContestScorer>) -> Self {
+    pub fn new(scorer: Box<dyn ContestScorer>, contest_instance_id: u64) -> Self {
         Self {
             store: QsoStore::new(),
             sink: None,
             scorer,
+            contest_instance_id,
         }
     }
 
-    pub fn open_db(scorer: Box<dyn ContestScorer>, path: &Path) -> Result<Self> {
+    pub fn open_db(
+        scorer: Box<dyn ContestScorer>,
+        contest_instance_id: u64,
+        path: &Path,
+    ) -> Result<Self> {
         let sink = SqliteOpSink::open(path).map_err(|e| anyhow::anyhow!("open db: {e:?}"))?;
         let store = sink
             .load_store()
@@ -38,6 +47,7 @@ impl LogAdapter {
             store,
             sink: Some(sink),
             scorer,
+            contest_instance_id,
         })
     }
 
@@ -53,7 +63,7 @@ impl LogAdapter {
         };
 
         let store_draft = StoreDraft {
-            contest_instance_id: draft.exchange_schema_id as u64,
+            contest_instance_id: self.contest_instance_id,
             callsign_raw: draft.callsign.clone(),
             callsign_norm: draft.callsign,
             band: to_band(&draft.band),
@@ -71,14 +81,7 @@ impl LogAdapter {
             .insert(store_draft)
             .map_err(|e| anyhow::anyhow!("insert failed: {e:?}"))?;
 
-        // Persist to SQLite if available
-        if let Some(sink) = &mut self.sink {
-            let ops = self.store.drain_pending_ops();
-            if !ops.is_empty() {
-                sink.append_ops(&ops)
-                    .map_err(|e| anyhow::anyhow!("persist failed: {e:?}"))?;
-            }
-        }
+        self.flush_pending_ops()?;
 
         Ok(id)
     }
@@ -95,6 +98,7 @@ impl LogAdapter {
         self.store
             .undo()
             .map_err(|e| anyhow::anyhow!("undo failed: {e:?}"))?;
+        self.flush_pending_ops()?;
         Ok(())
     }
 
@@ -102,6 +106,20 @@ impl LogAdapter {
         self.store
             .redo()
             .map_err(|e| anyhow::anyhow!("redo failed: {e:?}"))?;
+        self.flush_pending_ops()?;
+        Ok(())
+    }
+
+    /// Drain any pending ops from the store and append them to the SQLite sink
+    /// if one is attached. Called after operations that mutate the store.
+    fn flush_pending_ops(&mut self) -> Result<()> {
+        if let Some(sink) = &mut self.sink {
+            let ops = self.store.drain_pending_ops();
+            if !ops.is_empty() {
+                sink.append_ops(&ops)
+                    .map_err(|e| anyhow::anyhow!("persist failed: {e:?}"))?;
+            }
+        }
         Ok(())
     }
 
@@ -179,12 +197,8 @@ mod tests {
     use crate::scoring::scorer_for_contest;
     use logger_core::contest_from_id;
 
-    #[test]
-    fn undo_redo_placeholder_roundtrip() {
-        let contest = contest_from_id("cqww").expect("cqww contest");
-        let scorer = scorer_for_contest(contest.as_ref(), 4, &std::collections::HashMap::new());
-        let mut adapter = LogAdapter::new(scorer);
-        let draft = logger_core::QsoDraft {
+    fn sample_draft() -> logger_core::QsoDraft {
+        logger_core::QsoDraft {
             contest_id: "cqww".to_string(),
             callsign: "K1ABC".to_string(),
             band: "20m".to_string(),
@@ -195,14 +209,86 @@ mod tests {
                 ("rst".to_string(), "599".to_string()),
                 ("zone".to_string(), "5".to_string()),
             ],
-        };
+        }
+    }
 
-        adapter.insert(draft, 1, 1, 1).expect("insert");
+    #[test]
+    fn undo_redo_placeholder_roundtrip() {
+        let contest = contest_from_id("cqww").expect("cqww contest");
+        let scorer = scorer_for_contest(contest.as_ref(), 4, &std::collections::HashMap::new());
+        let mut adapter = LogAdapter::new(scorer, 1);
+
+        adapter.insert(sample_draft(), 1, 1, 1).expect("insert");
         assert_eq!(adapter.ordered_records().len(), 1);
         adapter.undo().expect("undo");
         assert!(adapter.ordered_records()[0].flags.is_void);
         adapter.redo().expect("redo");
         assert!(!adapter.ordered_records()[0].flags.is_void);
         assert_eq!(adapter.ordered_records().len(), 1);
+    }
+
+    #[test]
+    fn undo_persists_to_sqlite_across_reload() {
+        let tempdir = tempfile::tempdir().expect("tempdir");
+        let db_path = tempdir.path().join("undo.db");
+
+        let contest = contest_from_id("cqww").expect("cqww contest");
+
+        // Scope 1: insert a QSO and then undo it. Drop the adapter to force
+        // any in-memory state to be discarded — only the SQLite journal survives.
+        {
+            let scorer =
+                scorer_for_contest(contest.as_ref(), 4, &std::collections::HashMap::new());
+            let mut adapter = LogAdapter::open_db(scorer, 1, &db_path).expect("open_db");
+            adapter.insert(sample_draft(), 1, 1, 1).expect("insert");
+            adapter.undo().expect("undo");
+            assert!(adapter.ordered_records()[0].flags.is_void);
+        }
+
+        // Scope 2: reopen from the SQLite file. The undo should still be
+        // reflected in the restored state.
+        {
+            let scorer =
+                scorer_for_contest(contest.as_ref(), 4, &std::collections::HashMap::new());
+            let adapter = LogAdapter::open_db(scorer, 1, &db_path).expect("reopen_db");
+            let records = adapter.ordered_records();
+            assert_eq!(records.len(), 1, "record should still exist after reload");
+            assert!(
+                records[0].flags.is_void,
+                "undo should have persisted across reload"
+            );
+        }
+    }
+
+    #[test]
+    fn redo_persists_to_sqlite_across_reload() {
+        let tempdir = tempfile::tempdir().expect("tempdir");
+        let db_path = tempdir.path().join("redo.db");
+
+        let contest = contest_from_id("cqww").expect("cqww contest");
+
+        // Insert → undo → redo, drop adapter
+        {
+            let scorer =
+                scorer_for_contest(contest.as_ref(), 4, &std::collections::HashMap::new());
+            let mut adapter = LogAdapter::open_db(scorer, 1, &db_path).expect("open_db");
+            adapter.insert(sample_draft(), 1, 1, 1).expect("insert");
+            adapter.undo().expect("undo");
+            adapter.redo().expect("redo");
+            assert!(!adapter.ordered_records()[0].flags.is_void);
+        }
+
+        // Reopen — the redo should still be in effect
+        {
+            let scorer =
+                scorer_for_contest(contest.as_ref(), 4, &std::collections::HashMap::new());
+            let adapter = LogAdapter::open_db(scorer, 1, &db_path).expect("reopen_db");
+            let records = adapter.ordered_records();
+            assert_eq!(records.len(), 1);
+            assert!(
+                !records[0].flags.is_void,
+                "redo should have persisted across reload"
+            );
+        }
     }
 }

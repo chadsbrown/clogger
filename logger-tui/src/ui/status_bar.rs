@@ -37,26 +37,26 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState, tui: &TuiState) {
         left_spans.push(Span::raw(" "));
     }
 
-    // Right-aligned connection indicators
+    // Right-aligned connection indicators (tri-state):
+    //   green = configured + connected
+    //   red   = configured + not connected
+    //   omit  = not configured
     let mut right_spans: Vec<Span> = Vec::new();
-    if tui.rig_connected {
-        right_spans.push(Span::styled("RIG", Style::default().fg(Color::Green)));
-    } else if st.radios.is_empty() && !tui.rig_connected {
-        // Only show red if rig was configured (we detect this by checking rig_connected is false
-        // but we don't track "configured"; omit if not connected and no radio state exists)
-    }
-    if tui.keyer_connected {
-        if !right_spans.is_empty() {
-            right_spans.push(Span::raw(" "));
-        }
-        right_spans.push(Span::styled("KEY", Style::default().fg(Color::Green)));
-    }
-    if tui.dxfeed_connected {
-        if !right_spans.is_empty() {
-            right_spans.push(Span::raw(" "));
-        }
-        right_spans.push(Span::styled("DXF", Style::default().fg(Color::Green)));
-    }
+    let push_indicator =
+        |spans: &mut Vec<Span<'static>>, label: &'static str, configured: bool, connected: bool| {
+            if !configured {
+                return;
+            }
+            if !spans.is_empty() {
+                spans.push(Span::raw(" "));
+            }
+            let color = if connected { Color::Green } else { Color::Red };
+            spans.push(Span::styled(label, Style::default().fg(color)));
+        };
+    push_indicator(&mut right_spans, "RIG", tui.rig_configured, tui.rig_connected);
+    push_indicator(&mut right_spans, "KEY", tui.keyer_configured, tui.keyer_connected);
+    push_indicator(&mut right_spans, "DXF", tui.dxfeed_configured, tui.dxfeed_connected);
+    push_indicator(&mut right_spans, "SO2R", tui.so2r_configured, tui.so2r_connected);
 
     if right_spans.is_empty() {
         frame.render_widget(Paragraph::new(Line::from(left_spans)), area);

@@ -30,6 +30,28 @@ fn normalize(name: &str) -> String {
     name.to_lowercase().replace('-', "")
 }
 
+/// Spawn a rig adapter task and return a handle to the rig.
+///
+/// # Limitation: one receiver per adapter
+///
+/// Each adapter instance is bound to a single `radio_id` from `RigConfig`,
+/// and assumes the rig has exactly one receiver of interest (the primary).
+/// All events from the rig — `FrequencyChanged`, `ModeChanged`, `PttChanged`,
+/// `Disconnected` — are tagged with that `radio_id` regardless of which
+/// receiver index they came from.
+///
+/// This is correct for the supported SO2R model: two physically separate rigs,
+/// each with its own CAT connection, each spawning its own adapter with
+/// `radio_id = 1` and `radio_id = 2` respectively.
+///
+/// **It is NOT correct for a single rig with multiple independent receivers**
+/// (e.g., K3 + KRX3, FlexRadio with multiple slices, IC-7610 with sub-RX) where
+/// you would want each receiver mapped to a different `radio_id`. In that case,
+/// events from the sub-receiver would be misattributed to the main receiver's
+/// `radio_id`, and `LastRigState` would cross-contaminate freq/mode between
+/// receivers. Multi-receiver-per-rig support is a future enhancement: it would
+/// require per-receiver `LastRigState` tracking and a config mapping from
+/// `(rig, receiver_index)` to `radio_id`.
 pub async fn spawn_rig_adapter(
     config: &RigConfig,
     tx: mpsc::Sender<AppEvent>,

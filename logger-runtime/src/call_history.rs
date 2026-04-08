@@ -1,6 +1,6 @@
 use std::{collections::HashMap, path::Path};
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use logger_core::CallHistoryLookup;
 
 /// In-memory call history database parsed from N1MM `.ch` files.
@@ -25,9 +25,11 @@ impl CallHistoryDb {
             }
 
             if trimmed.starts_with("!!Order!!") {
-                columns = trimmed
-                    .split(',')
-                    .skip(1)
+                // Header line: "!!Order!!,Call,Name,Exch1,..."
+                // Strip the sentinel and parse the rest as CSV.
+                let body = trimmed.strip_prefix("!!Order!!").unwrap().trim_start_matches(',');
+                columns = parse_csv_line(body)?
+                    .into_iter()
                     .map(|s| s.trim().to_string())
                     .filter(|s| !s.is_empty())
                     .collect();
@@ -38,12 +40,12 @@ impl CallHistoryDb {
                 bail!("data line before !!Order!! header");
             }
 
-            let fields: Vec<&str> = trimmed.split(',').collect();
+            let fields = parse_csv_line(trimmed)?;
             let mut record: HashMap<String, String> = HashMap::new();
             let mut call = String::new();
 
             for (i, col) in columns.iter().enumerate() {
-                let value = fields.get(i).unwrap_or(&"").trim().to_string();
+                let value = fields.get(i).map(|s| s.trim()).unwrap_or("").to_string();
                 if col.eq_ignore_ascii_case("Call") {
                     call = value.to_ascii_uppercase();
                 } else if !value.is_empty() {
@@ -57,6 +59,23 @@ impl CallHistoryDb {
         }
 
         Ok(Self { records })
+    }
+}
+
+/// Parse a single CSV line (RFC 4180 quoting), returning the field values.
+/// Uses the `csv` crate so quoted fields containing commas are handled correctly.
+fn parse_csv_line(line: &str) -> Result<Vec<String>> {
+    let mut reader = csv::ReaderBuilder::new()
+        .has_headers(false)
+        .flexible(true)
+        .from_reader(line.as_bytes());
+    let mut iter = reader.records();
+    match iter.next() {
+        Some(record) => {
+            let record = record.context("parsing CSV line")?;
+            Ok(record.iter().map(|s| s.to_string()).collect())
+        }
+        None => Ok(Vec::new()),
     }
 }
 
@@ -130,5 +149,31 @@ K1ABC,BOB
 ";
         let db = CallHistoryDb::parse(content).unwrap();
         assert_eq!(db.records.len(), 1);
+    }
+
+    #[test]
+    fn quoted_field_with_comma_preserves_alignment() {
+        // "Smith, John" contains a comma inside quotes; without quote-aware
+        // parsing this would be split into two fields and shift the rest.
+        let content = "\
+!!Order!!,Call,Name,Exch1
+K1ABC,\"Smith, John\",1234
+W2XYZ,Bob,5678
+";
+        let db = CallHistoryDb::parse(content).unwrap();
+        assert_eq!(db.records.len(), 2);
+
+        let k1abc = db.lookup("K1ABC").unwrap();
+        let map: HashMap<&str, &str> =
+            k1abc.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+        assert_eq!(map.get("Name"), Some(&"Smith, John"));
+        assert_eq!(map.get("Exch1"), Some(&"1234"));
+
+        // Verify the next row wasn't shifted by the embedded comma
+        let w2xyz = db.lookup("W2XYZ").unwrap();
+        let map: HashMap<&str, &str> =
+            w2xyz.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+        assert_eq!(map.get("Name"), Some(&"Bob"));
+        assert_eq!(map.get("Exch1"), Some(&"5678"));
     }
 }
