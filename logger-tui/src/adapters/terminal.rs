@@ -29,6 +29,12 @@ pub fn spawn_terminal_reader(tx: mpsc::Sender<TerminalEvent>) {
                 (m, KeyCode::Down) if m.contains(KeyModifiers::CONTROL) => {
                     TerminalEvent::App(AppEvent::BandmapDown)
                 }
+                (_, KeyCode::Up) => {
+                    TerminalEvent::App(AppEvent::FocusRadio { radio: 1 })
+                }
+                (_, KeyCode::Down) => {
+                    TerminalEvent::App(AppEvent::FocusRadio { radio: 2 })
+                }
                 (_, KeyCode::Insert) => {
                     TerminalEvent::App(AppEvent::ToggleOpMode)
                 }

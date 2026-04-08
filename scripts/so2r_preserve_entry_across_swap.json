@@ -1,0 +1,26 @@
+{
+  "events": [
+    { "type": "RigStatus", "radio": 1, "freq_hz": 14025000, "mode": "CW", "is_ptt": false },
+    { "type": "RigStatus", "radio": 2, "freq_hz": 21025000, "mode": "CW", "is_ptt": false },
+
+    { "type": "FocusRadio", "radio": 1 },
+    { "type": "Text", "s": "K1ABC" },
+
+    { "type": "SwapRadios" },
+    { "type": "Text", "s": "W2DEF" },
+
+    { "type": "SwapRadios" }
+  ],
+  "expectations": {
+    "qsos": [],
+    "final_focused_radio": 1,
+    "final_radio_entries": {
+      "1": {
+        "field_values": { "1": "K1ABC" }
+      },
+      "2": {
+        "field_values": { "1": "W2DEF" }
+      }
+    }
+  }
+}

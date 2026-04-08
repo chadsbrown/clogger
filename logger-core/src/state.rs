@@ -82,10 +82,9 @@ pub struct AppState {
     pub focused_radio: RadioId,
     pub active_operator: OperatorId,
     pub radios: HashMap<RadioId, RadioState>,
-    pub entry: EntryState,
+    pub entries: HashMap<RadioId, EntryState>,
     pub bandmap: Vec<Spot>,
     pub last_logged: Option<QsoRef>,
-    pub last_logged_context: Option<LastLoggedContext>,
     pub my_call: String,
     pub my_zone: u8,
     pub rst_sent: String,
@@ -97,8 +96,33 @@ pub struct AppState {
 }
 
 impl AppState {
+    /// Get the entry state for the focused radio.
+    /// Panics if the focused radio's entry is missing — entries must be initialized at bootstrap.
+    pub fn focused_entry(&self) -> &EntryState {
+        self.entries
+            .get(&self.focused_radio)
+            .expect("entries must contain the focused radio")
+    }
+
+    /// Get a mutable reference to the entry state for the focused radio.
+    pub fn focused_entry_mut(&mut self) -> &mut EntryState {
+        self.entries
+            .get_mut(&self.focused_radio)
+            .expect("entries must contain the focused radio")
+    }
+
+    /// Get the entry state for a specific radio, if it exists.
+    pub fn entry_for(&self, radio: RadioId) -> Option<&EntryState> {
+        self.entries.get(&radio)
+    }
+
+    /// Get a mutable reference to the entry state for a specific radio.
+    pub fn entry_for_mut(&mut self, radio: RadioId) -> Option<&mut EntryState> {
+        self.entries.get_mut(&radio)
+    }
+
     pub fn current_call(&self) -> String {
-        self.entry
+        self.focused_entry()
             .get_field_value_by_id(1)
             .map(|v| v.trim().to_uppercase())
             .unwrap_or_default()

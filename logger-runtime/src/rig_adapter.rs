@@ -100,7 +100,10 @@ pub async fn spawn_rig_adapter(
     let is_ptt = rig.get_ptt().await.unwrap_or(false);
 
     let mode_str = map_mode(&mode);
-    let radio_id = primary.index() + 1;
+    // Each rig adapter is tied to a single radio_id (configured in TOML).
+    // This allows two physical rigs (each reporting receiver index 0) to be
+    // distinguished as Radio 1 and Radio 2.
+    let radio_id = config.radio_id;
 
     let _ = tx
         .send(AppEvent::RigStatus {
@@ -123,24 +126,22 @@ pub async fn spawn_rig_adapter(
     tokio::spawn(async move {
         loop {
             match events.recv().await {
-                Ok(RigEvent::FrequencyChanged { receiver, freq_hz }) => {
+                Ok(RigEvent::FrequencyChanged { receiver: _, freq_hz }) => {
                     last.freq_hz = freq_hz;
-                    let radio = receiver.index() + 1;
                     let _ = event_tx
                         .send(AppEvent::RigStatus {
-                            radio,
+                            radio: radio_id,
                             freq_hz: last.freq_hz,
                             mode: last.mode.clone(),
                             is_ptt: last.is_ptt,
                         })
                         .await;
                 }
-                Ok(RigEvent::ModeChanged { receiver, mode }) => {
+                Ok(RigEvent::ModeChanged { receiver: _, mode }) => {
                     last.mode = map_mode(&mode);
-                    let radio = receiver.index() + 1;
                     let _ = event_tx
                         .send(AppEvent::RigStatus {
-                            radio,
+                            radio: radio_id,
                             freq_hz: last.freq_hz,
                             mode: last.mode.clone(),
                             is_ptt: last.is_ptt,
@@ -151,7 +152,7 @@ pub async fn spawn_rig_adapter(
                     last.is_ptt = on;
                     let _ = event_tx
                         .send(AppEvent::RigStatus {
-                            radio: 1,
+                            radio: radio_id,
                             freq_hz: last.freq_hz,
                             mode: last.mode.clone(),
                             is_ptt: last.is_ptt,

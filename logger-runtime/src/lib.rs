@@ -8,10 +8,11 @@ pub mod log_adapter;
 pub mod rig_adapter;
 pub mod scoring;
 pub mod scp;
+pub mod so2r_adapter;
 
 pub use call_history::CallHistoryDb;
 pub use scp::ScpDb;
-pub use config::{DxFeedConfig, DxFeedSourceConfig, KeyerConfig, RigConfig};
+pub use config::{DxFeedConfig, DxFeedSourceConfig, KeyerConfig, RigConfig, So2rConfig};
 pub use dxfeed_adapter::spawn_dxfeed_adapter;
 pub use keyer_adapter::{abort_cw, connect_keyer, send_cw};
 pub use log_adapter::{LogAdapter, decode_exchange_pairs};
@@ -31,3 +32,7 @@ pub use winkey::KeyerEvent;
 // Re-export riglib types so TUI doesn't need a direct riglib dep
 pub use riglib::Rig;
 pub use riglib::ReceiverId;
+
+// Re-export otrsp types so TUI doesn't need a direct otrsp dep
+pub use otrsp::So2rSwitch;
+pub use otrsp::Radio as OtrspRadio;

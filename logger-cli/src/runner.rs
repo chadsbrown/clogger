@@ -58,6 +58,9 @@ enum TraceEffect {
     },
     CwAbort,
     UiClearEntry,
+    So2rFocusChanged {
+        radio: u8,
+    },
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -242,12 +245,15 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
     if let Some(ref v) = ov.f8 { macros.f8 = v.clone(); }
     if let Some(ref v) = ov.f9 { macros.f9 = v.clone(); }
 
+    let mut entries = HashMap::new();
+    entries.insert(1, EntryState::from_spec(&contest.form_spec()));
+    entries.insert(2, EntryState::from_spec(&contest.form_spec()));
     let mut st = AppState {
         now_ms: 0,
         focused_radio: 1,
         active_operator: 1,
         radios: HashMap::new(),
-        entry: EntryState::from_spec(&contest.form_spec()),
+        entries,
         bandmap: Vec::new(),
         last_logged: None,
         my_call: "N0CALL".to_string(),
@@ -258,7 +264,6 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
         bandmap_cursor: None,
         default_cw_speed: 28,
         serial_counter: None,
-        last_logged_context: None,
     };
     if let Some(v) = script.esm_policy.run_two_step {
         st.esm_policy.run_two_step = v;
@@ -309,6 +314,7 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
                 },
             }),
             ScriptEvent::FocusRadio { radio } => Some(AppEvent::FocusRadio { radio }),
+            ScriptEvent::SwapRadios => Some(AppEvent::SwapRadios),
             ScriptEvent::Text { s } => Some(AppEvent::TextInput { s }),
             ScriptEvent::Key { key } => Some(AppEvent::KeyPress {
                 key: match key {
@@ -364,15 +370,18 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
                     }
                     Effect::UiSetFocus { field_id } => {
                         if let Some(idx) =
-                            st.entry.fields.iter().position(|f| f.field_id == field_id)
+                            st.focused_entry().fields.iter().position(|f| f.field_id == field_id)
                         {
-                            st.entry.focus = idx;
+                            st.focused_entry_mut().focus = idx;
                         }
                     }
                     Effect::CwAbort => {}
                     Effect::RigSet { .. } => {}
                     Effect::UiClearEntry => {
                         // state already reflects clear behavior in reducer
+                    }
+                    Effect::So2rFocusChanged { .. } => {
+                        // SO2R hardware switching is a no-op in script tests
                     }
                 }
             }
@@ -384,19 +393,19 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
                 effects: trace_effects,
                 state_after: TraceState {
                     focused_radio: st.focused_radio,
-                    entry_focus_index: st.entry.focus,
+                    entry_focus_index: st.focused_entry().focus,
                     entry_focus_field_id: st
-                        .entry
+                        .focused_entry()
                         .fields
-                        .get(st.entry.focus)
+                        .get(st.focused_entry().focus)
                         .map(|f| f.field_id)
                         .unwrap_or(0),
-                    esm_step: format!("{:?}", st.entry.esm_step),
-                    is_dupe: st.entry.is_dupe,
-                    is_new_mult: st.entry.is_new_mult,
-                    overall: normalize_overall(&st.entry.overall),
-                    scp_matches: st.entry.scp_matches.clone(),
-                    scp_n1_matches: st.entry.scp_n1_matches.clone(),
+                    esm_step: format!("{:?}", st.focused_entry().esm_step),
+                    is_dupe: st.focused_entry().is_dupe,
+                    is_new_mult: st.focused_entry().is_new_mult,
+                    overall: normalize_overall(&st.focused_entry().overall),
+                    scp_matches: st.focused_entry().scp_matches.clone(),
+                    scp_n1_matches: st.focused_entry().scp_n1_matches.clone(),
                 },
             });
         }
@@ -520,11 +529,10 @@ fn validate_expectations(artifacts: &RunArtifacts, script: &Script) -> Result<()
     }
 
     if let Some(expected_field_id) = script.expectations.focus_field_id {
-        let got = artifacts
-            .st
-            .entry
+        let entry = artifacts.st.focused_entry();
+        let got = entry
             .fields
-            .get(artifacts.st.entry.focus)
+            .get(entry.focus)
             .map(|f| f.field_id)
             .unwrap_or(0);
         if got != expected_field_id {
@@ -532,21 +540,21 @@ fn validate_expectations(artifacts: &RunArtifacts, script: &Script) -> Result<()
         }
     }
     if let Some(expected) = script.expectations.final_is_dupe
-        && artifacts.st.entry.is_dupe != expected
+        && artifacts.st.focused_entry().is_dupe != expected
     {
         bail!(
             "expected final is_dupe {}, got {}",
             expected,
-            artifacts.st.entry.is_dupe
+            artifacts.st.focused_entry().is_dupe
         );
     }
     if let Some(expected) = script.expectations.final_is_new_mult
-        && artifacts.st.entry.is_new_mult != expected
+        && artifacts.st.focused_entry().is_new_mult != expected
     {
         bail!(
             "expected final is_new_mult {}, got {}",
             expected,
-            artifacts.st.entry.is_new_mult
+            artifacts.st.focused_entry().is_new_mult
         );
     }
 
@@ -554,7 +562,7 @@ fn validate_expectations(artifacts: &RunArtifacts, script: &Script) -> Result<()
         for (field_id, expected_val) in expected_fields {
             let got = artifacts
                 .st
-                .entry
+                .focused_entry()
                 .get_field_value_by_id(*field_id)
                 .unwrap_or("");
             if got != expected_val {
@@ -576,6 +584,73 @@ fn validate_expectations(artifacts: &RunArtifacts, script: &Script) -> Result<()
             expected,
             artifacts.st.serial_counter
         );
+    }
+
+    if let Some(expected) = script.expectations.final_focused_radio
+        && artifacts.st.focused_radio != expected
+    {
+        bail!(
+            "expected focused_radio {}, got {}",
+            expected,
+            artifacts.st.focused_radio
+        );
+    }
+
+    for (radio_id, exp) in &script.expectations.final_radio_entries {
+        let entry = artifacts.st.entry_for(*radio_id).ok_or_else(|| {
+            anyhow::anyhow!("no entry for radio {radio_id}")
+        })?;
+        if let Some(expected_mode) = &exp.op_mode {
+            let got = format!("{:?}", entry.mode);
+            if got != *expected_mode {
+                bail!(
+                    "radio {} expected op_mode {:?}, got {:?}",
+                    radio_id,
+                    expected_mode,
+                    got
+                );
+            }
+        }
+        if let Some(expected_step) = &exp.esm_step {
+            let got = format!("{:?}", entry.esm_step);
+            if got != *expected_step {
+                bail!(
+                    "radio {} expected esm_step {:?}, got {:?}",
+                    radio_id,
+                    expected_step,
+                    got
+                );
+            }
+        }
+        if let Some(expected_fields) = &exp.field_values {
+            for (field_id, expected_val) in expected_fields {
+                let got = entry.get_field_value_by_id(*field_id).unwrap_or("");
+                if got != expected_val {
+                    bail!(
+                        "radio {} field {} expected {:?}, got {:?}",
+                        radio_id,
+                        field_id,
+                        expected_val,
+                        got
+                    );
+                }
+            }
+        }
+        if let Some(expected_field_id) = exp.focus_field_id {
+            let got = entry
+                .fields
+                .get(entry.focus)
+                .map(|f| f.field_id)
+                .unwrap_or(0);
+            if got != expected_field_id {
+                bail!(
+                    "radio {} expected focus field {}, got {}",
+                    radio_id,
+                    expected_field_id,
+                    got
+                );
+            }
+        }
     }
 
     Ok(())
@@ -603,6 +678,7 @@ fn normalize_effect(effect: &Effect) -> TraceEffect {
         },
         Effect::CwAbort => TraceEffect::CwAbort,
         Effect::UiClearEntry => TraceEffect::UiClearEntry,
+        Effect::So2rFocusChanged { radio } => TraceEffect::So2rFocusChanged { radio: *radio },
     }
 }
 
@@ -640,6 +716,10 @@ mod tests {
             "cqww_call_history_operator_override.json",
             "cqww_serial_number.json",
             "mst_run_two_step.json",
+            "so2r_preserve_entry_across_swap.json",
+            "so2r_independent_op_mode.json",
+            "so2r_concurrent_inflight_qsos.json",
+            "so2r_serial_shared_counter.json",
         ];
 
         for script in scripts {

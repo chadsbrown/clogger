@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::io;
 use std::time::Duration;
 
@@ -6,12 +7,12 @@ use crossterm::{
     cursor,
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use logger_core::{AppState, CallHistoryLookup, ContestEntry, Effect, Macros, ScpLookup, reduce};
+use logger_core::{AppState, CallHistoryLookup, ContestEntry, Effect, Macros, RadioId, ScpLookup, reduce};
 use logger_runtime::LogAdapter;
 use ratatui::backend::CrosstermBackend;
 use tokio::sync::{broadcast, mpsc};
 use std::sync::Arc;
-use logger_runtime::{Keyer, KeyerEvent, ReceiverId, Rig};
+use logger_runtime::{Keyer, KeyerEvent, ReceiverId, Rig, So2rSwitch};
 use tracing::warn;
 
 use crate::TuiState;
@@ -24,7 +25,7 @@ pub async fn run(
     contest: Box<dyn ContestEntry>,
     macros: Macros,
     mut log_adapter: LogAdapter,
-    rig: Option<Arc<dyn Rig>>,
+    rigs: HashMap<RadioId, Arc<dyn Rig>>,
     keyer: Option<Box<dyn Keyer>>,
     mut keyer_rx: Option<broadcast::Receiver<KeyerEvent>>,
     cw_echo_enabled: bool,
@@ -36,6 +37,8 @@ pub async fn run(
     rig_connected: bool,
     keyer_connected: bool,
     dxfeed_connected: bool,
+    so2r_switch: Option<Box<dyn So2rSwitch>>,
+    so2r_default_rx_mode: logger_core::So2rRxMode,
 ) -> Result<()> {
     // Setup terminal
     terminal::enable_raw_mode()?;
@@ -59,8 +62,14 @@ pub async fn run(
         keyer_connected,
         dxfeed_connected,
         cw_echo_enabled,
+        tx_radio: state.focused_radio,
         ..Default::default()
     };
+
+    // Initial OTRSP setup: route TX and RX to the focused radio at startup so
+    // the box is in a known state before any CW is sent.
+    logger_runtime::so2r_adapter::set_tx(so2r_switch.as_deref(), state.focused_radio).await;
+    logger_runtime::so2r_adapter::set_rx(so2r_switch.as_deref(), state.focused_radio, so2r_default_rx_mode).await;
 
     let mut render_interval = tokio::time::interval(Duration::from_millis(50)); // 20 FPS
     let mut timer_interval = tokio::time::interval(Duration::from_secs(1));
@@ -89,8 +98,10 @@ pub async fn run(
                             &mut state,
                             &mut log_adapter,
                             &mut tui_state,
-                            rig.as_deref(),
+                            &rigs,
                             keyer.as_deref(),
+                            so2r_switch.as_deref(),
+                            so2r_default_rx_mode,
                         ).await {
                             break Err(e);
                         }
@@ -105,12 +116,12 @@ pub async fn run(
             ev = recv_keyer_event(&mut keyer_rx) => {
                 match ev {
                     KeyerEvent::CharacterSent(ch) => {
-                        tui_state.cw_echo.push(ch);
-                        if let Some(full) = tui_state.cw_history.last() {
-                            if tui_state.cw_echo.len() >= full.len() {
-                                tui_state.cw_transmitting = false;
-                            }
-                        }
+                        // Append to the currently-keying radio's echo buffer
+                        tui_state
+                            .echo_per_radio
+                            .entry(tui_state.tx_radio)
+                            .or_default()
+                            .push(ch);
                     }
                     KeyerEvent::StatusChanged(status) if !status.busy => {
                         tui_state.cw_transmitting = false;
@@ -140,8 +151,10 @@ pub async fn run(
                     &mut state,
                     &mut log_adapter,
                     &mut tui_state,
-                    rig.as_deref(),
+                    &rigs,
                     keyer.as_deref(),
+                    so2r_switch.as_deref(),
+                    so2r_default_rx_mode,
                 ).await {
                     break Err(e);
                 }
@@ -163,15 +176,33 @@ async fn dispatch_effects(
     state: &mut AppState,
     log_adapter: &mut LogAdapter,
     tui_state: &mut TuiState,
-    rig: Option<&dyn Rig>,
+    rigs: &HashMap<RadioId, Arc<dyn Rig>>,
     keyer: Option<&dyn Keyer>,
+    so2r_switch: Option<&dyn So2rSwitch>,
+    so2r_default_rx_mode: logger_core::So2rRxMode,
 ) -> Result<()> {
     for effect in effects {
         match effect {
-            Effect::CwSend { radio: _, text } => {
-                tui_state.cw_echo.clear();
-                tui_state.cw_transmitting = tui_state.cw_echo_enabled;
-                tui_state.cw_history.push(text.clone());
+            Effect::CwSend { radio, text } => {
+                // If TX is currently routed to a different radio, abort the
+                // in-flight CW and switch OTRSP before starting the new one.
+                if *radio != tui_state.tx_radio {
+                    logger_runtime::abort_cw(keyer).await;
+                    logger_runtime::so2r_adapter::set_tx(so2r_switch, *radio).await;
+                    tui_state.tx_radio = *radio;
+                }
+                tui_state.cw_transmitting = true;
+                // Initialize the echo buffer for this radio. With live echo
+                // enabled, start empty and let CharacterSent events fill it.
+                // Without live echo, populate immediately with the stripped
+                // (no speed markers) text since we'll get no per-character feedback.
+                if tui_state.cw_echo_enabled {
+                    tui_state.echo_per_radio.insert(*radio, String::new());
+                } else {
+                    tui_state
+                        .echo_per_radio
+                        .insert(*radio, strip_speed_markers(text));
+                }
                 logger_runtime::send_cw(keyer, text).await;
             }
             Effect::LogInsert { draft } => {
@@ -205,17 +236,19 @@ async fn dispatch_effects(
             }
             Effect::UiSetFocus { field_id } => {
                 if let Some(idx) = state
-                    .entry
+                    .focused_entry()
                     .fields
                     .iter()
                     .position(|f| f.field_id == *field_id)
                 {
-                    state.entry.focus = idx;
+                    state.focused_entry_mut().focus = idx;
                 }
             }
             Effect::RigSet { radio, freq_hz } => {
-                if let Some(rig) = rig {
-                    let rx = ReceiverId::from_index((*radio - 1) as u8);
+                if let Some(rig) = rigs.get(radio) {
+                    // Each rig adapter is bound to a specific radio_id, so we
+                    // address its primary receiver (index 0).
+                    let rx = ReceiverId::from_index(0);
                     if let Err(e) = rig.set_frequency(rx, *freq_hz).await {
                         warn!("rig set_frequency failed: {e}");
                     }
@@ -227,9 +260,39 @@ async fn dispatch_effects(
             Effect::UiClearEntry => {
                 // State already reflects clear behavior in reducer
             }
+            Effect::So2rFocusChanged { radio } => {
+                // Entry focus changed: update RX audio to follow the operator's
+                // attention. Do NOT change TX routing — that stays where CW is
+                // currently being keyed.
+                logger_runtime::so2r_adapter::set_rx(so2r_switch, *radio, so2r_default_rx_mode).await;
+            }
         }
     }
     Ok(())
+}
+
+/// Strip `{NN}` speed control markers from CW text. The markers are inserted by
+/// macro expansion (e.g., from `<` and `>` speed shift operators) and translated
+/// by the keyer into WK speed-change commands. They never appear in the keyer's
+/// echo stream, so they shouldn't appear in any displayed CW either.
+///
+/// Prosigns like `<AR>` use angle brackets and are preserved.
+fn strip_speed_markers(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '{' {
+            // Skip until matching `}` (or end of string).
+            for next in chars.by_ref() {
+                if next == '}' {
+                    break;
+                }
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }
 
 fn recompute_analytics(state: &AppState, log_adapter: &LogAdapter, tui_state: &mut TuiState) {

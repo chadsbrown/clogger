@@ -1,0 +1,22 @@
+{
+  "events": [
+    { "type": "RigStatus", "radio": 1, "freq_hz": 14025000, "mode": "CW", "is_ptt": false },
+    { "type": "RigStatus", "radio": 2, "freq_hz": 21025000, "mode": "CW", "is_ptt": false },
+
+    { "type": "FocusRadio", "radio": 1 },
+    { "type": "SetMode", "mode": "Run" },
+
+    { "type": "SwapRadios" },
+    { "type": "SetMode", "mode": "Sp" },
+
+    { "type": "SwapRadios" }
+  ],
+  "expectations": {
+    "qsos": [],
+    "final_focused_radio": 1,
+    "final_radio_entries": {
+      "1": { "op_mode": "Run" },
+      "2": { "op_mode": "Sp" }
+    }
+  }
+}

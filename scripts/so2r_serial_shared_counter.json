@@ -1,0 +1,43 @@
+{
+  "uses_serial": true,
+  "macro_overrides": {
+    "f2": "{RST_SENT} {SERIAL}"
+  },
+  "events": [
+    { "type": "RigStatus", "radio": 1, "freq_hz": 14025000, "mode": "CW", "is_ptt": false },
+    { "type": "RigStatus", "radio": 2, "freq_hz": 21025000, "mode": "CW", "is_ptt": false },
+
+    { "type": "FocusRadio", "radio": 1 },
+    { "type": "SetMode", "mode": "Run" },
+
+    { "type": "Text", "s": "K1ABC" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "599" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "5" },
+    { "type": "Key", "key": "Enter" },
+    { "type": "Key", "key": "Enter" },
+
+    { "type": "SwapRadios" },
+    { "type": "SetMode", "mode": "Run" },
+
+    { "type": "Text", "s": "W2DEF" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "599" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "3" },
+    { "type": "Key", "key": "Enter" },
+    { "type": "Key", "key": "Enter" }
+  ],
+  "expectations": {
+    "qsos": [
+      { "call": "K1ABC", "exchange": { "serial": "1" } },
+      { "call": "W2DEF", "exchange": { "serial": "2" } }
+    ],
+    "cw_sent_contains": [
+      "599 1",
+      "599 2"
+    ],
+    "final_serial_counter": 3
+  }
+}

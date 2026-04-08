@@ -12,13 +12,14 @@
 # Your CQ zone (required for cqww)
 #my_zone = 4
 
-# Contest: "cqww", "cwt", or "sweeps"
+# Contest: "cqww", "cwt", "mst", or "sweeps"
 #contest = "cqww"
 
 # RST sent (default: "599", used by cqww)
 #rst_sent = "599"
 
 # CWT-specific fields (required when contest = "cwt")
+# my_name is also used by mst (the sent NAME in the exchange)
 #my_name = "CHAD"
 #my_xchg = "2187"
 
@@ -59,8 +60,15 @@
 
 # ---------------------------------------------------------------------------
 # Rig control (optional — omit entire section to run without)
+#
+# Use [[rig]] (array of tables) to configure one or two rigs. For SO2R,
+# add two [[rig]] sections with radio_id = 1 and radio_id = 2. Each rig
+# can be a different model. Single-radio setups can use just one [[rig]].
 # ---------------------------------------------------------------------------
-#[rig]
+#[[rig]]
+# Which radio this rig represents (1 or 2). Defaults to 1.
+#radio_id = 1
+#
 # Model name (case/hyphen insensitive):
 #   Icom:     IC-7300, IC-7610, IC-7600, IC-7700, IC-7800, IC-7850, IC-7851,
 #             IC-9700, IC-705, IC-7300MKII, IC-7100, IC-9100, IC-7410, IC-905
@@ -80,6 +88,14 @@
 # in macros; falls back to keyer speed_wpm if omitted)
 #cw_speed = 36
 
+# Second rig for SO2R (omit if running single-radio)
+#[[rig]]
+#radio_id = 2
+#model = "K3"
+#port = "/dev/ttyUSB2"
+#baud_rate = 38400
+#cw_speed = 36
+
 # ---------------------------------------------------------------------------
 # WinKeyer CW keyer (optional — omit entire section to run without)
 # CW messages still appear in the TUI buffer even without a keyer.
@@ -97,6 +113,28 @@
 # Real-time CW echo — display characters one-by-one as the WinKeyer
 # echoes them back, instead of showing the full message at once (default: false)
 #cw_echo = true
+
+# ---------------------------------------------------------------------------
+# OTRSP SO2R hardware switch (optional — omit entire section to run without)
+#
+# Connects to an OTRSP-compatible SO2R box (YCCC SO2R+, microHAM MK2R+,
+# RigSelect Pro, SO2RDuino, etc). The switch routes the keyer output, PTT,
+# and RX audio to the focused radio. The TUI emits OTRSP set_tx commands
+# automatically when focus changes (Up arrow = Radio 1, Down arrow = Radio 2)
+# or when CW is sent on a non-current radio.
+#
+# Required: a single keyer connection — OTRSP routes its output between rigs.
+# ---------------------------------------------------------------------------
+#[so2r]
+# Serial port for the OTRSP device
+#port = "/dev/ttyUSB3"
+#
+# Default RX audio routing mode applied when focus changes
+# Options:
+#   "mono"           — focused radio in both ears (default)
+#   "stereo"         — Radio 1 left ear, Radio 2 right ear
+#   "reverse_stereo" — Radio 1 right ear, Radio 2 left ear
+#default_rx_mode = "stereo"
 
 # ---------------------------------------------------------------------------
 # DX cluster spots (optional — omit entire section to run without)

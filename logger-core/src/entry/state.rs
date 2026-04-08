@@ -1,4 +1,5 @@
 use crate::entry::spec::EntryFormSpec;
+use crate::state::LastLoggedContext;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpMode {
@@ -56,6 +57,7 @@ pub struct EntryState {
     pub scp_n1_matches: Vec<String>,
     pub scp_cycle_index: Option<usize>,
     pub assigned_serial: Option<u32>,
+    pub last_logged_context: Option<LastLoggedContext>,
 }
 
 impl EntryState {
@@ -88,6 +90,7 @@ impl EntryState {
             scp_n1_matches: Vec::new(),
             scp_cycle_index: None,
             assigned_serial: None,
+            last_logged_context: None,
         }
     }
 

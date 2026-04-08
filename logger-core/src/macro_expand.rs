@@ -2,10 +2,11 @@ use crate::state::AppState;
 
 pub fn expand_macro(template: &str, st: &AppState) -> String {
     let call = st.current_call();
+    let entry = st.focused_entry();
 
     // When call is empty, fall back to last logged context for repeats
     let (effective_call, prev_fields) = if call.is_empty() {
-        if let Some(ctx) = &st.last_logged_context {
+        if let Some(ctx) = &entry.last_logged_context {
             (ctx.call.as_str(), Some(&ctx.fields))
         } else {
             (call.as_str(), None)
@@ -15,8 +16,7 @@ pub fn expand_macro(template: &str, st: &AppState) -> String {
     };
 
     let my_zone = st.my_zone.to_string();
-    let serial_str = st
-        .entry
+    let serial_str = entry
         .assigned_serial
         .map(|n| n.to_string())
         .unwrap_or_default();
@@ -45,7 +45,7 @@ pub fn expand_macro(template: &str, st: &AppState) -> String {
             acc.replace(&token, value.trim())
         })
     } else {
-        st.entry.fields.iter().fold(out, |acc, f| {
+        entry.fields.iter().fold(out, |acc, f| {
             let token = format!("{{{}}}", f.label.to_ascii_uppercase());
             acc.replace(&token, f.value.trim())
         })
@@ -122,7 +122,7 @@ mod tests {
             focused_radio: 1,
             active_operator: 1,
             radios: HashMap::new(),
-            entry: EntryState::from_spec(&contest.form_spec()),
+            entries: HashMap::from([(1, EntryState::from_spec(&contest.form_spec()))]),
             bandmap: Vec::new(),
             last_logged: None,
             my_call: "N0CALL".to_string(),
@@ -133,7 +133,6 @@ mod tests {
             bandmap_cursor: None,
             default_cw_speed: 28,
             serial_counter: None,
-            last_logged_context: None,
         };
         st.radios.insert(1, RadioState {
             freq_hz: 14_025_000,
@@ -167,7 +166,7 @@ mod tests {
             focused_radio: 1,
             active_operator: 1,
             radios: HashMap::new(),
-            entry: EntryState::from_spec(&contest.form_spec()),
+            entries: HashMap::from([(1, EntryState::from_spec(&contest.form_spec()))]),
             bandmap: Vec::new(),
             last_logged: None,
             my_call: "N0CALL".to_string(),
@@ -178,7 +177,6 @@ mod tests {
             bandmap_cursor: None,
             default_cw_speed: 28,
             serial_counter: None,
-            last_logged_context: None,
         };
 
         let out = expand_macro("CQ TEST <AR>", &st);
@@ -193,7 +191,7 @@ mod tests {
             focused_radio: 1,
             active_operator: 1,
             radios: HashMap::new(),
-            entry: EntryState::from_spec(&contest.form_spec()),
+            entries: HashMap::from([(1, EntryState::from_spec(&contest.form_spec()))]),
             bandmap: Vec::new(),
             last_logged: None,
             my_call: "N0CALL".to_string(),
@@ -204,7 +202,6 @@ mod tests {
             bandmap_cursor: None,
             default_cw_speed: 1,
             serial_counter: None,
-            last_logged_context: None,
         };
 
         let out = expand_macro("<5NN>", &st);
@@ -219,7 +216,7 @@ mod tests {
             focused_radio: 1,
             active_operator: 1,
             radios: HashMap::new(),
-            entry: EntryState::from_spec(&contest.form_spec()),
+            entries: HashMap::from([(1, EntryState::from_spec(&contest.form_spec()))]),
             bandmap: Vec::new(),
             last_logged: None,
             my_call: "N0CALL".to_string(),
@@ -230,9 +227,8 @@ mod tests {
             bandmap_cursor: None,
             default_cw_speed: 28,
             serial_counter: None,
-            last_logged_context: None,
         };
-        st.entry.fields[0].value = "K1ABC".to_string();
+        st.focused_entry_mut().fields[0].value = "K1ABC".to_string();
 
         let out = expand_macro("{MYCALL} {MYZONE} {RST_SENT} {CALL}", &st);
         assert_eq!(out, "N0CALL 4 599 K1ABC");

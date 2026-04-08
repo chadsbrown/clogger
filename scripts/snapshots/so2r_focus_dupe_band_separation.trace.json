@@ -44,7 +44,12 @@
         "radio": 1,
         "type": "FocusRadio"
       },
-      "effects": [],
+      "effects": [
+        {
+          "type": "So2rFocusChanged",
+          "radio": 1
+        }
+      ],
       "state_after": {
         "focused_radio": 1,
         "entry_focus_index": 0,
@@ -221,7 +226,12 @@
         "radio": 2,
         "type": "FocusRadio"
       },
-      "effects": [],
+      "effects": [
+        {
+          "type": "So2rFocusChanged",
+          "radio": 2
+        }
+      ],
       "state_after": {
         "focused_radio": 2,
         "entry_focus_index": 0,

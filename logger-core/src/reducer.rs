@@ -113,20 +113,31 @@ pub fn reduce(
             Vec::new()
         }
         AppEvent::SetOpMode { mode } => {
-            st.entry.mode = mode;
+            st.focused_entry_mut().mode = mode;
             Vec::new()
         }
         AppEvent::ToggleOpMode => {
-            st.entry.mode = match st.entry.mode {
+            let entry = st.focused_entry_mut();
+            entry.mode = match entry.mode {
                 OpMode::Run => OpMode::Sp,
                 OpMode::Sp => OpMode::Run,
             };
             Vec::new()
         }
         AppEvent::FocusRadio { radio } => {
+            // Entry focus only — does NOT touch OTRSP TX routing.
+            // The runtime updates RX audio to follow focus.
+            // Any in-flight CW on the previous radio continues uninterrupted.
             st.focused_radio = radio;
             recompute_feedback(st, dupe_checker, mult_checker);
-            Vec::new()
+            vec![Effect::So2rFocusChanged { radio }]
+        }
+        AppEvent::SwapRadios => {
+            // Toggle between radio 1 and radio 2 (entry focus only)
+            let new_radio = if st.focused_radio == 1 { 2 } else { 1 };
+            st.focused_radio = new_radio;
+            recompute_feedback(st, dupe_checker, mult_checker);
+            vec![Effect::So2rFocusChanged { radio: new_radio }]
         }
         AppEvent::SetOperator { operator } => {
             st.active_operator = operator;
@@ -134,7 +145,7 @@ pub fn reduce(
         }
         AppEvent::TextInput { s } => {
             let mut touched_call = false;
-            if let Some(field) = st.entry.focused_mut() {
+            if let Some(field) = st.focused_entry_mut().focused_mut() {
                 touched_call = field.field_id == 1;
                 if !touched_call {
                     field.from_history = false;
@@ -145,10 +156,11 @@ pub fn reduce(
             revalidate_after_edit(st, contest);
             if touched_call {
                 // Editing the call after exchange was sent forces a resend
-                if st.entry.esm_step == EsmStep::ExchSent {
-                    st.entry.esm_step = EsmStep::Idle;
+                let entry = st.focused_entry_mut();
+                if entry.esm_step == EsmStep::ExchSent {
+                    entry.esm_step = EsmStep::Idle;
                 }
-                st.entry.scp_cycle_index = None;
+                entry.scp_cycle_index = None;
                 recompute_feedback(st, dupe_checker, mult_checker);
                 apply_call_history(st, contest, call_history, scp);
                 revalidate_after_edit(st, contest);
@@ -157,14 +169,15 @@ pub fn reduce(
         }
         AppEvent::KeyPress { key } => match key {
             Key::Space | Key::Tab => {
-                if !st.entry.fields.is_empty() {
-                    st.entry.focus = (st.entry.focus + 1) % st.entry.fields.len();
+                let entry = st.focused_entry_mut();
+                if !entry.fields.is_empty() {
+                    entry.focus = (entry.focus + 1) % entry.fields.len();
                 }
                 Vec::new()
             }
             Key::Backspace => {
                 let mut touched_call = false;
-                if let Some(field) = st.entry.focused_mut() {
+                if let Some(field) = st.focused_entry_mut().focused_mut() {
                     touched_call = field.field_id == 1;
                     if !touched_call {
                         field.from_history = false;
@@ -177,10 +190,11 @@ pub fn reduce(
                 revalidate_after_edit(st, contest);
                 if touched_call {
                     // Editing the call after exchange was sent forces a resend
-                    if st.entry.esm_step == EsmStep::ExchSent {
-                        st.entry.esm_step = EsmStep::Idle;
+                    let entry = st.focused_entry_mut();
+                    if entry.esm_step == EsmStep::ExchSent {
+                        entry.esm_step = EsmStep::Idle;
                     }
-                    st.entry.scp_cycle_index = None;
+                    entry.scp_cycle_index = None;
                     recompute_feedback(st, dupe_checker, mult_checker);
                     apply_call_history(st, contest, call_history, scp);
                     revalidate_after_edit(st, contest);
@@ -188,13 +202,13 @@ pub fn reduce(
                 Vec::new()
             }
             Key::Left => {
-                if let Some(field) = st.entry.focused_mut() {
+                if let Some(field) = st.focused_entry_mut().focused_mut() {
                     field.cursor = field.cursor.saturating_sub(1);
                 }
                 Vec::new()
             }
             Key::Right => {
-                if let Some(field) = st.entry.focused_mut() {
+                if let Some(field) = st.focused_entry_mut().focused_mut() {
                     if field.cursor < field.value.len() {
                         field.cursor += 1;
                     }
@@ -235,38 +249,47 @@ pub fn reduce(
                 }
             }
             Key::F12 => {
-                st.entry.clear_values();
-                st.entry.esm_step = EsmStep::Idle;
-                st.entry.scp_matches.clear();
-                st.entry.scp_n1_matches.clear();
-                st.entry.scp_cycle_index = None;
+                let entry = st.focused_entry_mut();
+                entry.clear_values();
+                entry.esm_step = EsmStep::Idle;
+                entry.scp_matches.clear();
+                entry.scp_n1_matches.clear();
+                entry.scp_cycle_index = None;
                 Vec::new()
             }
             Key::Equal => {
-                if st.entry.scp_matches.is_empty() {
+                if st.focused_entry().scp_matches.is_empty() {
                     return Vec::new();
                 }
-                let len = st.entry.scp_matches.len();
-                let idx = match st.entry.scp_cycle_index {
-                    None => 0,
-                    Some(i) => (i + 1) % len,
+                let (new_call, saved_matches, saved_n1, saved_index) = {
+                    let entry = st.focused_entry_mut();
+                    let len = entry.scp_matches.len();
+                    let idx = match entry.scp_cycle_index {
+                        None => 0,
+                        Some(i) => (i + 1) % len,
+                    };
+                    entry.scp_cycle_index = Some(idx);
+                    let new_call = entry.scp_matches[idx].clone();
+                    if let Some(field) = entry.fields.iter_mut().find(|f| f.field_id == 1) {
+                        field.cursor = new_call.len();
+                        field.value = new_call.clone();
+                    }
+                    (
+                        new_call,
+                        entry.scp_matches.clone(),
+                        entry.scp_n1_matches.clone(),
+                        entry.scp_cycle_index,
+                    )
                 };
-                st.entry.scp_cycle_index = Some(idx);
-                let new_call = st.entry.scp_matches[idx].clone();
-                if let Some(field) = st.entry.fields.iter_mut().find(|f| f.field_id == 1) {
-                    field.cursor = new_call.len();
-                    field.value = new_call;
-                }
-                let saved_matches = st.entry.scp_matches.clone();
-                let saved_n1 = st.entry.scp_n1_matches.clone();
-                let saved_index = st.entry.scp_cycle_index;
+                let _ = new_call;
                 revalidate_after_edit(st, contest);
                 recompute_feedback(st, dupe_checker, mult_checker);
                 apply_call_history(st, contest, call_history, scp);
                 revalidate_after_edit(st, contest);
-                st.entry.scp_matches = saved_matches;
-                st.entry.scp_n1_matches = saved_n1;
-                st.entry.scp_cycle_index = saved_index;
+                let entry = st.focused_entry_mut();
+                entry.scp_matches = saved_matches;
+                entry.scp_n1_matches = saved_n1;
+                entry.scp_cycle_index = saved_index;
                 Vec::new()
             }
             Key::Enter => {
@@ -304,17 +327,20 @@ pub fn reduce(
             let freq_hz = spot.freq_hz;
 
             st.bandmap_cursor = Some(idx);
-            st.entry.mode = OpMode::Sp;
+            {
+                let entry = st.focused_entry_mut();
+                entry.mode = OpMode::Sp;
 
-            // Set call field to selected spot's callsign
-            if let Some(field) = st.entry.fields.iter_mut().find(|f| f.field_id == 1) {
-                field.cursor = spot.call.len();
-                field.value = spot.call.clone();
+                // Set call field to selected spot's callsign
+                if let Some(field) = entry.fields.iter_mut().find(|f| f.field_id == 1) {
+                    field.cursor = spot.call.len();
+                    field.value = spot.call.clone();
+                }
+
+                // Reset focus to call field
+                entry.focus = 0;
+                entry.scp_cycle_index = None;
             }
-
-            // Reset focus to call field
-            st.entry.focus = 0;
-            st.entry.scp_cycle_index = None;
 
             // Revalidate + feedback + call history (same pattern as Key::Equal)
             revalidate_after_edit(st, contest);
@@ -353,7 +379,12 @@ fn try_frequency_entry(st: &mut AppState) -> Option<Vec<Effect>> {
     let radio = st.focused_radio;
 
     // Clear the call field
-    if let Some(field) = st.entry.fields.iter_mut().find(|f| f.field_id == 1) {
+    if let Some(field) = st
+        .focused_entry_mut()
+        .fields
+        .iter_mut()
+        .find(|f| f.field_id == 1)
+    {
         field.value.clear();
         field.cursor = 0;
     }
@@ -362,23 +393,22 @@ fn try_frequency_entry(st: &mut AppState) -> Option<Vec<Effect>> {
 }
 
 fn revalidate_after_edit(st: &mut AppState, contest: &dyn ContestEntry) {
-    let validation = contest.validate_entry(
-        &st.entry,
-        &EntryContext {
-            my_call: st.my_call.clone(),
-            my_zone: st.my_zone,
-            rst_sent: st.rst_sent.clone(),
-            rig: st.radios.get(&st.focused_radio).cloned(),
-            serial: st.entry.assigned_serial,
-        },
-    );
+    let ctx = EntryContext {
+        my_call: st.my_call.clone(),
+        my_zone: st.my_zone,
+        rst_sent: st.rst_sent.clone(),
+        rig: st.radios.get(&st.focused_radio).cloned(),
+        serial: st.focused_entry().assigned_serial,
+    };
+    let validation = contest.validate_entry(st.focused_entry(), &ctx);
 
+    let entry = st.focused_entry_mut();
     for (idx, status) in validation.fields.into_iter().enumerate() {
-        if let Some(field) = st.entry.fields.get_mut(idx) {
+        if let Some(field) = entry.fields.get_mut(idx) {
             field.status = status;
         }
     }
-    st.entry.overall = validation.overall;
+    entry.overall = validation.overall;
 }
 
 fn recompute_feedback(
@@ -388,20 +418,26 @@ fn recompute_feedback(
 ) {
     let call_norm = st.current_call();
     if call_norm.is_empty() {
-        st.entry.is_dupe = false;
-        st.entry.is_new_mult = false;
+        let entry = st.focused_entry_mut();
+        entry.is_dupe = false;
+        entry.is_new_mult = false;
         return;
     }
-    let Some(rig) = st.radios.get(&st.focused_radio) else {
-        st.entry.is_dupe = false;
-        st.entry.is_new_mult = false;
-        return;
+    let (freq_hz, mode_str) = match st.radios.get(&st.focused_radio) {
+        Some(r) => (r.freq_hz, r.mode.clone()),
+        None => {
+            let entry = st.focused_entry_mut();
+            entry.is_dupe = false;
+            entry.is_new_mult = false;
+            return;
+        }
     };
 
-    let band = crate::contest::freq_to_band_label(rig.freq_hz);
-    let mode = normalize_mode(&rig.mode);
-    st.entry.is_dupe = dupe_checker.is_dupe(&call_norm, &band, &mode);
-    st.entry.is_new_mult = mult_checker.is_new_mult(&call_norm, &band, &mode);
+    let band = crate::contest::freq_to_band_label(freq_hz);
+    let mode = normalize_mode(&mode_str);
+    let entry = st.focused_entry_mut();
+    entry.is_dupe = dupe_checker.is_dupe(&call_norm, &band, &mode);
+    entry.is_new_mult = mult_checker.is_new_mult(&call_norm, &band, &mode);
 }
 
 fn apply_call_history(
@@ -418,13 +454,16 @@ fn apply_call_history(
     }
 
     // Update SCP matches
-    st.entry.scp_matches = scp.partial_matches(&call_norm, 10);
-    st.entry.scp_n1_matches = scp.n_plus_one_matches(&call_norm, 10);
+    {
+        let entry = st.focused_entry_mut();
+        entry.scp_matches = scp.partial_matches(&call_norm, 10);
+        entry.scp_n1_matches = scp.n_plus_one_matches(&call_norm, 10);
+    }
 
     // Exact lookup
     let Some(pairs) = call_history.lookup(&call_norm) else {
         // No exact match — clear history-populated fields but keep SCP
-        for field in &mut st.entry.fields {
+        for field in &mut st.focused_entry_mut().fields {
             if field.from_history {
                 field.value.clear();
                 field.cursor = 0;
@@ -442,7 +481,12 @@ fn apply_call_history(
 
     for (col_name, field_id) in &mapping {
         if let Some(value) = pairs_map.get(col_name) {
-            if let Some(field) = st.entry.fields.iter_mut().find(|f| f.field_id == *field_id) {
+            if let Some(field) = st
+                .focused_entry_mut()
+                .fields
+                .iter_mut()
+                .find(|f| f.field_id == *field_id)
+            {
                 if field.value.is_empty() || field.from_history {
                     field.value = if value.chars().all(|c| c.is_ascii_digit()) {
                         value.to_string()
@@ -458,15 +502,16 @@ fn apply_call_history(
 }
 
 fn clear_history_fields(st: &mut AppState) {
-    for field in &mut st.entry.fields {
+    let entry = st.focused_entry_mut();
+    for field in &mut entry.fields {
         if field.from_history {
             field.value.clear();
             field.cursor = 0;
             field.from_history = false;
         }
     }
-    st.entry.scp_matches.clear();
-    st.entry.scp_n1_matches.clear();
+    entry.scp_matches.clear();
+    entry.scp_n1_matches.clear();
 }
 
 fn normalize_mode(mode: &str) -> String {
@@ -531,12 +576,15 @@ mod tests {
 
     fn mk_state() -> AppState {
         let contest = CqwwContest::default();
+        let mut entries = HashMap::new();
+        entries.insert(1, EntryState::from_spec(&contest.form_spec()));
+        entries.insert(2, EntryState::from_spec(&contest.form_spec()));
         AppState {
             now_ms: 0,
             focused_radio: 1,
             active_operator: 1,
             radios: HashMap::new(),
-            entry: EntryState::from_spec(&contest.form_spec()),
+            entries,
             bandmap: Vec::new(),
             last_logged: None,
             my_call: "N0CALL".to_string(),
@@ -547,7 +595,6 @@ mod tests {
             bandmap_cursor: None,
             default_cw_speed: 28,
             serial_counter: None,
-            last_logged_context: None,
         }
     }
 
@@ -576,7 +623,7 @@ mod tests {
             AppEvent::KeyPress { key: Key::Space },
         );
 
-        assert_eq!(st.entry.focus, 0);
+        assert_eq!(st.focused_entry_mut().focus, 0);
     }
 
     #[test]
@@ -608,9 +655,9 @@ mod tests {
             },
         );
 
-        assert_eq!(st.entry.fields[0].status, Validation::Valid);
-        assert_eq!(st.entry.fields[1].status, Validation::Valid);
-        assert!(st.entry.fields[2].status.is_invalid());
+        assert_eq!(st.focused_entry_mut().fields[0].status, Validation::Valid);
+        assert_eq!(st.focused_entry_mut().fields[1].status, Validation::Valid);
+        assert!(st.focused_entry_mut().fields[2].status.is_invalid());
     }
 
     #[test]
@@ -619,7 +666,7 @@ mod tests {
         let mut st = mk_state();
         let macros = Macros::default();
 
-        st.entry.esm_step = EsmStep::ExchSent;
+        st.focused_entry_mut().esm_step = EsmStep::ExchSent;
         reduce(
             &mut st,
             &contest,
@@ -627,7 +674,7 @@ mod tests {
             AppEvent::TextInput { s: "K".to_string() },
         );
 
-        assert_eq!(st.entry.esm_step, EsmStep::Idle);
+        assert_eq!(st.focused_entry_mut().esm_step, EsmStep::Idle);
     }
 
     #[test]
@@ -635,7 +682,7 @@ mod tests {
         let contest = CqwwContest::default();
         let mut st = mk_state();
         let macros = Macros::default();
-        st.entry.mode = OpMode::Run;
+        st.focused_entry_mut().mode = OpMode::Run;
 
         reduce(
             &mut st,
@@ -678,7 +725,7 @@ mod tests {
             &macros,
             AppEvent::KeyPress { key: Key::Enter },
         );
-        assert_eq!(st.entry.esm_step, EsmStep::ExchSent);
+        assert_eq!(st.focused_entry_mut().esm_step, EsmStep::ExchSent);
         assert!(effects1.iter().any(|e| matches!(e, Effect::CwSend { .. })));
 
         let effects2 = reduce(
@@ -687,7 +734,7 @@ mod tests {
             &macros,
             AppEvent::KeyPress { key: Key::Enter },
         );
-        assert_eq!(st.entry.esm_step, EsmStep::Idle);
+        assert_eq!(st.focused_entry_mut().esm_step, EsmStep::Idle);
         assert!(
             effects2
                 .iter()
@@ -700,7 +747,7 @@ mod tests {
         let contest = CqwwContest::default();
         let mut st = mk_state();
         let macros = Macros::default();
-        st.entry.mode = OpMode::Sp;
+        st.focused_entry_mut().mode = OpMode::Sp;
 
         // Type call
         reduce(
@@ -719,7 +766,7 @@ mod tests {
             &macros,
             AppEvent::KeyPress { key: Key::Enter },
         );
-        assert_eq!(st.entry.esm_step, EsmStep::CallSent);
+        assert_eq!(st.focused_entry_mut().esm_step, EsmStep::CallSent);
         assert!(
             effects1
                 .iter()
@@ -761,7 +808,7 @@ mod tests {
             &macros,
             AppEvent::KeyPress { key: Key::Enter },
         );
-        assert_eq!(st.entry.esm_step, EsmStep::ExchSent);
+        assert_eq!(st.focused_entry_mut().esm_step, EsmStep::ExchSent);
         assert!(
             effects2
                 .iter()
@@ -780,7 +827,7 @@ mod tests {
             &macros,
             AppEvent::KeyPress { key: Key::Enter },
         );
-        assert_eq!(st.entry.esm_step, EsmStep::Idle);
+        assert_eq!(st.focused_entry_mut().esm_step, EsmStep::Idle);
         assert!(
             effects3
                 .iter()
@@ -798,7 +845,7 @@ mod tests {
         let contest = CqwwContest::default();
         let mut st = mk_state();
         let macros = Macros::default();
-        st.entry.mode = OpMode::Run;
+        st.focused_entry_mut().mode = OpMode::Run;
 
         reduce(
             &mut st,
@@ -817,7 +864,7 @@ mod tests {
 
         // In RUN mode, Enter sends exchange immediately (no validation gate)
         assert!(effects.iter().any(|e| matches!(e, Effect::CwSend { .. })));
-        assert_eq!(st.entry.esm_step, EsmStep::ExchSent);
+        assert_eq!(st.focused_entry_mut().esm_step, EsmStep::ExchSent);
     }
 
     #[test]
@@ -841,9 +888,9 @@ mod tests {
             AppEvent::KeyPress { key: Key::Space },
         );
 
-        assert_eq!(st.entry.focus, 1);
-        assert_eq!(st.entry.fields[0].value, "K1ABC");
-        assert!(st.entry.fields[0].value.chars().all(|c| c != ' '));
+        assert_eq!(st.focused_entry_mut().focus, 1);
+        assert_eq!(st.focused_entry_mut().fields[0].value, "K1ABC");
+        assert!(st.focused_entry_mut().fields[0].value.chars().all(|c| c != ' '));
     }
 
     #[test]
@@ -864,7 +911,7 @@ mod tests {
                 s: "K5ZD".to_string(),
             },
         );
-        assert!(!st.entry.is_dupe);
+        assert!(!st.focused_entry_mut().is_dupe);
 
         crate::reducer::reduce(
             &mut st,
@@ -881,7 +928,7 @@ mod tests {
                 is_ptt: false,
             },
         );
-        assert!(st.entry.is_dupe);
+        assert!(st.focused_entry_mut().is_dupe);
 
         crate::reducer::reduce(
             &mut st,
@@ -893,7 +940,7 @@ mod tests {
             &NoScp,
             AppEvent::FocusRadio { radio: 2 },
         );
-        assert!(!st.entry.is_dupe);
+        assert!(!st.focused_entry_mut().is_dupe);
     }
 
     #[test]
@@ -914,7 +961,7 @@ mod tests {
                 s: "DL1ABC".to_string(),
             },
         );
-        assert!(!st.entry.is_new_mult);
+        assert!(!st.focused_entry_mut().is_new_mult);
 
         crate::reducer::reduce(
             &mut st,
@@ -931,7 +978,7 @@ mod tests {
                 is_ptt: false,
             },
         );
-        assert!(st.entry.is_new_mult);
+        assert!(st.focused_entry_mut().is_new_mult);
 
         crate::reducer::reduce(
             &mut st,
@@ -943,7 +990,7 @@ mod tests {
             &NoScp,
             AppEvent::FocusRadio { radio: 2 },
         );
-        assert!(!st.entry.is_new_mult);
+        assert!(!st.focused_entry_mut().is_new_mult);
     }
 
     #[test]
@@ -951,7 +998,7 @@ mod tests {
         let contest = CqwwContest::default();
         let mut st = mk_state();
         let macros = Macros::default();
-        st.entry.mode = OpMode::Run;
+        st.focused_entry_mut().mode = OpMode::Run;
 
         reduce(
             &mut st,
@@ -1022,7 +1069,7 @@ mod tests {
         let contest = CqwwContest::default();
         let mut st = mk_state();
         let macros = Macros::default();
-        st.entry.mode = OpMode::Run;
+        st.focused_entry_mut().mode = OpMode::Run;
 
         reduce(
             &mut st,
@@ -1067,7 +1114,7 @@ mod tests {
             &macros,
             AppEvent::KeyPress { key: Key::Enter },
         );
-        assert_eq!(st.entry.esm_step, EsmStep::ExchSent);
+        assert_eq!(st.focused_entry_mut().esm_step, EsmStep::ExchSent);
 
         // Edit zone field (received exchange) — ESM should stay ExchSent
         reduce(
@@ -1084,7 +1131,7 @@ mod tests {
             &macros,
             AppEvent::TextInput { s: "4".to_string() },
         );
-        assert_eq!(st.entry.esm_step, EsmStep::ExchSent);
+        assert_eq!(st.focused_entry_mut().esm_step, EsmStep::ExchSent);
 
         // Enter should log (not resend)
         let effects = reduce(
@@ -1107,7 +1154,7 @@ mod tests {
         let contest = CqwwContest::default();
         let mut st = mk_state();
         let macros = Macros::default();
-        st.entry.mode = OpMode::Run;
+        st.focused_entry_mut().mode = OpMode::Run;
 
         reduce(
             &mut st,
@@ -1152,10 +1199,10 @@ mod tests {
             &macros,
             AppEvent::KeyPress { key: Key::Enter },
         );
-        assert_eq!(st.entry.esm_step, EsmStep::ExchSent);
+        assert_eq!(st.focused_entry_mut().esm_step, EsmStep::ExchSent);
 
         // Move focus back to call field and edit it
-        st.entry.focus = 0;
+        st.focused_entry_mut().focus = 0;
         reduce(
             &mut st,
             &contest,
@@ -1164,7 +1211,7 @@ mod tests {
                 key: Key::Backspace,
             },
         );
-        assert_eq!(st.entry.esm_step, EsmStep::Idle);
+        assert_eq!(st.focused_entry_mut().esm_step, EsmStep::Idle);
 
         // Enter should resend (not log)
         reduce(

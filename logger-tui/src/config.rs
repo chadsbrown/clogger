@@ -39,9 +39,13 @@ pub struct Config {
     #[serde(default)]
     pub cursor_style: CursorStyle,
     pub macros: Option<logger_runtime::MacroOverrides>,
-    pub rig: Option<logger_runtime::RigConfig>,
+    /// Multiple rigs supported via `[[rig]]` array of tables in TOML.
+    /// For backward compatibility, a single `[rig]` table is also accepted.
+    #[serde(default, rename = "rig")]
+    pub rigs: Vec<logger_runtime::RigConfig>,
     pub keyer: Option<logger_runtime::KeyerConfig>,
     pub dxfeed: Option<logger_runtime::DxFeedConfig>,
+    pub so2r: Option<logger_runtime::So2rConfig>,
 }
 
 #[derive(Debug, Default, Deserialize, Clone, Copy, PartialEq, Eq)]

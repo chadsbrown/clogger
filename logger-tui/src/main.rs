@@ -3,27 +3,37 @@ mod config;
 mod event_loop;
 mod ui;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::sync::Arc;
 
 use anyhow::Result;
 use clap::Parser;
-use logger_core::AppEvent;
+use logger_core::{AppEvent, RadioId};
 use logger_runtime::{AvailSummary, RateInfo, ScoreSummary};
 use tokio::sync::mpsc;
 use tracing::warn;
-use logger_runtime::{Keyer, Rig};
+use logger_runtime::{Keyer, Rig, So2rSwitch};
 
 use config::{Cli, load_config};
 use ui::log_tail::LogRow;
 
-#[derive(Default)]
 pub struct TuiState {
-    pub cw_history: Vec<String>,
-    pub cw_echo: String,
+    /// What to display in the CW line of each radio's entry.
+    ///
+    /// When live echo is enabled, this is empty at the start of a transmission
+    /// and gets filled character-by-character as the keyer echoes them back.
+    /// When live echo is disabled, this is set to the markers-stripped version
+    /// of the sent text immediately on CwSend.
+    ///
+    /// Either way, this contains only printable CW characters — no `{NN}`
+    /// speed control markers.
+    pub echo_per_radio: HashMap<RadioId, String>,
     pub cw_echo_enabled: bool,
     pub cw_transmitting: bool,
+    /// Which radio is currently routed for TX (independent of entry focus).
+    /// Updated by dispatch_effects when CwSend is sent to a different radio.
+    pub tx_radio: RadioId,
     pub log_display: Vec<LogRow>,
     pub worked_calls: HashSet<String>,
     pub mult_calls: HashSet<String>,
@@ -34,6 +44,27 @@ pub struct TuiState {
     pub rig_connected: bool,
     pub keyer_connected: bool,
     pub dxfeed_connected: bool,
+}
+
+impl Default for TuiState {
+    fn default() -> Self {
+        Self {
+            echo_per_radio: HashMap::new(),
+            cw_echo_enabled: false,
+            cw_transmitting: false,
+            tx_radio: 1,
+            log_display: Vec::new(),
+            worked_calls: HashSet::new(),
+            mult_calls: HashSet::new(),
+            score: ScoreSummary::default(),
+            avail: AvailSummary::default(),
+            rate: RateInfo::default(),
+            error_message: None,
+            rig_connected: false,
+            keyer_connected: false,
+            dxfeed_connected: false,
+        }
+    }
 }
 
 #[tokio::main]
@@ -49,6 +80,13 @@ async fn main() -> Result<()> {
     let config = load_config(&cli)?;
 
     // Bootstrap session (contest, state, log adapter, call history, SCP)
+    // Pull cw_speed from the first rig that has it set, fallback to keyer or default
+    let default_cw_speed = config
+        .rigs
+        .iter()
+        .find_map(|r| r.cw_speed)
+        .or(config.keyer.as_ref().map(|k| k.speed_wpm))
+        .unwrap_or(28);
     let session = logger_runtime::bootstrap(logger_runtime::SessionConfig {
         contest_id: config.contest.clone(),
         my_call: config.my_call.clone(),
@@ -57,9 +95,7 @@ async fn main() -> Result<()> {
         my_name: config.my_name.clone(),
         my_xchg: config.my_xchg.clone(),
         macro_overrides: config.macros,
-        default_cw_speed: config.rig.as_ref().and_then(|r| r.cw_speed)
-            .or(config.keyer.as_ref().map(|k| k.speed_wpm))
-            .unwrap_or(28),
+        default_cw_speed,
         db_path: cli.db.as_ref().or(config.db_path.as_ref()).cloned(),
         call_history_path: cli.call_history.as_ref().or(config.call_history_file.as_ref()).cloned(),
         scp_path: cli.scp.as_ref().or(config.scp_file.as_ref()).cloned(),
@@ -73,22 +109,22 @@ async fn main() -> Result<()> {
     // Spawn terminal input reader
     adapters::terminal::spawn_terminal_reader(tui_tx.clone());
 
-    // Optionally connect rig
-    let mut rig_handle: Option<Arc<dyn Rig>> = None;
+    // Spawn rig adapters (one per configured rig, indexed by radio_id)
+    let mut rigs: HashMap<RadioId, Arc<dyn Rig>> = HashMap::new();
     let mut rig_connected = false;
-    if let Some(rig_config) = &config.rig {
+    for rig_config in &config.rigs {
         match logger_runtime::spawn_rig_adapter(rig_config, app_tx.clone()).await {
             Ok(rig) => {
-                rig_handle = Some(rig);
+                rigs.insert(rig_config.radio_id, rig);
                 rig_connected = true;
             }
-            Err(e) => warn!("rig connection failed, continuing without: {e}"),
+            Err(e) => warn!("rig {} connection failed, continuing without: {e}", rig_config.radio_id),
         }
     }
 
-    // Optionally connect keyer (rig cw_speed overrides keyer speed_wpm)
+    // Optionally connect keyer (first rig's cw_speed overrides keyer speed_wpm)
     let mut keyer_connected = false;
-    let rig_cw_speed = config.rig.as_ref().and_then(|r| r.cw_speed);
+    let rig_cw_speed = config.rigs.iter().find_map(|r| r.cw_speed);
     let keyer: Option<Box<dyn Keyer>> = if let Some(keyer_config) = &config.keyer {
         match logger_runtime::connect_keyer(keyer_config, rig_cw_speed).await {
             Ok(k) => {
@@ -119,6 +155,21 @@ async fn main() -> Result<()> {
         }
     }
 
+    // Optionally connect OTRSP SO2R switch
+    let (so2r_switch, so2r_default_rx_mode): (Option<Box<dyn So2rSwitch>>, logger_core::So2rRxMode) =
+        if let Some(so2r_config) = &config.so2r {
+            let mode = logger_runtime::so2r_adapter::parse_rx_mode(&so2r_config.default_rx_mode);
+            match logger_runtime::so2r_adapter::connect_so2r(so2r_config).await {
+                Ok(switch) => (Some(switch), mode),
+                Err(e) => {
+                    warn!("OTRSP connection failed, continuing without: {e}");
+                    (None, mode)
+                }
+            }
+        } else {
+            (None, logger_core::So2rRxMode::Mono)
+        };
+
     // Bridge: AppEvent → TerminalEvent::App
     let bridge_tx = tui_tx.clone();
     tokio::spawn(async move {
@@ -138,7 +189,7 @@ async fn main() -> Result<()> {
         session.contest,
         session.macros,
         session.log_adapter,
-        rig_handle,
+        rigs,
         keyer,
         keyer_rx,
         cw_echo_enabled,
@@ -150,6 +201,8 @@ async fn main() -> Result<()> {
         rig_connected,
         keyer_connected,
         dxfeed_connected,
+        so2r_switch,
+        so2r_default_rx_mode,
     )
     .await
 }

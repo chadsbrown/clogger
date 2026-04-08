@@ -72,12 +72,17 @@ pub fn bootstrap(config: SessionConfig) -> Result<Session> {
     let scorer =
         crate::scoring::scorer_for_contest(contest.as_ref(), config.my_zone, &my_exchange);
 
+    // Initialize entries for both radios so SO2R works out of the box
+    let mut entries = HashMap::new();
+    entries.insert(1, EntryState::from_spec(&contest.form_spec()));
+    entries.insert(2, EntryState::from_spec(&contest.form_spec()));
+
     let mut state = AppState {
         now_ms: chrono::Utc::now().timestamp_millis(),
         focused_radio: 1,
         active_operator: 1,
         radios: HashMap::new(),
-        entry: EntryState::from_spec(&contest.form_spec()),
+        entries,
         bandmap: Vec::new(),
         last_logged: None,
         my_call: config.my_call,
@@ -88,7 +93,6 @@ pub fn bootstrap(config: SessionConfig) -> Result<Session> {
         bandmap_cursor: None,
         default_cw_speed: config.default_cw_speed,
         serial_counter: None,
-        last_logged_context: None,
     };
 
     let log_adapter = if let Some(db_path) = &config.db_path {

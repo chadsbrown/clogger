@@ -40,6 +40,7 @@ pub enum ScriptEvent {
     FocusRadio {
         radio: u8,
     },
+    SwapRadios,
     Text {
         s: String,
     },
@@ -91,6 +92,18 @@ pub struct Expectations {
     pub final_is_new_mult: Option<bool>,
     pub final_field_values: Option<BTreeMap<u16, String>>,
     pub final_serial_counter: Option<u32>,
+    pub final_focused_radio: Option<u8>,
+    /// Per-radio entry expectations: keyed by radio_id
+    #[serde(default)]
+    pub final_radio_entries: BTreeMap<u8, RadioEntryExpectation>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct RadioEntryExpectation {
+    pub op_mode: Option<String>,
+    pub esm_step: Option<String>,
+    pub field_values: Option<BTreeMap<u16, String>>,
+    pub focus_field_id: Option<u16>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

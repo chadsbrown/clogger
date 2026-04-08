@@ -1,0 +1,36 @@
+{
+  "events": [
+    { "type": "RigStatus", "radio": 1, "freq_hz": 14025000, "mode": "CW", "is_ptt": false },
+    { "type": "RigStatus", "radio": 2, "freq_hz": 21025000, "mode": "CW", "is_ptt": false },
+
+    { "type": "FocusRadio", "radio": 1 },
+    { "type": "SetMode", "mode": "Run" },
+
+    { "type": "Text", "s": "K1ABC" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "599" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "5" },
+    { "type": "Key", "key": "Enter" },
+
+    { "type": "SwapRadios" },
+    { "type": "SetMode", "mode": "Run" },
+    { "type": "Text", "s": "W2DEF" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "599" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "3" },
+    { "type": "Key", "key": "Enter" },
+    { "type": "Key", "key": "Enter" },
+
+    { "type": "SwapRadios" },
+    { "type": "Key", "key": "Enter" }
+  ],
+  "expectations": {
+    "qsos": [
+      { "call": "W2DEF", "band": "15m", "rst": "599", "zone": 3 },
+      { "call": "K1ABC", "band": "20m", "rst": "599", "zone": 5 }
+    ],
+    "final_focused_radio": 1
+  }
+}

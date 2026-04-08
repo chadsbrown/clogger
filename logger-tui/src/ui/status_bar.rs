@@ -20,7 +20,7 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState, tui: &TuiState) {
     left_spans.push(Span::raw(" "));
 
     // Dupe indicator
-    if st.entry.is_dupe {
+    if st.focused_entry().is_dupe {
         left_spans.push(Span::styled(
             " DUPE ",
             Style::default().fg(Color::White).bg(Color::Red),
@@ -29,7 +29,7 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState, tui: &TuiState) {
     }
 
     // New mult indicator
-    if st.entry.is_new_mult {
+    if st.focused_entry().is_new_mult {
         left_spans.push(Span::styled(
             " MULT ",
             Style::default().fg(Color::Black).bg(Color::Green),
@@ -76,8 +76,8 @@ pub fn render_scp(frame: &mut Frame, area: Rect, st: &AppState) {
     let mut lines = Vec::new();
 
     // SCP prefix matches
-    if !st.entry.scp_matches.is_empty() {
-        let scp_text = st.entry.scp_matches.iter().take(10).cloned().collect::<Vec<_>>().join(" ");
+    if !st.focused_entry().scp_matches.is_empty() {
+        let scp_text = st.focused_entry().scp_matches.iter().take(10).cloned().collect::<Vec<_>>().join(" ");
         lines.push(Line::from(vec![
             Span::styled("SCP: ", Style::default().fg(Color::Cyan)),
             Span::styled(scp_text, Style::default().fg(Color::DarkGray)),
@@ -85,8 +85,8 @@ pub fn render_scp(frame: &mut Frame, area: Rect, st: &AppState) {
     }
 
     // N+1 edit-distance matches
-    if !st.entry.scp_n1_matches.is_empty() {
-        let n1_text = st.entry.scp_n1_matches.iter().take(10).cloned().collect::<Vec<_>>().join(" ");
+    if !st.focused_entry().scp_n1_matches.is_empty() {
+        let n1_text = st.focused_entry().scp_n1_matches.iter().take(10).cloned().collect::<Vec<_>>().join(" ");
         lines.push(Line::from(vec![
             Span::styled("N+1: ", Style::default().fg(Color::Cyan)),
             Span::styled(n1_text, Style::default().fg(Color::DarkGray)),

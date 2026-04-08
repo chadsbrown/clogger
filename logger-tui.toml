@@ -21,7 +21,8 @@ f8 = "<<<<CHAD>>>>"
 f9 = "QRL?"
 
 # Rig control (optional — omit entire section to run without)
-[rig]
+[[rig]]
+radio_id = 1
 #model = "IC-7610"        # any model from riglib: IC-7300, FT-DX10, K4, TS-890S, etc.
 model = "IC-705"
 #port = "/dev/ttyUSB0"

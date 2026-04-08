@@ -47,6 +47,7 @@ pub enum AppEvent {
     FocusRadio {
         radio: RadioId,
     },
+    SwapRadios,
     SetOperator {
         operator: OperatorId,
     },

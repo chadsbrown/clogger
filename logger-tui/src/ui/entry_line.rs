@@ -1,4 +1,4 @@
-use logger_core::{AppState, Validation};
+use logger_core::{AppState, RadioId, Validation};
 use ratatui::{
     Frame,
     layout::Rect,
@@ -7,14 +7,27 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
 };
 
-pub fn render(frame: &mut Frame, area: Rect, st: &AppState, cw_history: &[String], cw_echo: &str, cw_echo_enabled: bool, cw_transmitting: bool) {
-    let mode_str = match st.entry.mode {
+#[allow(clippy::too_many_arguments)]
+pub fn render(
+    frame: &mut Frame,
+    area: Rect,
+    st: &AppState,
+    radio_id: RadioId,
+    is_focused: bool,
+    tx_radio: RadioId,
+    cw_text: Option<&str>,
+    cw_transmitting: bool,
+) {
+    let Some(entry) = st.entry_for(radio_id) else {
+        return;
+    };
+    let mode_str = match entry.mode {
         logger_core::OpMode::Run => "RUN",
         logger_core::OpMode::Sp => "S&P",
     };
     let mut title_spans = vec![
         Span::raw(" R"),
-        Span::raw(st.focused_radio.to_string()),
+        Span::raw(radio_id.to_string()),
         Span::raw(" "),
         Span::styled(
             format!(" {} ", mode_str),
@@ -22,7 +35,8 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState, cw_history: &[String
         ),
         Span::raw(" "),
     ];
-    if cw_transmitting {
+    // TX badge follows the actual transmitting radio (tx_radio), not entry focus
+    if cw_transmitting && tx_radio == radio_id {
         title_spans.push(Span::styled(
             " TX ",
             Style::default().fg(Color::White).bg(Color::Red),
@@ -30,16 +44,18 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState, cw_history: &[String
         title_spans.push(Span::raw(" "));
     }
     // Show serial number if contest uses serials
-    if let Some(serial) = st.entry.assigned_serial.or(st.serial_counter) {
+    if let Some(serial) = entry.assigned_serial.or(st.serial_counter) {
         title_spans.push(Span::styled(
             format!("NR:{serial} "),
             Style::default().fg(Color::Yellow),
         ));
     }
     let title = Line::from(title_spans);
+    // Highlight the focused radio with a brighter border
+    let border_color = if is_focused { Color::Cyan } else { Color::DarkGray };
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::DarkGray))
+        .border_style(Style::default().fg(border_color))
         .title(title);
 
     let inner = block.inner(area);
@@ -49,8 +65,8 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState, cw_history: &[String
     let mut cursor_col: Option<u16> = None;
     let mut col = inner.x;
 
-    for (idx, field) in st.entry.fields.iter().enumerate() {
-        let is_focused = idx == st.entry.focus;
+    for (idx, field) in entry.fields.iter().enumerate() {
+        let field_is_focused = idx == entry.focus;
         let field_width = field.width as usize;
 
         // Label
@@ -67,17 +83,17 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState, cw_history: &[String
         };
         let style = Style::default().fg(fg);
 
-        if is_focused {
+        // Only show cursor on focused field of focused radio
+        if field_is_focused && is_focused {
             cursor_col = Some(col + field.cursor as u16);
         }
 
         let scp_check = field.field_id == 1
             && !field.value.is_empty()
-            && st.entry.scp_matches.contains(&field.value);
+            && entry.scp_matches.contains(&field.value);
 
         if scp_check {
-            // Value + checkmark + remaining padding, all within field_width
-            let used = field.value.len() + 2; // value + space + checkmark
+            let used = field.value.len() + 2;
             let pad = field_width.saturating_sub(used);
             spans.push(Span::styled(&field.value, style));
             spans.push(Span::raw(" "));
@@ -89,16 +105,12 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState, cw_history: &[String
         }
         col += field_width as u16;
 
-        // Separator
         spans.push(Span::raw(" "));
         col += 1;
     }
 
-    let cw_text = if cw_echo_enabled {
-        if cw_echo.is_empty() { None } else { Some(cw_echo) }
-    } else {
-        cw_history.last().map(|s| s.as_str())
-    };
+    // CW display: per-radio echo buffer (live or static, never has speed markers)
+    let _ = tx_radio; // tx_radio is used above for the TX badge; keep param symmetric
     let cw_line = if let Some(text) = cw_text {
         let w = inner.width as usize;
         let text_len = text.len().min(w);
@@ -111,7 +123,7 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState, cw_history: &[String
         Line::default()
     };
 
-    let freq_line = if let Some(radio) = st.radios.get(&st.focused_radio) {
+    let freq_line = if let Some(radio) = st.radios.get(&radio_id) {
         let freq_khz = radio.freq_hz as f64 / 1_000.0;
         let text = format!("{:.1} kHz  {}", freq_khz, radio.mode);
         let w = inner.width as usize;
@@ -131,7 +143,7 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState, cw_history: &[String
     ];
     frame.render_widget(Paragraph::new(lines), inner);
 
-    // Position cursor on focused field (middle line of inner area)
+    // Position cursor on focused field of focused radio
     if let Some(cx) = cursor_col {
         frame.set_cursor_position((cx, inner.y + 1));
     }
