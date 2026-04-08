@@ -5,13 +5,17 @@ edition = "2024"
 
 [dependencies]
 logger-core = { path = "../logger-core" }
-qsolog = { git = "https://github.com/chadsbrown/qsolog", branch = "master" }
-contest-engine = { git = "https://github.com/chadsbrown/contest-engine", branch = "master" }
-riglib = { git = "https://github.com/chadsbrown/riglib", branch = "master", features = ["full"] }
-winkey = { git = "https://github.com/chadsbrown/winkey", branch = "master" }
-otrsp = { git = "https://github.com/chadsbrown/otrsp", branch = "master" }
-dxfeed = { git = "https://github.com/chadsbrown/dxfeed", branch = "master", features = ["serde"] }
-station-data = { git = "https://github.com/chadsbrown/station-data", branch = "master" }
+# Git deps use bare URLs (no `branch = "master"`) so that Cargo unifies them
+# with transitive references from other git deps that use the same URL form.
+# Cargo tracks the default branch automatically, and Cargo.lock pins the exact
+# commit. See: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html#specifying-dependencies-from-git-repositories
+qsolog = { git = "https://github.com/chadsbrown/qsolog" }
+contest-engine = { git = "https://github.com/chadsbrown/contest-engine" }
+riglib = { git = "https://github.com/chadsbrown/riglib", features = ["full"] }
+winkey = { git = "https://github.com/chadsbrown/winkey" }
+otrsp = { git = "https://github.com/chadsbrown/otrsp" }
+dxfeed = { git = "https://github.com/chadsbrown/dxfeed", features = ["serde"] }
+station-data = { git = "https://github.com/chadsbrown/station-data" }
 tokio = { version = "1", features = ["sync"] }
 chrono = "0.4"
 anyhow = "1"
