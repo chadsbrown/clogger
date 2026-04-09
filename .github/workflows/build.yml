@@ -24,7 +24,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
@@ -69,7 +69,7 @@ jobs:
           echo "ARCHIVE=$staging.zip" >> $env:GITHUB_ENV
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: clogger-${{ matrix.target }}
           path: ${{ env.ARCHIVE }}
