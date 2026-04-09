@@ -19,6 +19,10 @@ impl ContestEntry for MstContest {
         "mst"
     }
 
+    fn contest_name(&self) -> &str {
+        "ICWC Medium Speed Test"
+    }
+
     fn contest_instance_id(&self) -> u64 {
         4
     }

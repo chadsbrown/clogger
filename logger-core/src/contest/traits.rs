@@ -28,6 +28,7 @@ pub struct EntryError {
 
 pub trait ContestEntry {
     fn contest_id(&self) -> &str;
+    fn contest_name(&self) -> &str { self.contest_id() }
     fn contest_instance_id(&self) -> u64;
     fn default_macros(&self) -> Macros;
     fn form_spec(&self) -> EntryFormSpec;

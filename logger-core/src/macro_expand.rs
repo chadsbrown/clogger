@@ -104,7 +104,7 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::{
-        CqwwContest,
+        contest::contest_from_id,
         contest::traits::ContestEntry,
         entry::state::EntryState,
         state::{AppState, EsmPolicy},
@@ -116,7 +116,7 @@ mod tests {
 
     #[test]
     fn speed_markers_converted() {
-        let contest = CqwwContest::default();
+        let contest = contest_from_id("cqww").unwrap();
         let mut st = AppState {
             now_ms: 0,
             focused_radio: 1,
@@ -160,7 +160,7 @@ mod tests {
 
     #[test]
     fn prosigns_preserved() {
-        let contest = CqwwContest::default();
+        let contest = contest_from_id("cqww").unwrap();
         let st = AppState {
             now_ms: 0,
             focused_radio: 1,
@@ -185,7 +185,7 @@ mod tests {
 
     #[test]
     fn speed_down_saturates() {
-        let contest = CqwwContest::default();
+        let contest = contest_from_id("cqww").unwrap();
         let st = AppState {
             now_ms: 0,
             focused_radio: 1,
@@ -210,7 +210,7 @@ mod tests {
 
     #[test]
     fn expands_placeholders() {
-        let contest = CqwwContest::default();
+        let contest = contest_from_id("cqww").unwrap();
         let mut st = AppState {
             now_ms: 0,
             focused_radio: 1,

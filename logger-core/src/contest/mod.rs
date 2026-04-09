@@ -1,17 +1,21 @@
-pub mod cqww;
-pub mod cwt;
 pub mod mst;
+pub mod registry;
+pub mod spec_driven;
 pub mod sweeps;
 pub mod traits;
 
 use traits::ContestEntry;
 
 pub fn contest_from_id(id: &str) -> Option<Box<dyn ContestEntry>> {
+    // Spec-driven contests first (from registry)
+    if let Some(meta) = registry::find_spec_contest(id) {
+        return spec_driven::SpecDrivenContest::new(meta)
+            .map(|c| Box::new(c) as Box<dyn ContestEntry>);
+    }
+    // Then hand-coded contests
     match id.to_ascii_lowercase().as_str() {
-        "cqww" => Some(Box::new(cqww::CqwwContest::default())),
-        "cwt" => Some(Box::new(cwt::CwtContest::default())),
-        "mst" => Some(Box::new(mst::MstContest)),
         "sweeps" => Some(Box::new(sweeps::SweepsContest)),
+        "mst" => Some(Box::new(mst::MstContest)),
         _ => None,
     }
 }

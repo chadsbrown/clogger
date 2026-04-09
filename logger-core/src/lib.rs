@@ -7,8 +7,6 @@ pub mod reducer;
 pub mod state;
 
 pub use contest::contest_from_id;
-pub use contest::cqww::CqwwContest;
-pub use contest::cwt::CwtContest;
 pub use contest::freq_to_band_label;
 pub use contest::mst::MstContest;
 pub use contest::sweeps::SweepsContest;

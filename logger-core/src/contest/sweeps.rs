@@ -21,6 +21,10 @@ impl ContestEntry for SweepsContest {
         "sweeps"
     }
 
+    fn contest_name(&self) -> &str {
+        "ARRL Sweepstakes"
+    }
+
     fn contest_instance_id(&self) -> u64 {
         2
     }

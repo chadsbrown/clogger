@@ -552,7 +552,7 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::{
-        CqwwContest,
+        contest::contest_from_id,
         contest::traits::ContestEntry,
         effects::Effect,
         entry::state::{EntryState, EsmStep, OpMode, Validation},
@@ -598,7 +598,7 @@ mod tests {
     }
 
     fn mk_state() -> AppState {
-        let contest = CqwwContest::default();
+        let contest = contest_from_id("cqww").unwrap();
         let mut entries = HashMap::new();
         entries.insert(1, EntryState::from_spec(&contest.form_spec()));
         entries.insert(2, EntryState::from_spec(&contest.form_spec()));
@@ -623,25 +623,25 @@ mod tests {
 
     #[test]
     fn space_focus_wraps() {
-        let contest = CqwwContest::default();
+        let contest = contest_from_id("cqww").unwrap();
         let mut st = mk_state();
         let macros = Macros::default();
 
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::KeyPress { key: Key::Space },
         );
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::KeyPress { key: Key::Space },
         );
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::KeyPress { key: Key::Space },
         );
@@ -651,13 +651,13 @@ mod tests {
 
     #[test]
     fn validation_updates_per_field_status() {
-        let contest = CqwwContest::default();
+        let contest = contest_from_id("cqww").unwrap();
         let mut st = mk_state();
         let macros = Macros::default();
 
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::TextInput {
                 s: "K1ABC".to_string(),
@@ -665,13 +665,13 @@ mod tests {
         );
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::KeyPress { key: Key::Space },
         );
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::TextInput {
                 s: "59".to_string(),
@@ -685,14 +685,14 @@ mod tests {
 
     #[test]
     fn editing_resets_esm_step() {
-        let contest = CqwwContest::default();
+        let contest = contest_from_id("cqww").unwrap();
         let mut st = mk_state();
         let macros = Macros::default();
 
         st.focused_entry_mut().esm_step = EsmStep::ExchSent;
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::TextInput { s: "K".to_string() },
         );
@@ -702,14 +702,14 @@ mod tests {
 
     #[test]
     fn run_two_step_state_transition() {
-        let contest = CqwwContest::default();
+        let contest = contest_from_id("cqww").unwrap();
         let mut st = mk_state();
         let macros = Macros::default();
         st.focused_entry_mut().mode = OpMode::Run;
 
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::TextInput {
                 s: "K1ABC".to_string(),
@@ -717,13 +717,13 @@ mod tests {
         );
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::KeyPress { key: Key::Space },
         );
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::TextInput {
                 s: "599".to_string(),
@@ -731,20 +731,20 @@ mod tests {
         );
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::KeyPress { key: Key::Space },
         );
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::TextInput { s: "5".to_string() },
         );
 
         let effects1 = reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::KeyPress { key: Key::Enter },
         );
@@ -753,7 +753,7 @@ mod tests {
 
         let effects2 = reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::KeyPress { key: Key::Enter },
         );
@@ -767,7 +767,7 @@ mod tests {
 
     #[test]
     fn sp_three_step_esm() {
-        let contest = CqwwContest::default();
+        let contest = contest_from_id("cqww").unwrap();
         let mut st = mk_state();
         let macros = Macros::default();
         st.focused_entry_mut().mode = OpMode::Sp;
@@ -775,7 +775,7 @@ mod tests {
         // Type call
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::TextInput {
                 s: "K1ABC".to_string(),
@@ -785,7 +785,7 @@ mod tests {
         // Enter 1: send MYCALL, step → CallSent
         let effects1 = reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::KeyPress { key: Key::Enter },
         );
@@ -799,13 +799,13 @@ mod tests {
         // Fill exchange
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::KeyPress { key: Key::Space },
         );
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::TextInput {
                 s: "599".to_string(),
@@ -813,13 +813,13 @@ mod tests {
         );
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::KeyPress { key: Key::Space },
         );
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::TextInput { s: "5".to_string() },
         );
@@ -827,7 +827,7 @@ mod tests {
         // Enter 2: send exchange (sp_exch, no callsign), step → ExchSent
         let effects2 = reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::KeyPress { key: Key::Enter },
         );
@@ -846,7 +846,7 @@ mod tests {
         // Enter 3: log silently, no CW
         let effects3 = reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::KeyPress { key: Key::Enter },
         );
@@ -865,14 +865,14 @@ mod tests {
 
     #[test]
     fn run_enter_with_call_sends_exchange() {
-        let contest = CqwwContest::default();
+        let contest = contest_from_id("cqww").unwrap();
         let mut st = mk_state();
         let macros = Macros::default();
         st.focused_entry_mut().mode = OpMode::Run;
 
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::TextInput {
                 s: "K1ABC".to_string(),
@@ -880,7 +880,7 @@ mod tests {
         );
         let effects = reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::KeyPress { key: Key::Enter },
         );
@@ -892,13 +892,13 @@ mod tests {
 
     #[test]
     fn space_advances_without_inserting_literal_space() {
-        let contest = CqwwContest::default();
+        let contest = contest_from_id("cqww").unwrap();
         let mut st = mk_state();
         let macros = Macros::default();
 
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::TextInput {
                 s: "K1ABC".to_string(),
@@ -906,7 +906,7 @@ mod tests {
         );
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::KeyPress { key: Key::Space },
         );
@@ -918,13 +918,13 @@ mod tests {
 
     #[test]
     fn dupe_recomputes_on_call_edit_and_focused_rig_changes() {
-        let contest = CqwwContest::default();
+        let contest = contest_from_id("cqww").unwrap();
         let mut st = mk_state();
         let macros = Macros::default();
 
         crate::reducer::reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             &MatchDupeChecker,
             &NoMultChecker,
@@ -938,7 +938,7 @@ mod tests {
 
         crate::reducer::reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             &MatchDupeChecker,
             &NoMultChecker,
@@ -955,7 +955,7 @@ mod tests {
 
         crate::reducer::reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             &MatchDupeChecker,
             &NoMultChecker,
@@ -968,13 +968,13 @@ mod tests {
 
     #[test]
     fn mult_recomputes_on_call_and_focus_context_changes() {
-        let contest = CqwwContest::default();
+        let contest = contest_from_id("cqww").unwrap();
         let mut st = mk_state();
         let macros = Macros::default();
 
         crate::reducer::reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             &NoDupeChecker,
             &MatchMultChecker,
@@ -988,7 +988,7 @@ mod tests {
 
         crate::reducer::reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             &NoDupeChecker,
             &MatchMultChecker,
@@ -1005,7 +1005,7 @@ mod tests {
 
         crate::reducer::reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             &NoDupeChecker,
             &MatchMultChecker,
@@ -1018,14 +1018,14 @@ mod tests {
 
     #[test]
     fn run_exchsent_logs_without_resending_exch() {
-        let contest = CqwwContest::default();
+        let contest = contest_from_id("cqww").unwrap();
         let mut st = mk_state();
         let macros = Macros::default();
         st.focused_entry_mut().mode = OpMode::Run;
 
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::TextInput {
                 s: "K1ABC".to_string(),
@@ -1033,13 +1033,13 @@ mod tests {
         );
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::KeyPress { key: Key::Space },
         );
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::TextInput {
                 s: "599".to_string(),
@@ -1047,26 +1047,26 @@ mod tests {
         );
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::KeyPress { key: Key::Space },
         );
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::TextInput { s: "5".to_string() },
         );
 
         let _ = reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::KeyPress { key: Key::Enter },
         );
         let effects = reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::KeyPress { key: Key::Enter },
         );
@@ -1089,14 +1089,14 @@ mod tests {
     fn run_edit_received_exch_does_not_reset_esm() {
         // Editing the received exchange fields should NOT reset ESM —
         // only editing the CALL field should force a resend.
-        let contest = CqwwContest::default();
+        let contest = contest_from_id("cqww").unwrap();
         let mut st = mk_state();
         let macros = Macros::default();
         st.focused_entry_mut().mode = OpMode::Run;
 
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::TextInput {
                 s: "K1ABC".to_string(),
@@ -1104,13 +1104,13 @@ mod tests {
         );
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::KeyPress { key: Key::Space },
         );
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::TextInput {
                 s: "599".to_string(),
@@ -1118,13 +1118,13 @@ mod tests {
         );
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::KeyPress { key: Key::Space },
         );
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::TextInput {
                 s: "05".to_string(),
@@ -1133,7 +1133,7 @@ mod tests {
 
         let _ = reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::KeyPress { key: Key::Enter },
         );
@@ -1142,7 +1142,7 @@ mod tests {
         // Edit zone field (received exchange) — ESM should stay ExchSent
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::KeyPress {
                 key: Key::Backspace,
@@ -1150,7 +1150,7 @@ mod tests {
         );
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::TextInput { s: "4".to_string() },
         );
@@ -1159,7 +1159,7 @@ mod tests {
         // Enter should log (not resend)
         let effects = reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::KeyPress { key: Key::Enter },
         );
@@ -1174,14 +1174,14 @@ mod tests {
     #[test]
     fn run_edit_call_after_exch_sent_resets_esm() {
         // Editing the CALL field after exchange sent should force a resend.
-        let contest = CqwwContest::default();
+        let contest = contest_from_id("cqww").unwrap();
         let mut st = mk_state();
         let macros = Macros::default();
         st.focused_entry_mut().mode = OpMode::Run;
 
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::TextInput {
                 s: "K1ABC".to_string(),
@@ -1189,13 +1189,13 @@ mod tests {
         );
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::KeyPress { key: Key::Space },
         );
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::TextInput {
                 s: "599".to_string(),
@@ -1203,13 +1203,13 @@ mod tests {
         );
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::KeyPress { key: Key::Space },
         );
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::TextInput {
                 s: "05".to_string(),
@@ -1218,7 +1218,7 @@ mod tests {
 
         let _ = reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::KeyPress { key: Key::Enter },
         );
@@ -1228,7 +1228,7 @@ mod tests {
         st.focused_entry_mut().focus = 0;
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::KeyPress {
                 key: Key::Backspace,
@@ -1239,13 +1239,13 @@ mod tests {
         // Enter should resend (not log)
         reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::TextInput { s: "D".to_string() },
         );
         let effects = reduce(
             &mut st,
-            &contest,
+            contest.as_ref(),
             &macros,
             AppEvent::KeyPress { key: Key::Enter },
         );

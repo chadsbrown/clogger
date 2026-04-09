@@ -1060,6 +1060,7 @@ dependencies = [
 name = "logger-core"
 version = "0.1.0"
 dependencies = [
+ "contest-engine",
  "serde",
  "serde_json",
 ]
