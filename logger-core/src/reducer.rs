@@ -282,9 +282,10 @@ pub fn reduce(
                     )
                 };
                 let _ = new_call;
-                revalidate_after_edit(st, contest);
+                // Skip SCP (we're cycling through existing SCP results)
+                // and skip redundant first revalidation.
                 recompute_feedback(st, dupe_checker, mult_checker);
-                apply_call_history(st, contest, call_history, scp);
+                apply_history_only(st, contest, call_history);
                 revalidate_after_edit(st, contest);
                 let entry = st.focused_entry_mut();
                 entry.scp_matches = saved_matches;
@@ -342,10 +343,10 @@ pub fn reduce(
                 entry.scp_cycle_index = None;
             }
 
-            // Revalidate + feedback + call history (same pattern as Key::Equal)
-            revalidate_after_edit(st, contest);
+            // Feedback + history only — skip SCP (callsign is known from spot)
+            // and skip redundant first revalidation.
             recompute_feedback(st, dupe_checker, mult_checker);
-            apply_call_history(st, contest, call_history, scp);
+            apply_history_only(st, contest, call_history);
             revalidate_after_edit(st, contest);
 
             vec![Effect::RigSet { radio, freq_hz }]
@@ -448,7 +449,6 @@ fn apply_call_history(
 ) {
     let call_norm = st.current_call();
     if call_norm.is_empty() {
-        // Clear any previous history-populated fields and SCP matches
         clear_history_fields(st);
         return;
     }
@@ -460,9 +460,32 @@ fn apply_call_history(
         entry.scp_n1_matches = scp.n_plus_one_matches(&call_norm, 10);
     }
 
-    // Exact lookup
+    apply_history_lookup(st, contest, call_history);
+}
+
+/// Call history lookup only — no SCP search. Used by bandmap navigation
+/// and SCP cycle where the callsign is already known/complete.
+fn apply_history_only(
+    st: &mut AppState,
+    contest: &dyn ContestEntry,
+    call_history: &dyn CallHistoryLookup,
+) {
+    let call_norm = st.current_call();
+    if call_norm.is_empty() {
+        clear_history_fields(st);
+        return;
+    }
+
+    apply_history_lookup(st, contest, call_history);
+}
+
+fn apply_history_lookup(
+    st: &mut AppState,
+    contest: &dyn ContestEntry,
+    call_history: &dyn CallHistoryLookup,
+) {
+    let call_norm = st.current_call();
     let Some(pairs) = call_history.lookup(&call_norm) else {
-        // No exact match — clear history-populated fields but keep SCP
         for field in &mut st.focused_entry_mut().fields {
             if field.from_history {
                 field.value.clear();
