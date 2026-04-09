@@ -45,32 +45,27 @@ jobs:
       - name: Build release binary
         run: cargo build --release --locked --target ${{ matrix.target }} -p ${{ env.BIN_NAME }}
 
-      - name: Package (Linux)
+      - name: Stage release files (Linux)
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          STAGING="clogger-${{ matrix.target }}"
+          STAGING="staging"
           mkdir -p "$STAGING"
           cp "target/${{ matrix.target }}/release/${{ env.BIN_NAME }}" "$STAGING/"
           cp README.md logger-tui.example.toml "$STAGING/" 2>/dev/null || true
-          tar czf "$STAGING.tar.gz" "$STAGING"
-          echo "ARCHIVE=$STAGING.tar.gz" >> "$GITHUB_ENV"
 
-      - name: Package (Windows)
+      - name: Stage release files (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $staging = "clogger-${{ matrix.target }}"
-          New-Item -ItemType Directory -Force -Path $staging | Out-Null
-          Copy-Item "target/${{ matrix.target }}/release/${{ env.BIN_NAME }}.exe" -Destination $staging
-          if (Test-Path "README.md") { Copy-Item "README.md" -Destination $staging }
-          if (Test-Path "logger-tui.example.toml") { Copy-Item "logger-tui.example.toml" -Destination $staging }
-          Compress-Archive -Path $staging -DestinationPath "$staging.zip"
-          echo "ARCHIVE=$staging.zip" >> $env:GITHUB_ENV
+          New-Item -ItemType Directory -Force -Path staging | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/${{ env.BIN_NAME }}.exe" -Destination staging
+          if (Test-Path "README.md") { Copy-Item "README.md" -Destination staging }
+          if (Test-Path "logger-tui.example.toml") { Copy-Item "logger-tui.example.toml" -Destination staging }
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v5
         with:
           name: clogger-${{ matrix.target }}
-          path: ${{ env.ARCHIVE }}
+          path: staging/*
           if-no-files-found: error
