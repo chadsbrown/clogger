@@ -46,6 +46,12 @@ pub struct Config {
     pub keyer: Option<logger_runtime::KeyerConfig>,
     pub dxfeed: Option<logger_runtime::DxFeedConfig>,
     pub so2r: Option<logger_runtime::So2rConfig>,
+    pub category: Option<logger_runtime::CategoryConfig>,
+    /// Scoreboard posting interval in seconds (default: 120).
+    #[serde(default = "default_scoreboard_interval")]
+    pub interval_secs: u64,
+    #[serde(default)]
+    pub scoreboard: Vec<logger_runtime::ScoreboardEndpoint>,
 }
 
 #[derive(Debug, Default, Deserialize, Clone, Copy, PartialEq, Eq)]
@@ -58,6 +64,10 @@ pub enum CursorStyle {
     SteadyUnderline,
     BlinkingBar,
     SteadyBar,
+}
+
+fn default_scoreboard_interval() -> u64 {
+    120
 }
 
 fn default_rst_sent() -> String {

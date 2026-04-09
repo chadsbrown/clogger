@@ -12,7 +12,10 @@ use logger_runtime::LogAdapter;
 use ratatui::backend::CrosstermBackend;
 use tokio::sync::{broadcast, mpsc};
 use std::sync::Arc;
-use logger_runtime::{Keyer, KeyerEvent, ReceiverId, Rig, So2rSwitch};
+use logger_runtime::{
+    CategoryConfig, Keyer, KeyerEvent, ReceiverId, Rig, ScoreboardHandle, ScoreboardSnapshot,
+    ScoreboardStatus, So2rSwitch,
+};
 use tracing::warn;
 
 use crate::TuiState;
@@ -37,6 +40,7 @@ pub async fn run(
     conn: crate::ConnectionStatus,
     so2r_switch: Option<Box<dyn So2rSwitch>>,
     so2r_default_rx_mode: logger_core::So2rRxMode,
+    scoreboard: Option<(ScoreboardHandle, &'static str, String, CategoryConfig)>,
 ) -> Result<()> {
     // Setup terminal
     terminal::enable_raw_mode()?;
@@ -52,6 +56,13 @@ pub async fn run(
     let backend = CrosstermBackend::new(io::stdout());
     let mut terminal = ratatui::Terminal::new(backend)?;
 
+    // Decompose the scoreboard tuple if present
+    let (scoreboard_handle, scoreboard_cabrillo_id, scoreboard_call, scoreboard_category) =
+        match scoreboard {
+            Some((handle, cab_id, call, cat)) => (Some(handle), Some(cab_id), Some(call), Some(cat)),
+            None => (None, None, None, None),
+        };
+
     let initial_score = log_adapter.score_summary();
     let mut tui_state = TuiState {
         log_display: initial_log_display,
@@ -64,6 +75,7 @@ pub async fn run(
         dxfeed_connected: conn.dxfeed_connected,
         so2r_configured: conn.so2r_configured,
         so2r_connected: conn.so2r_connected,
+        scoreboard_configured: conn.scoreboard_configured,
         cw_echo_enabled,
         tx_radio: state.focused_radio,
         ..Default::default()
@@ -121,6 +133,22 @@ pub async fn run(
 
                         // Score is always cheap (cached read).
                         tui_state.score = log_adapter.score_summary();
+
+                        // Update scoreboard snapshot
+                        if let (Some(handle), Some(cab_id), Some(call), Some(cat)) = (
+                            &scoreboard_handle,
+                            scoreboard_cabrillo_id,
+                            &scoreboard_call,
+                            &scoreboard_category,
+                        ) {
+                            let _ = handle.snapshot_tx.send(Some(ScoreboardSnapshot {
+                                cabrillo_id: cab_id,
+                                call: call.clone(),
+                                ops: call.clone(),
+                                category: cat.clone(),
+                                breakdown: log_adapter.score_breakdown(),
+                            }));
+                        }
 
                         // Analytics is expensive — only recompute when state
                         // that affects it has actually changed.
@@ -189,6 +217,9 @@ pub async fn run(
                 }
                 // Score is cheap; analytics skipped on timer ticks.
                 tui_state.score = log_adapter.score_summary();
+            }
+            status = recv_scoreboard_status(&scoreboard_handle) => {
+                tui_state.scoreboard_status = status;
             }
         }
     };
@@ -376,6 +407,19 @@ async fn recv_keyer_event(rx: &mut Option<broadcast::Receiver<KeyerEvent>>) -> K
                 Err(broadcast::error::RecvError::Closed) => std::future::pending().await,
             }
         },
+        None => std::future::pending().await,
+    }
+}
+
+async fn recv_scoreboard_status(handle: &Option<ScoreboardHandle>) -> ScoreboardStatus {
+    match handle {
+        Some(h) => {
+            let mut rx = h.status_rx.clone();
+            match rx.changed().await {
+                Ok(()) => *rx.borrow(),
+                Err(_) => std::future::pending().await,
+            }
+        }
         None => std::future::pending().await,
     }
 }

@@ -159,3 +159,27 @@
 #host = "dxc.k3lr.com"
 #port = 7300
 #callsign = "N9UNX"
+
+# ---------------------------------------------------------------------------
+# Cabrillo category — describes your entry. Required when [[scoreboard]]
+# is configured. Will also be used for Cabrillo log file generation.
+# ---------------------------------------------------------------------------
+#[category]
+#power = "HIGH"          # LOW | HIGH | QRP
+#assisted = "ASSISTED"   # NON-ASSISTED | ASSISTED
+#transmitter = "ONE"     # UNLIMITED | TWO | ONE
+#operator = "SINGLE-OP"  # MULTI-OP | SINGLE-OP | MULTI-ONE | MULTI-TWO | MULTI-MULTI
+#bands = "ALL"           # ALL | 160M | 80M | 40M | 20M | 15M | 10M | 6M | 2M
+#mode = "CW"             # MIXED | CW | SSB | RTTY | DIGI
+#overlay = "N/A"         # N/A | TB-WIRES | ROOKIE | CLASSIC | WIRE-ONLY
+
+# ---------------------------------------------------------------------------
+# Online scoreboard posting (optional). Repeat [[scoreboard]] to post to
+# multiple services simultaneously. Default cadence: 120 seconds.
+# Spec: https://blog.contestonlinescore.com/online-scoring-xml-specification/
+# ---------------------------------------------------------------------------
+#interval_secs = 120
+#
+#[[scoreboard]]
+#url = "https://contestonlinescore.com/post/"
+#password = "your-password-here"

@@ -10,7 +10,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use clap::Parser;
 use logger_core::{AppEvent, RadioId};
-use logger_runtime::{AvailSummary, RateInfo, ScoreSummary};
+use logger_runtime::{AvailSummary, RateInfo, ScoreboardStatus, ScoreSummary};
 use tokio::sync::mpsc;
 use tracing::warn;
 use logger_runtime::{Keyer, Rig, So2rSwitch};
@@ -49,10 +49,12 @@ pub struct TuiState {
     pub keyer_configured: bool,
     pub dxfeed_configured: bool,
     pub so2r_configured: bool,
+    pub scoreboard_configured: bool,
     pub rig_connected: bool,
     pub keyer_connected: bool,
     pub dxfeed_connected: bool,
     pub so2r_connected: bool,
+    pub scoreboard_status: ScoreboardStatus,
 }
 
 impl Default for TuiState {
@@ -77,6 +79,8 @@ impl Default for TuiState {
             keyer_connected: false,
             dxfeed_connected: false,
             so2r_connected: false,
+            scoreboard_configured: false,
+            scoreboard_status: ScoreboardStatus::Idle,
         }
     }
 }
@@ -192,6 +196,36 @@ async fn main() -> Result<()> {
             (None, logger_core::So2rRxMode::Mono)
         };
 
+    // Optionally spawn scoreboard adapter
+    let scoreboard_configured = !config.scoreboard.is_empty();
+    let scoreboard_handle = if scoreboard_configured {
+        let category = config
+            .category
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("[category] is required when [[scoreboard]] is configured"))?;
+        let cabrillo_id = session
+            .contest
+            .cabrillo_id(category.mode.to_category_mode())
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "contest '{}' has no Cabrillo ID for mode '{}'",
+                    config.contest,
+                    category.mode.as_str()
+                )
+            })?;
+        Some((
+            logger_runtime::spawn_scoreboard_adapter(logger_runtime::ScoreboardConfig {
+                endpoints: config.scoreboard,
+                interval_secs: config.interval_secs,
+            }),
+            cabrillo_id,
+            config.my_call.clone(),
+            category.clone(),
+        ))
+    } else {
+        None
+    };
+
     // Bridge: AppEvent → TerminalEvent::App
     let bridge_tx = tui_tx.clone();
     tokio::spawn(async move {
@@ -229,9 +263,11 @@ async fn main() -> Result<()> {
             dxfeed_connected,
             so2r_configured,
             so2r_connected,
+            scoreboard_configured,
         },
         so2r_switch,
         so2r_default_rx_mode,
+        scoreboard_handle,
     )
     .await
 }
@@ -245,4 +281,5 @@ pub struct ConnectionStatus {
     pub dxfeed_connected: bool,
     pub so2r_configured: bool,
     pub so2r_connected: bool,
+    pub scoreboard_configured: bool,
 }

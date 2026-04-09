@@ -8,11 +8,15 @@ pub mod log_adapter;
 pub mod rig_adapter;
 pub mod scoring;
 pub mod scp;
+pub mod scoreboard_adapter;
 pub mod so2r_adapter;
 
 pub use call_history::CallHistoryDb;
 pub use scp::ScpDb;
-pub use config::{DxFeedConfig, DxFeedSourceConfig, KeyerConfig, RigConfig, So2rConfig};
+pub use config::{
+    CategoryConfig, CategoryConfigMode, ScoreboardEndpoint,
+    DxFeedConfig, DxFeedSourceConfig, KeyerConfig, RigConfig, So2rConfig,
+};
 pub use dxfeed_adapter::spawn_dxfeed_adapter;
 pub use keyer_adapter::{abort_cw, connect_keyer, send_cw};
 pub use log_adapter::{LogAdapter, decode_exchange_pairs};
@@ -20,6 +24,10 @@ pub use rig_adapter::spawn_rig_adapter;
 pub use analytics::{AvailSummary, RateInfo, WorkedCalls, compute_avail, compute_rate, compute_worked_calls};
 pub use bootstrap::{MacroOverrides, Session, SessionConfig, bootstrap};
 pub use scoring::{BandScore, BreakdownRow, ScoreBreakdown, ScoreSummary, scorer_for_contest};
+pub use scoreboard_adapter::{
+    ScoreboardConfig, ScoreboardHandle, ScoreboardSnapshot, ScoreboardStatus,
+    spawn_scoreboard_adapter,
+};
 
 // Re-export qsolog types needed by consumers of LogAdapter
 pub use qsolog::qso::{ExchangeBlob, QsoRecord};

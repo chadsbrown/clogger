@@ -58,6 +58,19 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState, tui: &TuiState) {
     push_indicator(&mut right_spans, "DXF", tui.dxfeed_configured, tui.dxfeed_connected);
     push_indicator(&mut right_spans, "SO2R", tui.so2r_configured, tui.so2r_connected);
 
+    // Scoreboard: tri-state — yellow=idle, green=ok, red=failing
+    if tui.scoreboard_configured {
+        if !right_spans.is_empty() {
+            right_spans.push(Span::raw(" "));
+        }
+        let color = match tui.scoreboard_status {
+            logger_runtime::ScoreboardStatus::Idle => Color::Yellow,
+            logger_runtime::ScoreboardStatus::Ok => Color::Green,
+            logger_runtime::ScoreboardStatus::Failing => Color::Red,
+        };
+        right_spans.push(Span::styled("SCRBD", Style::default().fg(color)));
+    }
+
     if right_spans.is_empty() {
         frame.render_widget(Paragraph::new(Line::from(left_spans)), area);
     } else {
