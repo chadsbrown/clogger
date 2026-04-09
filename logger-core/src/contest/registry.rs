@@ -79,6 +79,16 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         },
         exchange_schema_id: 6,
     },
+    SpecContestMeta {
+        contest_id: "mst",
+        contest_instance_id: 4,
+        field_widths: &[(1, 12), (2, 10)],
+        default_macros_fn: mst_macros,
+        history_mapping: &[("Name", 2)],
+        uses_serial: true,
+        cabrillo_id_fn: |_| Some("ICWC-MST"),
+        exchange_schema_id: 4,
+    },
 ];
 
 pub fn find_spec_contest(id: &str) -> Option<&'static SpecContestMeta> {
@@ -94,6 +104,15 @@ fn cwt_macros() -> Macros {
     Macros {
         f1: "CQ CWT {MYCALL}".to_string(),
         f2: "{MYNAME} {MYXCHG}".to_string(),
+        f3: "TU {MYCALL}".to_string(),
+        ..Macros::default()
+    }
+}
+
+fn mst_macros() -> Macros {
+    Macros {
+        f1: "CQ MST {MYCALL}".to_string(),
+        f2: "{MYNAME} {SERIAL}".to_string(),
         f3: "TU {MYCALL}".to_string(),
         ..Macros::default()
     }

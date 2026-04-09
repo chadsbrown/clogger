@@ -102,8 +102,6 @@ pub fn scorer_for_contest(
         Box::new(spec_scorer::SpecScorer::new(contest_id, contest_instance_id, config))
     } else if contest_id == "sweeps" {
         Box::new(sweeps::SweepsScorer::new(contest_instance_id))
-    } else if contest_id == "mst" {
-        Box::new(mst::MstScorer::new())
     } else {
         Box::new(unique_call::UniqueCallScorer::new())
     }

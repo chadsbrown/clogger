@@ -1,4 +1,3 @@
-pub mod mst;
 pub mod registry;
 pub mod spec_driven;
 pub mod sweeps;
@@ -15,7 +14,6 @@ pub fn contest_from_id(id: &str) -> Option<Box<dyn ContestEntry>> {
     // Then hand-coded contests
     match id.to_ascii_lowercase().as_str() {
         "sweeps" => Some(Box::new(sweeps::SweepsContest)),
-        "mst" => Some(Box::new(mst::MstContest)),
         _ => None,
     }
 }

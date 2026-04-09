@@ -213,8 +213,8 @@ the `SpecScorer` handles it automatically.
 | CWops CWT | Spec-driven | `cwt` | `cwt.json` |
 | NAQP | Spec-driven | `naqp` | `naqp.json` |
 | ARRL DX | Spec-driven | `arrl_dx` | `arrl_dx.json` |
+| ICWC Medium Speed Test | Spec-driven | `mst` | `mst.json` |
 | ARRL Sweepstakes | Hand-coded | `sweeps` | none |
-| ICWC Medium Speed Test | Hand-coded | `mst` | none |
 
 ## Key Files Reference
 
