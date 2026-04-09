@@ -214,6 +214,7 @@ the `SpecScorer` handles it automatically.
 | NAQP | Spec-driven | `naqp` | `naqp.json` |
 | ARRL DX | Spec-driven | `arrl_dx` | `arrl_dx.json` |
 | ICWC Medium Speed Test | Spec-driven | `mst` | `mst.json` |
+| NCCC NS Sprint | Spec-driven | `ns_sprint` | `ns_sprint.json` |
 | ARRL Sweepstakes | Hand-coded | `sweeps` | none |
 
 ## Key Files Reference

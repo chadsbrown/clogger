@@ -189,6 +189,10 @@ impl ContestEntry for SpecDrivenContest {
     fn cabrillo_id(&self, mode: CategoryMode) -> Option<&'static str> {
         (self.meta.cabrillo_id_fn)(mode)
     }
+
+    fn auto_toggle_mode(&self) -> bool {
+        self.meta.auto_toggle_mode
+    }
 }
 
 fn validate_field(spec_field: &ExchangeField, value: &str) -> Validation {

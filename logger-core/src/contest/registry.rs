@@ -24,6 +24,8 @@ pub struct SpecContestMeta {
     pub cabrillo_id_fn: fn(CategoryMode) -> Option<&'static str>,
     /// Exchange schema ID for QsoDraft (matches qsolog convention).
     pub exchange_schema_id: u16,
+    /// Whether the operating mode auto-toggles (RUN↔S&P) after logging a QSO.
+    pub auto_toggle_mode: bool,
 }
 
 pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
@@ -40,6 +42,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
             CategoryMode::Mixed => None,
         },
         exchange_schema_id: 1,
+        auto_toggle_mode: false,
     },
     SpecContestMeta {
         contest_id: "cwt",
@@ -50,6 +53,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         uses_serial: false,
         cabrillo_id_fn: |_| Some("CW-OPS"),
         exchange_schema_id: 3,
+        auto_toggle_mode: false,
     },
     SpecContestMeta {
         contest_id: "naqp",
@@ -64,6 +68,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
             CategoryMode::Mixed => None,
         },
         exchange_schema_id: 5,
+        auto_toggle_mode: false,
     },
     SpecContestMeta {
         contest_id: "arrl_dx",
@@ -78,6 +83,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
             CategoryMode::Mixed => None,
         },
         exchange_schema_id: 6,
+        auto_toggle_mode: false,
     },
     SpecContestMeta {
         contest_id: "mst",
@@ -88,6 +94,21 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         uses_serial: true,
         cabrillo_id_fn: |_| Some("ICWC-MST"),
         exchange_schema_id: 4,
+        auto_toggle_mode: false,
+    },
+    SpecContestMeta {
+        contest_id: "ns_sprint",
+        contest_instance_id: 7,
+        field_widths: &[(1, 12), (2, 5), (3, 10), (4, 4)],
+        default_macros_fn: ns_sprint_macros,
+        history_mapping: &[("Name", 3)],
+        uses_serial: true,
+        cabrillo_id_fn: |mode| match mode {
+            CategoryMode::CW => Some("NCCC-SPRINT"),
+            _ => None,
+        },
+        exchange_schema_id: 7,
+        auto_toggle_mode: true,
     },
 ];
 
@@ -123,6 +144,16 @@ fn naqp_macros() -> Macros {
         f1: "CQ NA {MYCALL}".to_string(),
         f2: "{MYNAME} {MYXCHG}".to_string(),
         f3: "TU {MYCALL}".to_string(),
+        ..Macros::default()
+    }
+}
+
+fn ns_sprint_macros() -> Macros {
+    Macros {
+        f1: "NS {MYCALL}".to_string(),
+        f2: "{MYCALL} {SERIAL} {MYNAME} {MYXCHG}".to_string(),
+        f3: "R".to_string(),
+        sp_f2: Some("{CALL} {SERIAL} {MYNAME} {MYXCHG} {MYCALL}".to_string()),
         ..Macros::default()
     }
 }

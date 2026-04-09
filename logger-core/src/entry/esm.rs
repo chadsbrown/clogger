@@ -71,9 +71,10 @@ fn handle_sp(st: &mut AppState, contest: &dyn ContestEntry, macros: &Macros) -> 
             }
             st.focused_entry_mut().esm_step = EsmStep::ExchSent;
             claim_serial(st, contest);
+            let template = macros.sp_f2.as_deref().unwrap_or(&macros.f2);
             vec![Effect::CwSend {
                 radio: st.focused_radio,
-                text: expand_macro(&macros.f2, st),
+                text: expand_macro(template, st),
             }]
         }
         EsmStep::ExchSent => log_and_clear(st, contest, macros, false, false),
@@ -114,6 +115,12 @@ fn log_and_clear(
             entry.clear_values();
             entry.esm_step = EsmStep::Idle;
             entry.last_logged_context = Some(last_ctx);
+            if contest.auto_toggle_mode() {
+                entry.mode = match entry.mode {
+                    OpMode::Run => OpMode::Sp,
+                    OpMode::Sp => OpMode::Run,
+                };
+            }
 
             let mut effects = Vec::new();
             if send_exch {

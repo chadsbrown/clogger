@@ -54,4 +54,10 @@ pub trait ContestEntry {
     fn cabrillo_id(&self, _mode: CategoryMode) -> Option<&'static str> {
         None
     }
+
+    /// Whether the operating mode should auto-toggle (RUN↔S&P) after logging a QSO.
+    /// Used by Sprint-style contests where the run station must QSY after each contact.
+    fn auto_toggle_mode(&self) -> bool {
+        false
+    }
 }

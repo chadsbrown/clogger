@@ -12,15 +12,21 @@
 # Your CQ zone (required for cqww)
 #my_zone = 4
 
-# Contest: "cqww", "cwt", "mst", or "sweeps"
+# Contest identifier. Supported values:
+#   cqww, cwt, mst, naqp, arrl_dx, ns_sprint, sweeps
 #contest = "cqww"
 
-# RST sent (default: "599", used by cqww)
+# RST sent (default: "599", used by cqww, arrl_dx)
 #rst_sent = "599"
 
-# CWT-specific fields (required when contest = "cwt")
-# my_name is also used by mst (the sent NAME in the exchange)
+# Operator name — used by cwt, mst, naqp, ns_sprint
 #my_name = "CHAD"
+
+# Generic sent exchange field — meaning depends on the contest:
+#   cwt:        CWops membership number   (e.g. "2187")
+#   naqp:       state/province            (e.g. "NC")
+#   ns_sprint:  state/province            (e.g. "NC")
+# Expands as {MYXCHG} in CW macros.
 #my_xchg = "2187"
 
 # SQLite database path for persistent logging (omit for in-memory only)
@@ -186,12 +192,13 @@
 #soapbox = ["Great conditions on 20m!", "First time trying SO2R"]
 
 # ---------------------------------------------------------------------------
-# Online scoreboard posting (optional). Repeat [[scoreboard]] to post to
-# multiple services simultaneously. Default cadence: 120 seconds.
+# Online scoreboard posting (optional). Repeat [[scoreboard.endpoints]] to
+# post to multiple services simultaneously. Default cadence: 120 seconds.
 # Spec: https://blog.contestonlinescore.com/online-scoring-xml-specification/
 # ---------------------------------------------------------------------------
+#[scoreboard]
 #interval_secs = 120
 #
-#[[scoreboard]]
+#[[scoreboard.endpoints]]
 #url = "https://contestonlinescore.com/post/"
 #password = "your-password-here"

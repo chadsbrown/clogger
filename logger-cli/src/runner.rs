@@ -218,6 +218,7 @@ impl ContestEntry for SerialContest {
     }
     fn history_field_mapping(&self) -> Vec<(&str, u16)> { self.0.history_field_mapping() }
     fn uses_serial(&self) -> bool { true }
+    fn auto_toggle_mode(&self) -> bool { self.0.auto_toggle_mode() }
 }
 
 fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {

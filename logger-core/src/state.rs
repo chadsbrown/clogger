@@ -60,6 +60,8 @@ pub struct Macros {
     pub f7: String,
     pub f8: String,
     pub f9: String,
+    /// If set, S&P ESM sends this instead of f2 for the exchange step.
+    pub sp_f2: Option<String>,
 }
 
 impl Default for Macros {
@@ -72,6 +74,7 @@ impl Default for Macros {
             f7: String::new(),
             f8: String::new(),
             f9: String::new(),
+            sp_f2: None,
         }
     }
 }

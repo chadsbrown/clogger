@@ -205,12 +205,12 @@ async fn main() -> Result<()> {
         };
 
     // Optionally spawn scoreboard adapter
-    let scoreboard_configured = !config.scoreboard.is_empty();
+    let scoreboard_configured = !config.scoreboard.endpoints.is_empty();
     let scoreboard_handle = if scoreboard_configured {
         let category = config
             .category
             .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("[category] is required when [[scoreboard]] is configured"))?;
+            .ok_or_else(|| anyhow::anyhow!("[category] is required when [[scoreboard.endpoints]] is configured"))?;
         let cabrillo_id = session
             .contest
             .cabrillo_id(category.mode.to_category_mode())
@@ -223,8 +223,8 @@ async fn main() -> Result<()> {
             })?;
         Some((
             logger_runtime::spawn_scoreboard_adapter(logger_runtime::ScoreboardConfig {
-                endpoints: config.scoreboard,
-                interval_secs: config.interval_secs,
+                endpoints: config.scoreboard.endpoints,
+                interval_secs: config.scoreboard.interval_secs,
             }),
             cabrillo_id,
             config.my_call.clone(),

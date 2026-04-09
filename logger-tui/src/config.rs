@@ -49,11 +49,19 @@ pub struct Config {
     pub category: Option<logger_runtime::CategoryConfig>,
     #[serde(default)]
     pub cabrillo: logger_runtime::CabrilloConfig,
-    /// Scoreboard posting interval in seconds (default: 120).
+    #[serde(default)]
+    pub scoreboard: ScoreboardSection,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct ScoreboardSection {
+    /// Posting interval in seconds (default: 120).
     #[serde(default = "default_scoreboard_interval")]
     pub interval_secs: u64,
+    /// Scoreboard endpoints; repeat `[[scoreboard.endpoints]]` to post to
+    /// multiple services.
     #[serde(default)]
-    pub scoreboard: Vec<logger_runtime::ScoreboardEndpoint>,
+    pub endpoints: Vec<logger_runtime::ScoreboardEndpoint>,
 }
 
 #[derive(Debug, Default, Deserialize, Clone, Copy, PartialEq, Eq)]

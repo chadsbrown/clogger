@@ -1,0 +1,44 @@
+{
+  "contest": "ns_sprint",
+  "events": [
+    { "type": "RigStatus", "radio": 1, "freq_hz": 14042000, "mode": "CW", "is_ptt": false },
+    { "type": "SetMode", "mode": "Run" },
+
+    { "type": "Text", "s": "N6TR" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "154" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "TREE" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "OR" },
+    { "type": "Key", "key": "Enter" },
+    { "type": "Key", "key": "Enter" },
+
+    { "type": "Text", "s": "K7GM" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "122" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "RICK" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "NC" },
+    { "type": "Key", "key": "Enter" },
+    { "type": "Key", "key": "Enter" }
+  ],
+  "expectations": {
+    "qsos": [
+      { "call": "N6TR", "exchange": { "nr": "154", "name": "TREE", "loc": "OR", "serial": "1" } },
+      { "call": "K7GM", "exchange": { "nr": "122", "name": "RICK", "loc": "NC", "serial": "2" } }
+    ],
+    "cw_sent_contains": [
+      "N6TR",
+      "1",
+      "R",
+      "K7GM",
+      "2"
+    ],
+    "final_serial_counter": 3,
+    "final_radio_entries": {
+      "1": { "op_mode": "Run" }
+    }
+  }
+}
