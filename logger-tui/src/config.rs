@@ -47,6 +47,8 @@ pub struct Config {
     pub dxfeed: Option<logger_runtime::DxFeedConfig>,
     pub so2r: Option<logger_runtime::So2rConfig>,
     pub category: Option<logger_runtime::CategoryConfig>,
+    #[serde(default)]
+    pub cabrillo: logger_runtime::CabrilloConfig,
     /// Scoreboard posting interval in seconds (default: 120).
     #[serde(default = "default_scoreboard_interval")]
     pub interval_secs: u64,

@@ -93,7 +93,46 @@ pub async fn run(
         tokio::select! {
             ev = rx.recv() => {
                 match ev {
+                    Some(TerminalEvent::OpenExportModal) => {
+                        if tui_state.export_modal.is_none() {
+                            tui_state.export_modal = Some(crate::ExportModal {
+                                step: crate::ExportStep::SelectFormat,
+                            });
+                        }
+                    }
                     Some(TerminalEvent::App(app_event)) => {
+                        // If the export modal is open, intercept keyboard events
+                        if tui_state.export_modal.is_some() {
+                            let key_code = match &app_event {
+                                logger_core::AppEvent::KeyPress { key } => Some(match key {
+                                    logger_core::Key::Enter => crossterm::event::KeyCode::Enter,
+                                    logger_core::Key::Esc => crossterm::event::KeyCode::Esc,
+                                    logger_core::Key::Backspace => crossterm::event::KeyCode::Backspace,
+                                    logger_core::Key::Left => crossterm::event::KeyCode::Left,
+                                    logger_core::Key::Right => crossterm::event::KeyCode::Right,
+                                    logger_core::Key::Tab => crossterm::event::KeyCode::Tab,
+                                    logger_core::Key::Space => crossterm::event::KeyCode::Char(' '),
+                                    _ => continue,
+                                }),
+                                logger_core::AppEvent::TextInput { s } => {
+                                    s.chars().next().map(crossterm::event::KeyCode::Char)
+                                }
+                                _ => None,
+                            };
+                            if let Some(kc) = key_code {
+                                let records = log_adapter.ordered_records();
+                                crate::ui::export_modal::handle_key(
+                                    &mut tui_state.export_modal,
+                                    kc,
+                                    &records,
+                                    &state.my_call,
+                                    contest.contest_id(),
+                                );
+                                continue;
+                            }
+                            // Non-keyboard events (RigStatus, spots, etc.) fall through
+                        }
+
                         if matches!(&app_event, logger_core::AppEvent::RigDisconnected { .. }) {
                             tui_state.rig_connected = false;
                             tui_state.error_message = Some("ERROR: RIG CONNECTION LOST".to_string());

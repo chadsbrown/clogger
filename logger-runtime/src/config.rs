@@ -185,6 +185,23 @@ impl CategoryOverlay {
 }
 
 // ---------------------------------------------------------------------------
+// Cabrillo header metadata
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct CabrilloConfig {
+    pub club: Option<String>,
+    #[serde(default)]
+    pub operators: Vec<String>,
+    pub name: Option<String>,
+    #[serde(default)]
+    pub address: Vec<String>,
+    pub email: Option<String>,
+    #[serde(default)]
+    pub soapbox: Vec<String>,
+}
+
+// ---------------------------------------------------------------------------
 // Scoreboard
 // ---------------------------------------------------------------------------
 

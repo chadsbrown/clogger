@@ -18,6 +18,12 @@ use logger_runtime::{Keyer, Rig, So2rSwitch};
 use config::{Cli, load_config};
 use ui::log_tail::LogRow;
 
+pub use ui::export_modal::ExportStep;
+
+pub struct ExportModal {
+    pub step: ExportStep,
+}
+
 pub struct TuiState {
     /// What to display in the CW line of each radio's entry.
     ///
@@ -55,6 +61,7 @@ pub struct TuiState {
     pub dxfeed_connected: bool,
     pub so2r_connected: bool,
     pub scoreboard_status: ScoreboardStatus,
+    pub export_modal: Option<ExportModal>,
 }
 
 impl Default for TuiState {
@@ -81,6 +88,7 @@ impl Default for TuiState {
             so2r_connected: false,
             scoreboard_configured: false,
             scoreboard_status: ScoreboardStatus::Idle,
+            export_modal: None,
         }
     }
 }

@@ -1,3 +1,4 @@
+pub mod adif_export;
 pub mod analytics;
 pub mod bootstrap;
 pub mod call_history;
@@ -14,7 +15,7 @@ pub mod so2r_adapter;
 pub use call_history::CallHistoryDb;
 pub use scp::ScpDb;
 pub use config::{
-    CategoryConfig, CategoryConfigMode, ScoreboardEndpoint,
+    CabrilloConfig, CategoryConfig, CategoryConfigMode, ScoreboardEndpoint,
     DxFeedConfig, DxFeedSourceConfig, KeyerConfig, RigConfig, So2rConfig,
 };
 pub use dxfeed_adapter::spawn_dxfeed_adapter;

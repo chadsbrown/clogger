@@ -1,6 +1,7 @@
 pub mod avail_box;
 pub mod bandmap;
 pub mod entry_line;
+pub mod export_modal;
 pub mod log_tail;
 pub mod rate_box;
 pub mod score_box;
@@ -97,8 +98,13 @@ pub fn render(frame: &mut Frame, app: &AppState, tui: &TuiState) {
 
     // Footer
     let footer = ratatui::widgets::Paragraph::new(
-        " F1:CQ  F2:Exch  F3:TU  F5:Call  Esc:Stop  F12:Wipe  Enter:ESM  Ins:Run/S&P  \u{2191}\u{2193}:R1/R2  C-\u{2191}\u{2193}:Bandmap  Ctrl-C:Quit",
+        " F1:CQ  F2:Exch  F3:TU  F5:Call  Esc:Stop  F12:Wipe  Enter:ESM  Ins:Run/S&P  \u{2191}\u{2193}:R1/R2  C-\u{2191}\u{2193}:Bandmap  C-E:Export  Ctrl-C:Quit",
     )
     .style(ratatui::style::Style::default().fg(ratatui::style::Color::DarkGray));
     frame.render_widget(footer, rows[2]);
+
+    // Modal overlay (if open)
+    if let Some(ref modal) = tui.export_modal {
+        export_modal::render(frame, modal);
+    }
 }

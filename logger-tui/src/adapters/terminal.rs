@@ -5,6 +5,7 @@ use tokio::sync::mpsc;
 pub enum TerminalEvent {
     App(AppEvent),
     Shutdown,
+    OpenExportModal,
 }
 
 pub fn spawn_terminal_reader(tx: mpsc::Sender<TerminalEvent>) {
@@ -23,7 +24,10 @@ pub fn spawn_terminal_reader(tx: mpsc::Sender<TerminalEvent>) {
                 (m, KeyCode::Char('c')) if m.contains(KeyModifiers::CONTROL) => {
                     TerminalEvent::Shutdown
                 }
-                (m, KeyCode::Up) if m.contains(KeyModifiers::CONTROL) => {
+                (m, KeyCode::Char('e')) if m.contains(KeyModifiers::CONTROL) => {
+                TerminalEvent::OpenExportModal
+            }
+            (m, KeyCode::Up) if m.contains(KeyModifiers::CONTROL) => {
                     TerminalEvent::App(AppEvent::BandmapUp)
                 }
                 (m, KeyCode::Down) if m.contains(KeyModifiers::CONTROL) => {
