@@ -19,7 +19,7 @@ pub use log_adapter::{LogAdapter, decode_exchange_pairs};
 pub use rig_adapter::spawn_rig_adapter;
 pub use analytics::{AvailSummary, RateInfo, WorkedCalls, compute_avail, compute_rate, compute_worked_calls};
 pub use bootstrap::{MacroOverrides, Session, SessionConfig, bootstrap};
-pub use scoring::{BandScore, ScoreSummary, scorer_for_contest};
+pub use scoring::{BandScore, BreakdownRow, ScoreBreakdown, ScoreSummary, scorer_for_contest};
 
 // Re-export qsolog types needed by consumers of LogAdapter
 pub use qsolog::qso::{ExchangeBlob, QsoRecord};

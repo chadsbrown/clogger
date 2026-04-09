@@ -8,7 +8,10 @@ use contest_engine::types::{Band as CeBand, Callsign, Continent};
 use qsolog::qso::QsoRecord;
 use qsolog::types::{Band, Mode};
 
-use super::{BandScore, ContestScorer, ScoreSummary, BAND_LABELS, band_label_from_qsolog};
+use super::{
+    BandScore, BreakdownRow, ContestScorer, ScoreBreakdown, ScoreSummary, BAND_LABELS,
+    band_label_from_qsolog,
+};
 use crate::log_adapter::decode_exchange_pairs;
 
 pub struct SpecScorer {
@@ -23,6 +26,12 @@ pub struct SpecScorer {
     /// Per-band QSO and mult counters, updated incrementally from ApplySummary.
     qsos_by_band: HashMap<String, u32>,
     mults_by_band: HashMap<String, u32>,
+    /// Per-band QSO points, for breakdown.
+    points_by_band: HashMap<String, i64>,
+    /// Per-band, per-mult-type counts: band -> (mult_type -> count).
+    mults_by_type_by_band: HashMap<String, HashMap<String, u32>>,
+    /// Ordered multiplier type IDs from the contest spec (e.g. ["zone", "country"]).
+    mult_type_ids: Vec<String>,
     cached_summary: ScoreSummary,
 }
 
@@ -40,6 +49,9 @@ impl SpecScorer {
             resolved_calls: HashSet::new(),
             qsos_by_band: HashMap::new(),
             mults_by_band: HashMap::new(),
+            points_by_band: HashMap::new(),
+            mults_by_type_by_band: HashMap::new(),
+            mult_type_ids: Vec::new(),
             cached_summary: ScoreSummary::default(),
         };
         scorer.init_session();
@@ -58,6 +70,12 @@ impl SpecScorer {
 
         match SpecSession::new(spec, source, self.config.clone(), resolver, domains) {
             Ok(session) => {
+                self.mult_type_ids = session
+                    .engine()
+                    .multiplier_ids()
+                    .into_iter()
+                    .map(|s| s.to_string())
+                    .collect();
                 self.session = Some(session);
                 self.resolved_calls.clear();
             }
@@ -79,6 +97,53 @@ impl SpecScorer {
                 .resolver_mut()
                 .insert(&call_upper, resolved_station_for_call(&call_upper));
             self.resolved_calls.insert(call_upper);
+        }
+    }
+
+    /// Apply one QSO to the session and update all incremental counters.
+    /// Returns true if the session accepted the QSO.
+    fn apply_one(&mut self, rec: &QsoRecord) -> bool {
+        let raw_exchange = match raw_exchange_for_record(rec) {
+            Some(e) => e,
+            None => return false,
+        };
+
+        self.ensure_resolved(&rec.callsign_norm);
+
+        let session = match &mut self.session {
+            Some(s) => s,
+            None => return false,
+        };
+
+        match session.apply_qso_with_mode(
+            to_ce_band_from_qsolog(rec.band),
+            to_ce_mode_from_qsolog(rec.mode),
+            Callsign::new(&rec.callsign_norm),
+            &raw_exchange,
+        ) {
+            Ok(summary) => {
+                let band_label = band_label_from_qsolog(rec.band);
+                if !summary.is_dupe {
+                    *self.qsos_by_band.entry(band_label.clone()).or_default() += 1;
+                    *self.points_by_band.entry(band_label.clone()).or_default() +=
+                        summary.qso_points;
+                }
+                for mult_str in &summary.new_mults {
+                    let mult_type = mult_type_from_str(mult_str);
+                    *self
+                        .mults_by_type_by_band
+                        .entry(band_label.clone())
+                        .or_default()
+                        .entry(mult_type)
+                        .or_default() += 1;
+                }
+                let new_mult_count = summary.new_mults.len() as u32;
+                if new_mult_count > 0 {
+                    *self.mults_by_band.entry(band_label).or_default() += new_mult_count;
+                }
+                true
+            }
+            Err(_) => false,
         }
     }
 
@@ -111,43 +176,18 @@ impl SpecScorer {
 
 impl ContestScorer for SpecScorer {
     fn on_inserted(&mut self, record: &QsoRecord) {
-        if record.flags.is_void
-            || record.contest_instance_id != self.contest_instance_id
-        {
+        if record.flags.is_void || record.contest_instance_id != self.contest_instance_id {
             return;
         }
-
-        let raw_exchange = match raw_exchange_for_record(record) {
-            Some(e) => e,
-            None => return,
-        };
-
-        self.ensure_resolved(&record.callsign_norm);
-
-        if let Some(session) = &mut self.session {
-            if let Ok(summary) = session.apply_qso_with_mode(
-                to_ce_band_from_qsolog(record.band),
-                to_ce_mode_from_qsolog(record.mode),
-                Callsign::new(&record.callsign_norm),
-                &raw_exchange,
-            ) {
-                let band_label = band_label_from_qsolog(record.band);
-                if !summary.is_dupe {
-                    *self.qsos_by_band.entry(band_label.clone()).or_default() += 1;
-                }
-                let new_mult_count = summary.new_mults.len() as u32;
-                if new_mult_count > 0 {
-                    *self.mults_by_band.entry(band_label).or_default() += new_mult_count;
-                }
-            }
-        }
-
+        self.apply_one(record);
         self.rebuild_summary_from_session();
     }
 
     fn rebuild(&mut self, records: &[QsoRecord]) {
         self.qsos_by_band.clear();
         self.mults_by_band.clear();
+        self.points_by_band.clear();
+        self.mults_by_type_by_band.clear();
         self.init_session();
 
         let cid = self.contest_instance_id;
@@ -155,30 +195,7 @@ impl ContestScorer for SpecScorer {
             .iter()
             .filter(|r| !r.flags.is_void && r.contest_instance_id == cid)
         {
-            let raw_exchange = match raw_exchange_for_record(rec) {
-                Some(e) => e,
-                None => continue,
-            };
-
-            self.ensure_resolved(&rec.callsign_norm);
-
-            if let Some(session) = &mut self.session {
-                if let Ok(summary) = session.apply_qso_with_mode(
-                    to_ce_band_from_qsolog(rec.band),
-                    to_ce_mode_from_qsolog(rec.mode),
-                    Callsign::new(&rec.callsign_norm),
-                    &raw_exchange,
-                ) {
-                    let band_label = band_label_from_qsolog(rec.band);
-                    if !summary.is_dupe {
-                        *self.qsos_by_band.entry(band_label.clone()).or_default() += 1;
-                    }
-                    let new_mult_count = summary.new_mults.len() as u32;
-                    if new_mult_count > 0 {
-                        *self.mults_by_band.entry(band_label).or_default() += new_mult_count;
-                    }
-                }
-            }
+            self.apply_one(rec);
         }
 
         self.rebuild_summary_from_session();
@@ -206,17 +223,69 @@ impl ContestScorer for SpecScorer {
         }
     }
 
+    fn score_breakdown(&self) -> ScoreBreakdown {
+        let mut rows: Vec<BreakdownRow> = BAND_LABELS
+            .iter()
+            .filter_map(|label| {
+                let qsos = self.qsos_by_band.get(*label).copied().unwrap_or(0);
+                if qsos == 0 {
+                    return None;
+                }
+                let points = self.points_by_band.get(*label).copied().unwrap_or(0);
+                let type_map = self.mults_by_type_by_band.get(*label);
+                let mults: Vec<(String, u32)> = self
+                    .mult_type_ids
+                    .iter()
+                    .map(|mt| {
+                        let count = type_map
+                            .and_then(|m| m.get(mt))
+                            .copied()
+                            .unwrap_or(0);
+                        (mt.clone(), count)
+                    })
+                    .collect();
+                Some(BreakdownRow {
+                    band: label.to_ascii_uppercase(),
+                    mode: "CW".to_string(),
+                    qsos,
+                    points,
+                    mults,
+                })
+            })
+            .collect();
+
+        // Total row
+        let total_points: i64 = self.points_by_band.values().sum();
+        let mut total_mults_by_type: HashMap<String, u32> = HashMap::new();
+        for type_map in self.mults_by_type_by_band.values() {
+            for (mt, count) in type_map {
+                *total_mults_by_type.entry(mt.clone()).or_default() += count;
+            }
+        }
+        let total_mults: Vec<(String, u32)> = self
+            .mult_type_ids
+            .iter()
+            .map(|mt| {
+                let count = total_mults_by_type.get(mt).copied().unwrap_or(0);
+                (mt.clone(), count)
+            })
+            .collect();
+
+        rows.push(BreakdownRow {
+            band: "total".to_string(),
+            mode: "ALL".to_string(),
+            qsos: self.cached_summary.total_qsos,
+            points: total_points,
+            mults: total_mults,
+        });
+
+        ScoreBreakdown {
+            rows,
+            claimed_score: self.cached_summary.claimed_score,
+        }
+    }
+
     fn would_be_new_mult(&self, call_norm: &str, band: &str, mode: &str) -> bool {
-        // classify_call_lite_with_mode is &self on SpecSession — no mutation.
-        // But we need to ensure the call is in the resolver first. If it isn't,
-        // we can't classify it without mutation. Check resolved_calls first;
-        // if the call is unknown, we need a mutable borrow to insert it.
-        //
-        // Since would_be_new_mult takes &self, we handle the unresolved case
-        // conservatively: if we haven't seen the call before, it can't be a
-        // dupe, so it's likely a new mult (return true as a safe default that
-        // just means the UI highlights it — the actual scoring at log time is
-        // always correct).
         let session = match &self.session {
             Some(s) => s,
             None => return false,
@@ -239,6 +308,14 @@ impl ContestScorer for SpecScorer {
             .map(|c| !c.new_mults.is_empty())
             .unwrap_or(false)
     }
+}
+
+/// Extract the multiplier type from a "type:value" string.
+/// e.g. "COUNTRY:W" → "country", "ZONE:5" → "zone".
+fn mult_type_from_str(s: &str) -> String {
+    s.split_once(':')
+        .map(|(t, _)| t.to_ascii_lowercase())
+        .unwrap_or_else(|| s.to_ascii_lowercase())
 }
 
 fn raw_exchange_for_record(rec: &QsoRecord) -> Option<String> {

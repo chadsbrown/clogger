@@ -3,6 +3,15 @@ use crate::{
     state::{Macros, QsoDraft, RadioState},
 };
 
+/// The mode category for the entry, used to select the correct Cabrillo
+/// contest ID (e.g. CQ-WW-CW vs CQ-WW-SSB).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CategoryMode {
+    CW,
+    SSB,
+    Mixed,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EntryContext {
     pub my_call: String,
@@ -37,5 +46,11 @@ pub trait ContestEntry {
     /// Whether this contest uses auto-incrementing serial numbers in the sent exchange.
     fn uses_serial(&self) -> bool {
         false
+    }
+
+    /// The Cabrillo contest ID for this contest and mode category.
+    /// Returns None if the contest doesn't support the given mode.
+    fn cabrillo_id(&self, _mode: CategoryMode) -> Option<&'static str> {
+        None
     }
 }

@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use qsolog::qso::QsoRecord;
 
-use super::{BandScore, ContestScorer, ScoreSummary, BAND_LABELS, band_label_from_qsolog};
+use super::{BandScore, BreakdownRow, ContestScorer, ScoreBreakdown, ScoreSummary, BAND_LABELS, band_label_from_qsolog};
 
 pub struct UniqueCallScorer {
     seen_qsos: HashSet<(String, String)>,
@@ -93,6 +93,39 @@ impl ContestScorer for UniqueCallScorer {
                 .collect(),
             total_qsos: self.cached_summary.total_qsos,
             total_mults: self.cached_summary.total_mults,
+            claimed_score: self.cached_summary.claimed_score,
+        }
+    }
+
+    fn score_breakdown(&self) -> ScoreBreakdown {
+        let mut rows: Vec<BreakdownRow> = BAND_LABELS
+            .iter()
+            .filter_map(|label| {
+                let qsos = self.qsos_by_band.get(*label).copied().unwrap_or(0);
+                if qsos == 0 {
+                    return None;
+                }
+                let mults = self.mults_by_band.get(*label).copied().unwrap_or(0);
+                Some(BreakdownRow {
+                    band: label.to_ascii_uppercase(),
+                    mode: "CW".to_string(),
+                    qsos,
+                    points: qsos as i64,
+                    mults: vec![("call".to_string(), mults)],
+                })
+            })
+            .collect();
+
+        rows.push(BreakdownRow {
+            band: "total".to_string(),
+            mode: "ALL".to_string(),
+            qsos: self.cached_summary.total_qsos,
+            points: self.cached_summary.total_qsos as i64,
+            mults: vec![("call".to_string(), self.cached_summary.total_mults)],
+        });
+
+        ScoreBreakdown {
+            rows,
             claimed_score: self.cached_summary.claimed_score,
         }
     }

@@ -33,6 +33,32 @@ impl Default for ScoreSummary {
     }
 }
 
+/// A single row in the score breakdown, keyed by (band, mode).
+pub struct BreakdownRow {
+    pub band: String,
+    pub mode: String,
+    pub qsos: u32,
+    pub points: i64,
+    /// Per-multiplier-type counts, e.g. [("zone", 15), ("country", 45)].
+    pub mults: Vec<(String, u32)>,
+}
+
+/// Per-(band, mode) score breakdown for scoreboard XML posting.
+/// Always includes at least a total row (band="total", mode="ALL").
+pub struct ScoreBreakdown {
+    pub rows: Vec<BreakdownRow>,
+    pub claimed_score: i64,
+}
+
+impl Default for ScoreBreakdown {
+    fn default() -> Self {
+        Self {
+            rows: Vec::new(),
+            claimed_score: 0,
+        }
+    }
+}
+
 pub trait ContestScorer: Send + Sync {
     /// A new QSO has been appended to the log. Update incremental state.
     fn on_inserted(&mut self, record: &QsoRecord);
@@ -43,6 +69,9 @@ pub trait ContestScorer: Send + Sync {
 
     /// Cheap read of current totals/breakdown.
     fn score_summary(&self) -> ScoreSummary;
+
+    /// Per-(band, mode) breakdown for scoreboard posting.
+    fn score_breakdown(&self) -> ScoreBreakdown;
 
     /// Would this candidate be a new mult right now? Must not mutate.
     fn would_be_new_mult(&self, call_norm: &str, band: &str, mode: &str) -> bool;

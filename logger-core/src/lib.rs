@@ -12,7 +12,7 @@ pub use contest::cwt::CwtContest;
 pub use contest::freq_to_band_label;
 pub use contest::mst::MstContest;
 pub use contest::sweeps::SweepsContest;
-pub use contest::traits::{ContestEntry, EntryContext, EntryError};
+pub use contest::traits::{CategoryMode, ContestEntry, EntryContext, EntryError};
 pub use effects::{BeepKind, Effect, So2rRxMode};
 pub use entry::state::{EntryFieldState, EntryState, EsmStep, OpMode, Validation};
 pub use events::{AppEvent, Key};

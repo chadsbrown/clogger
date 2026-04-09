@@ -10,7 +10,7 @@ use qsolog::{
 };
 use tracing::info;
 
-use crate::scoring::{ContestScorer, ScoreSummary};
+use crate::scoring::{ContestScorer, ScoreBreakdown, ScoreSummary};
 
 pub struct LogAdapter {
     store: QsoStore,
@@ -137,6 +137,10 @@ impl LogAdapter {
 
     pub fn score_summary(&self) -> ScoreSummary {
         self.scorer.score_summary()
+    }
+
+    pub fn score_breakdown(&self) -> ScoreBreakdown {
+        self.scorer.score_breakdown()
     }
 
     /// Returns the highest serial number found in logged exchange_pairs, or 0 if none.

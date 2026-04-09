@@ -122,6 +122,10 @@ impl ContestEntry for MstContest {
     fn uses_serial(&self) -> bool {
         true
     }
+
+    fn cabrillo_id(&self, _mode: super::traits::CategoryMode) -> Option<&'static str> {
+        Some("ICWC-MST")
+    }
 }
 
 #[cfg(test)]

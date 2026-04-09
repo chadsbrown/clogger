@@ -155,6 +155,10 @@ impl ContestEntry for CwtContest {
             exchange_pairs: vec![("name".to_string(), name), ("xchg".to_string(), xchg)],
         })
     }
+
+    fn cabrillo_id(&self, _mode: super::traits::CategoryMode) -> Option<&'static str> {
+        Some("CW-OPS")
+    }
 }
 
 fn parsed_spec() -> &'static ParsedCwtSpec {

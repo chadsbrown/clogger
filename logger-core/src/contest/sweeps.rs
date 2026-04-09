@@ -200,6 +200,14 @@ impl ContestEntry for SweepsContest {
             ],
         })
     }
+
+    fn cabrillo_id(&self, mode: super::traits::CategoryMode) -> Option<&'static str> {
+        match mode {
+            super::traits::CategoryMode::CW => Some("ARRL-SS-CW"),
+            super::traits::CategoryMode::SSB => Some("ARRL-SS-SSB"),
+            super::traits::CategoryMode::Mixed => None,
+        }
+    }
 }
 
 #[cfg(test)]

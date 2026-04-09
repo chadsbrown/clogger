@@ -166,6 +166,14 @@ impl ContestEntry for CqwwContest {
             exchange_pairs,
         })
     }
+
+    fn cabrillo_id(&self, mode: super::traits::CategoryMode) -> Option<&'static str> {
+        match mode {
+            super::traits::CategoryMode::CW => Some("CQ-WW-CW"),
+            super::traits::CategoryMode::SSB => Some("CQ-WW-SSB"),
+            super::traits::CategoryMode::Mixed => None,
+        }
+    }
 }
 
 fn validate_value(spec_field: &ReceivedField, value: &str) -> Validation {
