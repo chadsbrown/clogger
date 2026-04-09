@@ -43,12 +43,16 @@ impl LogAdapter {
             .map_err(|e| anyhow::anyhow!("load store: {e:?}"))?;
         let count = store.ordered_ids().len();
         info!("loaded {count} QSOs from {}", path.display());
-        Ok(Self {
+        let mut adapter = Self {
             store,
             sink: Some(sink),
             scorer,
             contest_instance_id,
-        })
+        };
+        // Populate scorer state from the loaded log
+        let records = adapter.ordered_records();
+        adapter.scorer.rebuild(&records);
+        Ok(adapter)
     }
 
     pub fn insert(
@@ -83,6 +87,10 @@ impl LogAdapter {
 
         self.flush_pending_ops()?;
 
+        if let Some(rec) = self.store.get(id) {
+            self.scorer.on_inserted(rec);
+        }
+
         Ok(id)
     }
 
@@ -99,6 +107,8 @@ impl LogAdapter {
             .undo()
             .map_err(|e| anyhow::anyhow!("undo failed: {e:?}"))?;
         self.flush_pending_ops()?;
+        let records = self.ordered_records();
+        self.scorer.rebuild(&records);
         Ok(())
     }
 
@@ -107,6 +117,8 @@ impl LogAdapter {
             .redo()
             .map_err(|e| anyhow::anyhow!("redo failed: {e:?}"))?;
         self.flush_pending_ops()?;
+        let records = self.ordered_records();
+        self.scorer.rebuild(&records);
         Ok(())
     }
 
@@ -124,7 +136,7 @@ impl LogAdapter {
     }
 
     pub fn score_summary(&self) -> ScoreSummary {
-        self.scorer.score_summary(&self.ordered_records())
+        self.scorer.score_summary()
     }
 
     /// Returns the highest serial number found in logged exchange_pairs, or 0 if none.
@@ -157,8 +169,7 @@ impl DupeChecker for LogAdapter {
 
 impl MultChecker for LogAdapter {
     fn is_new_mult(&self, call_norm: &str, band: &str, mode: &str) -> bool {
-        self.scorer
-            .is_new_mult(&self.ordered_records(), call_norm, band, mode)
+        self.scorer.would_be_new_mult(call_norm, band, mode)
     }
 }
 
@@ -234,8 +245,6 @@ mod tests {
 
         let contest = contest_from_id("cqww").expect("cqww contest");
 
-        // Scope 1: insert a QSO and then undo it. Drop the adapter to force
-        // any in-memory state to be discarded — only the SQLite journal survives.
         {
             let scorer =
                 scorer_for_contest(contest.as_ref(), 4, &std::collections::HashMap::new());
@@ -245,8 +254,6 @@ mod tests {
             assert!(adapter.ordered_records()[0].flags.is_void);
         }
 
-        // Scope 2: reopen from the SQLite file. The undo should still be
-        // reflected in the restored state.
         {
             let scorer =
                 scorer_for_contest(contest.as_ref(), 4, &std::collections::HashMap::new());
@@ -267,7 +274,6 @@ mod tests {
 
         let contest = contest_from_id("cqww").expect("cqww contest");
 
-        // Insert → undo → redo, drop adapter
         {
             let scorer =
                 scorer_for_contest(contest.as_ref(), 4, &std::collections::HashMap::new());
@@ -278,7 +284,6 @@ mod tests {
             assert!(!adapter.ordered_records()[0].flags.is_void);
         }
 
-        // Reopen — the redo should still be in effect
         {
             let scorer =
                 scorer_for_contest(contest.as_ref(), 4, &std::collections::HashMap::new());

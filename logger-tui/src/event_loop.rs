@@ -86,6 +86,16 @@ pub async fn run(
                             tui_state.rig_connected = false;
                             tui_state.error_message = Some("ERROR: RIG CONNECTION LOST".to_string());
                         }
+
+                        // Capture previous freq/mode so we can detect meaningful
+                        // rig changes and skip expensive analytics when nothing moved.
+                        let prev_freq_mode = state
+                            .radios
+                            .get(&state.focused_radio)
+                            .map(|r| (r.freq_hz, r.mode.clone()));
+
+                        let needs_analytics = needs_analytics_recompute(&app_event);
+
                         let effects = reduce(
                             &mut state,
                             contest.as_ref(),
@@ -108,8 +118,24 @@ pub async fn run(
                         ).await {
                             break Err(e);
                         }
-                        recompute_analytics(&state, &log_adapter, &mut tui_state);
+
+                        // Score is always cheap (cached read).
                         tui_state.score = log_adapter.score_summary();
+
+                        // Analytics is expensive — only recompute when state
+                        // that affects it has actually changed.
+                        if needs_analytics {
+                            recompute_analytics(&state, &log_adapter, &mut tui_state);
+                        } else {
+                            // For RigStatus: recompute only if freq or mode changed
+                            let cur_freq_mode = state
+                                .radios
+                                .get(&state.focused_radio)
+                                .map(|r| (r.freq_hz, r.mode.clone()));
+                            if cur_freq_mode != prev_freq_mode {
+                                recompute_analytics(&state, &log_adapter, &mut tui_state);
+                            }
+                        }
                     }
                     Some(TerminalEvent::Shutdown) | None => {
                         break Ok(());
@@ -161,7 +187,7 @@ pub async fn run(
                 ).await {
                     break Err(e);
                 }
-                recompute_analytics(&state, &log_adapter, &mut tui_state);
+                // Score is cheap; analytics skipped on timer ticks.
                 tui_state.score = log_adapter.score_summary();
             }
         }
@@ -296,6 +322,32 @@ fn strip_speed_markers(s: &str) -> String {
         }
     }
     out
+}
+
+/// Returns true if this event type always requires analytics recomputation.
+/// RigStatus is handled separately (only recompute if freq/mode changed).
+fn needs_analytics_recompute(event: &logger_core::AppEvent) -> bool {
+    use logger_core::AppEvent;
+    match event {
+        // Bandmap changes affect worked/mult/avail displays
+        AppEvent::SpotReceived { .. } | AppEvent::SpotWithdrawn { .. } => true,
+        // Keyboard/ESM may log a QSO or change entry fields
+        AppEvent::KeyPress { .. }
+        | AppEvent::TextInput { .. }
+        | AppEvent::EsmTrigger => true,
+        // Radio focus changes which band's analytics are shown
+        AppEvent::FocusRadio { .. } | AppEvent::SwapRadios => true,
+        // Bandmap cursor navigation
+        AppEvent::BandmapUp | AppEvent::BandmapDown => true,
+        // RigStatus handled by freq/mode comparison in caller
+        AppEvent::RigStatus { .. } => false,
+        // Timer, disconnect, op-mode, operator changes don't affect analytics
+        AppEvent::TimerTick { .. }
+        | AppEvent::RigDisconnected { .. }
+        | AppEvent::SetOpMode { .. }
+        | AppEvent::ToggleOpMode
+        | AppEvent::SetOperator { .. } => false,
+    }
 }
 
 fn recompute_analytics(state: &AppState, log_adapter: &LogAdapter, tui_state: &mut TuiState) {

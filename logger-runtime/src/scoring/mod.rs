@@ -34,8 +34,18 @@ impl Default for ScoreSummary {
 }
 
 pub trait ContestScorer: Send + Sync {
-    fn is_new_mult(&self, records: &[QsoRecord], call_norm: &str, band: &str, mode: &str) -> bool;
-    fn score_summary(&self, records: &[QsoRecord]) -> ScoreSummary;
+    /// A new QSO has been appended to the log. Update incremental state.
+    fn on_inserted(&mut self, record: &QsoRecord);
+
+    /// One or more existing records have been mutated (void/unvoid/edit).
+    /// The scorer must rebuild its state by replaying `records`.
+    fn rebuild(&mut self, records: &[QsoRecord]);
+
+    /// Cheap read of current totals/breakdown.
+    fn score_summary(&self) -> ScoreSummary;
+
+    /// Would this candidate be a new mult right now? Must not mutate.
+    fn would_be_new_mult(&self, call_norm: &str, band: &str, mode: &str) -> bool;
 }
 
 pub fn scorer_for_contest(
@@ -62,11 +72,11 @@ pub fn scorer_for_contest(
     if contest_engine::spec::embedded::spec_by_id(contest_id).is_some() {
         Box::new(spec_scorer::SpecScorer::new(contest_id, contest_instance_id, config))
     } else if contest_id == "sweeps" {
-        Box::new(sweeps::SweepsScorer)
+        Box::new(sweeps::SweepsScorer::new(contest_instance_id))
     } else if contest_id == "mst" {
-        Box::new(mst::MstScorer)
+        Box::new(mst::MstScorer::new())
     } else {
-        Box::new(unique_call::UniqueCallScorer)
+        Box::new(unique_call::UniqueCallScorer::new())
     }
 }
 
