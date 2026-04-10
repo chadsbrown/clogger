@@ -85,7 +85,7 @@ async fn adapter_task(
             }
         };
 
-        tracing::debug!("scoreboard XML:\n{xml}");
+        tracing::info!("scoreboard XML:\n{xml}");
 
         // POST to all endpoints in parallel
         let results = join_all(cfg.endpoints.iter().map(|ep| {
@@ -117,13 +117,15 @@ async fn post_to_endpoint(
         .await
     {
         Ok(resp) => {
-            if resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            if status.is_success() {
+                tracing::info!("scoreboard POST to {} ok: {body}", endpoint.url);
                 true
             } else {
                 warn!(
-                    "scoreboard POST to {} failed: HTTP {}",
+                    "scoreboard POST to {} failed: HTTP {status} body: {body}",
                     endpoint.url,
-                    resp.status()
                 );
                 false
             }
