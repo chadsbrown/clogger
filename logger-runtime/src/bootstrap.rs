@@ -67,6 +67,9 @@ pub fn bootstrap(config: SessionConfig) -> Result<Session> {
     }
     if let Some(xchg) = &config.my_xchg {
         my_exchange.insert("XCHG".to_string(), xchg.clone());
+        // Also insert as LOC — specs like NAQP and NS Sprint reference my_loc
+        // for the location field, while the TOML config uses the generic my_xchg.
+        my_exchange.insert("LOC".to_string(), xchg.clone());
     }
 
     let scorer =

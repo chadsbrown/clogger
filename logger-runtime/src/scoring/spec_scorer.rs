@@ -79,7 +79,8 @@ impl SpecScorer {
                 self.session = Some(session);
                 self.resolved_calls.clear();
             }
-            Err(_) => {
+            Err(e) => {
+                tracing::warn!("SpecScorer: session init failed for {}: {e}", self.spec_id);
                 self.session = None;
             }
         }
