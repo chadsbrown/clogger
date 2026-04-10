@@ -3,6 +3,7 @@
   "steps": [
     {
       "event": {
+        "filter_width_hz": null,
         "freq_hz": 14025000,
         "is_ptt": false,
         "mode": "CW",
@@ -17,6 +18,7 @@
         "esm_step": "Idle",
         "is_dupe": false,
         "is_new_mult": false,
+        "is_passband_qrm": false,
         "overall": "Unknown"
       }
     },
@@ -33,6 +35,7 @@
         "esm_step": "Idle",
         "is_dupe": false,
         "is_new_mult": false,
+        "is_passband_qrm": false,
         "overall": "Unknown"
       }
     },
@@ -49,6 +52,7 @@
         "esm_step": "Idle",
         "is_dupe": false,
         "is_new_mult": true,
+        "is_passband_qrm": false,
         "overall": "Invalid"
       }
     },
@@ -65,6 +69,7 @@
         "esm_step": "Idle",
         "is_dupe": false,
         "is_new_mult": true,
+        "is_passband_qrm": false,
         "overall": "Invalid"
       }
     },
@@ -81,6 +86,7 @@
         "esm_step": "Idle",
         "is_dupe": false,
         "is_new_mult": true,
+        "is_passband_qrm": false,
         "overall": "Invalid"
       }
     },
@@ -97,6 +103,7 @@
         "esm_step": "Idle",
         "is_dupe": false,
         "is_new_mult": true,
+        "is_passband_qrm": false,
         "overall": "Invalid"
       }
     },
@@ -113,6 +120,7 @@
         "esm_step": "Idle",
         "is_dupe": false,
         "is_new_mult": true,
+        "is_passband_qrm": false,
         "overall": "Valid"
       }
     },
@@ -135,6 +143,7 @@
         "esm_step": "ExchSent",
         "is_dupe": false,
         "is_new_mult": true,
+        "is_passband_qrm": false,
         "overall": "Valid"
       }
     },
@@ -151,6 +160,7 @@
         "esm_step": "ExchSent",
         "is_dupe": false,
         "is_new_mult": true,
+        "is_passband_qrm": false,
         "overall": "Invalid"
       }
     },
@@ -167,6 +177,7 @@
         "esm_step": "ExchSent",
         "is_dupe": false,
         "is_new_mult": true,
+        "is_passband_qrm": false,
         "overall": "Valid"
       }
     },
@@ -210,6 +221,7 @@
         "esm_step": "Idle",
         "is_dupe": false,
         "is_new_mult": false,
+        "is_passband_qrm": false,
         "overall": "Unknown"
       }
     },
@@ -232,6 +244,7 @@
         "esm_step": "Idle",
         "is_dupe": false,
         "is_new_mult": false,
+        "is_passband_qrm": false,
         "overall": "Unknown"
       }
     }

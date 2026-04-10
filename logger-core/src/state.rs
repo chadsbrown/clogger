@@ -25,6 +25,8 @@ pub struct RadioState {
     pub mode: String,
     pub is_ptt: bool,
     pub cw_speed: u8,
+    /// Current receiver passband (filter width) in hertz, if known.
+    pub filter_width_hz: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

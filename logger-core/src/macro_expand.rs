@@ -139,6 +139,7 @@ mod tests {
             mode: "CW".to_string(),
             is_ptt: false,
             cw_speed: 36,
+            filter_width_hz: None,
         });
 
         // < slows by 2, > speeds by 2 (tracking running speed)

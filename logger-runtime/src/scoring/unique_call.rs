@@ -130,6 +130,11 @@ impl ContestScorer for UniqueCallScorer {
         }
     }
 
+    fn is_dupe(&self, call_norm: &str, band: &str, _mode: &str) -> bool {
+        self.seen_qsos
+            .contains(&(call_norm.to_ascii_uppercase(), band.to_string()))
+    }
+
     fn would_be_new_mult(&self, call_norm: &str, _band: &str, _mode: &str) -> bool {
         !self.seen_calls.contains(call_norm)
     }

@@ -33,6 +33,7 @@ pub enum AppEvent {
         freq_hz: u64,
         mode: String,
         is_ptt: bool,
+        filter_width_hz: Option<u32>,
     },
     SpotReceived {
         spot: Spot,

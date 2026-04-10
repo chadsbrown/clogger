@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use logger_core::AppEvent;
 use riglib::{Rig, RigEvent};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tracing::{info, warn};
 
 use crate::config::RigConfig;
@@ -12,6 +12,7 @@ struct LastRigState {
     freq_hz: u64,
     mode: String,
     is_ptt: bool,
+    filter_width_hz: Option<u32>,
 }
 
 fn map_mode(mode: &riglib::Mode) -> String {
@@ -120,6 +121,7 @@ pub async fn spawn_rig_adapter(
     let freq_hz = rig.get_frequency(primary).await?;
     let mode = rig.get_mode(primary).await?;
     let is_ptt = rig.get_ptt().await.unwrap_or(false);
+    let filter_width_hz = rig.get_passband(primary).await.ok().map(|pb| pb.hz());
 
     let mode_str = map_mode(&mode);
     // Each rig adapter is tied to a single radio_id (configured in TOML).
@@ -133,8 +135,13 @@ pub async fn spawn_rig_adapter(
             freq_hz,
             mode: mode_str.clone(),
             is_ptt,
+            filter_width_hz,
         })
         .await;
+
+    // The poll task updates filter_width_hz via a watch channel; the
+    // subscription task reads it when forwarding RigStatus events.
+    let (filter_tx, filter_rx) = watch::channel(filter_width_hz);
 
     // Subscribe and forward events
     let mut events = rig.subscribe()?;
@@ -142,42 +149,50 @@ pub async fn spawn_rig_adapter(
         freq_hz,
         mode: mode_str,
         is_ptt,
+        filter_width_hz,
     };
 
     let event_tx = tx.clone();
     tokio::spawn(async move {
+        let filter_rx = filter_rx;
         loop {
             match events.recv().await {
                 Ok(RigEvent::FrequencyChanged { receiver: _, freq_hz }) => {
                     last.freq_hz = freq_hz;
+                    last.filter_width_hz = *filter_rx.borrow();
                     let _ = event_tx
                         .send(AppEvent::RigStatus {
                             radio: radio_id,
                             freq_hz: last.freq_hz,
                             mode: last.mode.clone(),
                             is_ptt: last.is_ptt,
+                            filter_width_hz: last.filter_width_hz,
                         })
                         .await;
                 }
                 Ok(RigEvent::ModeChanged { receiver: _, mode }) => {
                     last.mode = map_mode(&mode);
+                    last.filter_width_hz = *filter_rx.borrow();
                     let _ = event_tx
                         .send(AppEvent::RigStatus {
                             radio: radio_id,
                             freq_hz: last.freq_hz,
                             mode: last.mode.clone(),
                             is_ptt: last.is_ptt,
+                            filter_width_hz: last.filter_width_hz,
                         })
                         .await;
                 }
                 Ok(RigEvent::PttChanged { on }) => {
                     last.is_ptt = on;
+                    last.filter_width_hz = *filter_rx.borrow();
                     let _ = event_tx
                         .send(AppEvent::RigStatus {
                             radio: radio_id,
                             freq_hz: last.freq_hz,
                             mode: last.mode.clone(),
                             is_ptt: last.is_ptt,
+                            filter_width_hz: last.filter_width_hz,
                         })
                         .await;
                 }
@@ -203,8 +218,11 @@ pub async fn spawn_rig_adapter(
         }
     });
 
-    // Poll frequency and mode at 4 Hz — get_frequency()/get_mode() emit
-    // events into the broadcast channel, which the subscription task forwards.
+    // Poll frequency, mode, and passband at 4 Hz — get_frequency()/get_mode()
+    // emit events into the broadcast channel, which the subscription task
+    // forwards.  get_passband() doesn't emit broadcast events, so we update
+    // the watch channel and let the subscription task pick it up on the next
+    // broadcast event.
     let poll_rig = Arc::clone(&rig);
     let poll_tx = tx;
     tokio::spawn(async move {
@@ -214,6 +232,13 @@ pub async fn spawn_rig_adapter(
             interval.tick().await;
             let freq_ok = poll_rig.get_frequency(primary).await.is_ok();
             let mode_ok = poll_rig.get_mode(primary).await.is_ok();
+            // Passband polling is best-effort; not all backends implement it.
+            let new_filter = poll_rig
+                .get_passband(primary)
+                .await
+                .ok()
+                .map(|pb| pb.hz());
+            let _ = filter_tx.send(new_filter);
             if freq_ok && mode_ok {
                 consecutive_errors = 0;
             } else {

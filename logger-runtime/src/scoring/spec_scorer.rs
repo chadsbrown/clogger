@@ -286,6 +286,28 @@ impl ContestScorer for SpecScorer {
         }
     }
 
+    fn is_dupe(&self, call_norm: &str, band: &str, mode: &str) -> bool {
+        let session = match &self.session {
+            Some(s) => s,
+            None => return false,
+        };
+
+        let call_upper = call_norm.trim().to_ascii_uppercase();
+        if !self.resolved_calls.contains(&call_upper) {
+            // Unknown call — never logged, so not a dupe.
+            return false;
+        }
+
+        session
+            .classify_call_lite_with_mode(
+                to_ce_band(band),
+                to_ce_mode(mode),
+                Callsign::new(call_norm),
+            )
+            .map(|c| c.is_dupe)
+            .unwrap_or(false)
+    }
+
     fn would_be_new_mult(&self, call_norm: &str, band: &str, mode: &str) -> bool {
         let session = match &self.session {
             Some(s) => s,

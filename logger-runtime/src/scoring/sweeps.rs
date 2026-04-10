@@ -142,6 +142,11 @@ impl ContestScorer for SweepsScorer {
         }
     }
 
+    fn is_dupe(&self, call_norm: &str, band: &str, _mode: &str) -> bool {
+        self.seen_qsos
+            .contains(&(call_norm.to_ascii_uppercase(), band.to_string()))
+    }
+
     fn would_be_new_mult(&self, _call_norm: &str, _band: &str, _mode: &str) -> bool {
         // Sweeps mults are sections, which aren't derivable from callsign alone.
         false

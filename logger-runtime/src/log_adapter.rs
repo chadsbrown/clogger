@@ -162,12 +162,7 @@ impl LogAdapter {
 
 impl DupeChecker for LogAdapter {
     fn is_dupe(&self, call_norm: &str, band: &str, mode: &str) -> bool {
-        let band = to_band(band);
-        let mode = to_mode(mode);
-        self.store
-            .by_call(call_norm)
-            .into_iter()
-            .any(|q| !q.flags.is_void && q.band == band && q.mode == mode)
+        self.scorer.is_dupe(call_norm, band, mode)
     }
 }
 

@@ -1,4 +1,3 @@
-pub mod mst;
 mod spec_scorer;
 pub mod sweeps;
 pub mod unique_call;
@@ -72,6 +71,9 @@ pub trait ContestScorer: Send + Sync {
 
     /// Per-(band, mode) breakdown for scoreboard posting.
     fn score_breakdown(&self) -> ScoreBreakdown;
+
+    /// Would this candidate be a dupe right now? Contest-specific rules apply.
+    fn is_dupe(&self, call_norm: &str, band: &str, mode: &str) -> bool;
 
     /// Would this candidate be a new mult right now? Must not mutate.
     fn would_be_new_mult(&self, call_norm: &str, band: &str, mode: &str) -> bool;

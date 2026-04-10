@@ -19,20 +19,20 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState, tui: &TuiState) {
     ));
     left_spans.push(Span::raw(" "));
 
-    // Dupe indicator
-    if st.focused_entry().is_dupe {
-        left_spans.push(Span::styled(
-            " DUPE ",
-            Style::default().fg(Color::White).bg(Color::Red),
-        ));
-        left_spans.push(Span::raw(" "));
-    }
-
     // New mult indicator
     if st.focused_entry().is_new_mult {
         left_spans.push(Span::styled(
             " MULT ",
             Style::default().fg(Color::Black).bg(Color::Green),
+        ));
+        left_spans.push(Span::raw(" "));
+    }
+
+    // Passband QRM indicator
+    if st.focused_entry().is_passband_qrm {
+        left_spans.push(Span::styled(
+            " QRM ",
+            Style::default().fg(Color::Black).bg(Color::Yellow),
         ));
         left_spans.push(Span::raw(" "));
     }

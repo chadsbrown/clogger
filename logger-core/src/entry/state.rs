@@ -50,6 +50,7 @@ pub struct EntryState {
     pub overall: Validation,
     pub is_dupe: bool,
     pub is_new_mult: bool,
+    pub is_passband_qrm: bool,
     pub mode: OpMode,
     pub esm_enabled: bool,
     pub esm_step: EsmStep,
@@ -83,6 +84,7 @@ impl EntryState {
             overall: Validation::Unknown,
             is_dupe: false,
             is_new_mult: false,
+            is_passband_qrm: false,
             mode: OpMode::Run,
             esm_enabled: true,
             esm_step: EsmStep::Idle,
@@ -105,6 +107,7 @@ impl EntryState {
         self.overall = Validation::Unknown;
         self.is_dupe = false;
         self.is_new_mult = false;
+        self.is_passband_qrm = false;
         self.scp_matches.clear();
         self.scp_n1_matches.clear();
         self.scp_cycle_index = None;

@@ -85,10 +85,14 @@ pub fn reduce(
             freq_hz,
             mode,
             is_ptt,
+            filter_width_hz,
         } => {
-            let cw_speed = st.radios.get(&radio)
+            let prev = st.radios.get(&radio);
+            let cw_speed = prev
                 .map(|r| r.cw_speed)
                 .unwrap_or(st.default_cw_speed);
+            let filter_width_hz = filter_width_hz
+                .or_else(|| prev.and_then(|r| r.filter_width_hz));
             st.radios.insert(
                 radio,
                 RadioState {
@@ -96,24 +100,29 @@ pub fn reduce(
                     mode,
                     is_ptt,
                     cw_speed,
+                    filter_width_hz,
                 },
             );
             if radio == st.focused_radio {
                 recompute_feedback(st, dupe_checker, mult_checker);
+                recompute_passband_warning(st);
             }
             Vec::new()
         }
         AppEvent::RigDisconnected { .. } => Vec::new(),
         AppEvent::SpotReceived { spot } => {
             st.bandmap.push(spot);
+            recompute_passband_warning(st);
             Vec::new()
         }
         AppEvent::SpotWithdrawn { call } => {
             st.bandmap.retain(|s| s.call != call);
+            recompute_passband_warning(st);
             Vec::new()
         }
         AppEvent::SetOpMode { mode } => {
             st.focused_entry_mut().mode = mode;
+            recompute_passband_warning(st);
             Vec::new()
         }
         AppEvent::ToggleOpMode => {
@@ -122,6 +131,7 @@ pub fn reduce(
                 OpMode::Run => OpMode::Sp,
                 OpMode::Sp => OpMode::Run,
             };
+            recompute_passband_warning(st);
             Vec::new()
         }
         AppEvent::FocusRadio { radio } => {
@@ -130,6 +140,7 @@ pub fn reduce(
             // Any in-flight CW on the previous radio continues uninterrupted.
             st.focused_radio = radio;
             recompute_feedback(st, dupe_checker, mult_checker);
+            recompute_passband_warning(st);
             vec![Effect::So2rFocusChanged { radio }]
         }
         AppEvent::SwapRadios => {
@@ -137,6 +148,7 @@ pub fn reduce(
             let new_radio = if st.focused_radio == 1 { 2 } else { 1 };
             st.focused_radio = new_radio;
             recompute_feedback(st, dupe_checker, mult_checker);
+            recompute_passband_warning(st);
             vec![Effect::So2rFocusChanged { radio: new_radio }]
         }
         AppEvent::SetOperator { operator } => {
@@ -444,6 +456,32 @@ fn recompute_feedback(
     entry.is_new_mult = mult_checker.is_new_mult(&call_norm, &band, &mode);
 }
 
+fn recompute_passband_warning(st: &mut AppState) {
+    let entry_mode = st.focused_entry().mode;
+    if entry_mode != OpMode::Run {
+        st.focused_entry_mut().is_passband_qrm = false;
+        return;
+    }
+    let (freq, radio_mode, half_w) = match st.radios.get(&st.focused_radio) {
+        Some(r) => match r.filter_width_hz {
+            Some(fw) => (r.freq_hz, r.mode.clone(), u64::from(fw) / 2),
+            None => {
+                st.focused_entry_mut().is_passband_qrm = false;
+                return;
+            }
+        },
+        None => {
+            st.focused_entry_mut().is_passband_qrm = false;
+            return;
+        }
+    };
+    let my_call = st.my_call.clone();
+    let found = st.bandmap.iter().any(|s| {
+        s.call != my_call && s.mode == radio_mode && s.freq_hz.abs_diff(freq) <= half_w
+    });
+    st.focused_entry_mut().is_passband_qrm = found;
+}
+
 fn apply_call_history(
     st: &mut AppState,
     contest: &dyn ContestEntry,
@@ -563,7 +601,7 @@ mod tests {
         reducer::{
             DupeChecker, MultChecker, NoCallHistory, NoDupeChecker, NoMultChecker, NoScp,
         },
-        state::{AppState, EsmPolicy, Macros},
+        state::{AppState, EsmPolicy, Macros, Spot},
     };
 
     fn reduce(
@@ -952,6 +990,7 @@ mod tests {
                 freq_hz: 14_025_000,
                 mode: "CW".to_string(),
                 is_ptt: false,
+                filter_width_hz: None,
             },
         );
         assert!(st.focused_entry_mut().is_dupe);
@@ -1002,6 +1041,7 @@ mod tests {
                 freq_hz: 14_025_000,
                 mode: "CW".to_string(),
                 is_ptt: false,
+                filter_width_hz: None,
             },
         );
         assert!(st.focused_entry_mut().is_new_mult);
@@ -1256,5 +1296,107 @@ mod tests {
         assert!(!effects
             .iter()
             .any(|e| matches!(e, Effect::LogInsert { .. })));
+    }
+
+    #[test]
+    fn passband_qrm_warning() {
+        let contest = contest_from_id("cqww").unwrap();
+        let mut st = mk_state();
+        let macros = Macros::default();
+
+        // Set up radio with known filter width, Run mode
+        reduce(
+            &mut st,
+            contest.as_ref(),
+            &macros,
+            AppEvent::RigStatus {
+                radio: 1,
+                freq_hz: 14_025_000,
+                mode: "CW".to_string(),
+                is_ptt: false,
+                filter_width_hz: Some(500),
+            },
+        );
+        assert!(!st.focused_entry().is_passband_qrm);
+
+        // Spot within passband triggers warning
+        reduce(
+            &mut st,
+            contest.as_ref(),
+            &macros,
+            AppEvent::SpotReceived {
+                spot: Spot {
+                    call: "K5ZD".to_string(),
+                    freq_hz: 14_025_100,
+                    mode: "CW".to_string(),
+                },
+            },
+        );
+        assert!(st.focused_entry().is_passband_qrm);
+
+        // Spot outside passband does not trigger alone
+        reduce(
+            &mut st,
+            contest.as_ref(),
+            &macros,
+            AppEvent::SpotWithdrawn {
+                call: "K5ZD".to_string(),
+            },
+        );
+        assert!(!st.focused_entry().is_passband_qrm);
+
+        // Spot outside passband (too far)
+        reduce(
+            &mut st,
+            contest.as_ref(),
+            &macros,
+            AppEvent::SpotReceived {
+                spot: Spot {
+                    call: "DL1ABC".to_string(),
+                    freq_hz: 14_030_000,
+                    mode: "CW".to_string(),
+                },
+            },
+        );
+        assert!(!st.focused_entry().is_passband_qrm);
+
+        // Own call in passband is excluded
+        reduce(
+            &mut st,
+            contest.as_ref(),
+            &macros,
+            AppEvent::SpotReceived {
+                spot: Spot {
+                    call: "N0CALL".to_string(),
+                    freq_hz: 14_025_000,
+                    mode: "CW".to_string(),
+                },
+            },
+        );
+        assert!(!st.focused_entry().is_passband_qrm);
+
+        // S&P mode suppresses warning
+        reduce(
+            &mut st,
+            contest.as_ref(),
+            &macros,
+            AppEvent::SpotReceived {
+                spot: Spot {
+                    call: "W1AW".to_string(),
+                    freq_hz: 14_025_050,
+                    mode: "CW".to_string(),
+                },
+            },
+        );
+        assert!(st.focused_entry().is_passband_qrm);
+        reduce(
+            &mut st,
+            contest.as_ref(),
+            &macros,
+            AppEvent::SetOpMode {
+                mode: OpMode::Sp,
+            },
+        );
+        assert!(!st.focused_entry().is_passband_qrm);
     }
 }

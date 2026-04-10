@@ -38,11 +38,11 @@ pub fn render(frame: &mut Frame, app: &AppState, tui: &TuiState) {
     ])
     .split(rows[0]);
 
-    // Center column: log(max 10) + entry R1(5) + entry R2(5) + scp(2) + filler
+    // Center column: log(max 10) + entry R1(6) + entry R2(6) + scp(2) + filler
     let center = Layout::vertical([
         Constraint::Max(10),
-        Constraint::Length(5),
-        Constraint::Length(5),
+        Constraint::Length(6),
+        Constraint::Length(6),
         Constraint::Length(2),
         Constraint::Min(0),
     ])

@@ -136,9 +136,19 @@ pub fn render(
         Line::default()
     };
 
+    let indicator_line = if entry.is_dupe {
+        Line::from(vec![Span::styled(
+            " DUPE ",
+            Style::default().fg(Color::White).bg(Color::Red),
+        )])
+    } else {
+        Line::default()
+    };
+
     let lines = vec![
         freq_line,
         Line::from(spans),
+        indicator_line,
         cw_line,
     ];
     frame.render_widget(Paragraph::new(lines), inner);

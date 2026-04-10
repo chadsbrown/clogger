@@ -71,6 +71,7 @@ struct TraceState {
     esm_step: String,
     is_dupe: bool,
     is_new_mult: bool,
+    is_passband_qrm: bool,
     overall: String,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     scp_matches: Vec<String>,
@@ -302,11 +303,13 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
                 freq_hz,
                 mode,
                 is_ptt,
+                filter_width_hz,
             } => Some(AppEvent::RigStatus {
                 radio,
                 freq_hz,
                 mode,
                 is_ptt,
+                filter_width_hz,
             }),
             ScriptEvent::SetMode { mode } => Some(AppEvent::SetOpMode {
                 mode: match mode {
@@ -404,6 +407,7 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
                     esm_step: format!("{:?}", st.focused_entry().esm_step),
                     is_dupe: st.focused_entry().is_dupe,
                     is_new_mult: st.focused_entry().is_new_mult,
+                    is_passband_qrm: st.focused_entry().is_passband_qrm,
                     overall: normalize_overall(&st.focused_entry().overall),
                     scp_matches: st.focused_entry().scp_matches.clone(),
                     scp_n1_matches: st.focused_entry().scp_n1_matches.clone(),
@@ -556,6 +560,15 @@ fn validate_expectations(artifacts: &RunArtifacts, script: &Script) -> Result<()
             "expected final is_new_mult {}, got {}",
             expected,
             artifacts.st.focused_entry().is_new_mult
+        );
+    }
+    if let Some(expected) = script.expectations.final_is_passband_qrm
+        && artifacts.st.focused_entry().is_passband_qrm != expected
+    {
+        bail!(
+            "expected final is_passband_qrm {}, got {}",
+            expected,
+            artifacts.st.focused_entry().is_passband_qrm
         );
     }
 
@@ -721,6 +734,7 @@ mod tests {
             "so2r_independent_op_mode.json",
             "so2r_concurrent_inflight_qsos.json",
             "so2r_serial_shared_counter.json",
+            "cqww_passband_qrm.json",
         ];
 
         for script in scripts {

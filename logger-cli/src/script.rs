@@ -33,6 +33,8 @@ pub enum ScriptEvent {
         freq_hz: u64,
         mode: String,
         is_ptt: bool,
+        #[serde(default)]
+        filter_width_hz: Option<u32>,
     },
     SetMode {
         mode: ModeValue,
@@ -90,6 +92,7 @@ pub struct Expectations {
     pub focus_field_id: Option<u16>,
     pub final_is_dupe: Option<bool>,
     pub final_is_new_mult: Option<bool>,
+    pub final_is_passband_qrm: Option<bool>,
     pub final_field_values: Option<BTreeMap<u16, String>>,
     pub final_serial_counter: Option<u32>,
     pub final_focused_radio: Option<u8>,
