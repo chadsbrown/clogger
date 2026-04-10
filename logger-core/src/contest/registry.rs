@@ -110,11 +110,30 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         exchange_schema_id: 7,
         auto_toggle_mode: true,
     },
+    SpecContestMeta {
+        contest_id: "ss",
+        contest_instance_id: 2,
+        field_widths: &[(1, 12), (2, 5), (3, 2), (4, 3), (5, 4)],
+        default_macros_fn: ss_macros,
+        history_mapping: &[("Exch1", 3), ("CK", 4), ("Sect", 5)],
+        uses_serial: true,
+        cabrillo_id_fn: |mode| match mode {
+            CategoryMode::CW => Some("ARRL-SS-CW"),
+            CategoryMode::SSB => Some("ARRL-SS-SSB"),
+            CategoryMode::Mixed => None,
+        },
+        exchange_schema_id: 2,
+        auto_toggle_mode: false,
+    },
 ];
 
 pub fn find_spec_contest(id: &str) -> Option<&'static SpecContestMeta> {
     let id_lower = id.to_ascii_lowercase();
-    SPEC_CONTESTS.iter().find(|m| m.contest_id == id_lower)
+    let effective_id = match id_lower.as_str() {
+        "sweeps" => "ss",
+        _ => &id_lower,
+    };
+    SPEC_CONTESTS.iter().find(|m| m.contest_id == effective_id)
 }
 
 fn default_macros() -> Macros {
@@ -154,6 +173,15 @@ fn ns_sprint_macros() -> Macros {
         f2: "{MYCALL} {SERIAL} {MYNAME} {MYXCHG}".to_string(),
         f3: "R".to_string(),
         sp_f2: Some("{CALL} {SERIAL} {MYNAME} {MYXCHG} {MYCALL}".to_string()),
+        ..Macros::default()
+    }
+}
+
+fn ss_macros() -> Macros {
+    Macros {
+        f1: "CQ SS {MYCALL}".to_string(),
+        f2: "{NR} {PREC} {CK} {SEC}".to_string(),
+        f3: "TU {MYCALL}".to_string(),
         ..Macros::default()
     }
 }

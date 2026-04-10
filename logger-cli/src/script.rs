@@ -14,6 +14,9 @@ pub struct Script {
     pub call_history: Vec<CallHistoryEntry>,
     #[serde(default)]
     pub scp_calls: Vec<String>,
+    /// Station's own exchange fields (keys become `my_<key>` config for the scorer).
+    #[serde(default)]
+    pub my_exchange: BTreeMap<String, String>,
     pub events: Vec<ScriptEvent>,
     #[serde(default)]
     pub expectations: Expectations,

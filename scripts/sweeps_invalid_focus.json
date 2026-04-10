@@ -1,5 +1,10 @@
 {
-  "contest": "sweeps",
+  "contest": "ss",
+  "my_exchange": {
+    "prec": "A",
+    "ck": "77",
+    "sec": "EMA"
+  },
   "events": [
     { "type": "SetMode", "mode": "Run" },
     { "type": "Text", "s": "K1ABC" },

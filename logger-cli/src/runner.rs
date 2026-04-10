@@ -261,7 +261,7 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
         my_call: "N0CALL".to_string(),
         my_zone: 4,
         rst_sent: "599".to_string(),
-        my_exchange: HashMap::new(),
+        my_exchange: script.my_exchange.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
         esm_policy: EsmPolicy::default(),
         bandmap_cursors: HashMap::new(),
         default_cw_speed: 28,

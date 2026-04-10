@@ -1,5 +1,10 @@
 {
-  "contest": "sweeps",
+  "contest": "ss",
+  "my_exchange": {
+    "prec": "A",
+    "ck": "77",
+    "sec": "EMA"
+  },
   "events": [
     { "type": "RigStatus", "radio": 1, "freq_hz": 14025000, "mode": "CW", "is_ptt": false },
     { "type": "SetMode", "mode": "Run" },
@@ -23,8 +28,8 @@
         "exchange": {
           "nr": "123",
           "prec": "A",
-          "check": "77",
-          "section": "EMA"
+          "ck": "77",
+          "sec": "EMA"
         }
       }
     ],

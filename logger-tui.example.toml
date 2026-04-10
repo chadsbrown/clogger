@@ -13,7 +13,7 @@
 #my_zone = 4
 
 # Contest identifier. Supported values:
-#   cqww, cwt, mst, naqp, arrl_dx, ns_sprint, sweeps
+#   cqww, cwt, mst, naqp, arrl_dx, ns_sprint, ss
 #contest = "cqww"
 
 # RST sent (default: "599", used by cqww, arrl_dx)

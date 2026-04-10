@@ -1,5 +1,4 @@
 mod spec_scorer;
-pub mod sweeps;
 pub mod unique_call;
 
 use std::collections::HashMap;
@@ -102,8 +101,6 @@ pub fn scorer_for_contest(
     // so the release binary is self-contained.
     if contest_engine::spec::embedded::spec_by_id(contest_id).is_some() {
         Box::new(spec_scorer::SpecScorer::new(contest_id, contest_instance_id, config))
-    } else if contest_id == "sweeps" {
-        Box::new(sweeps::SweepsScorer::new(contest_instance_id))
     } else {
         Box::new(unique_call::UniqueCallScorer::new())
     }

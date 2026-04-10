@@ -22,7 +22,7 @@ See `logger-tui.example.toml` for all options. Required fields:
 ```toml
 my_call = "N9UNX"
 my_zone = 4
-contest = "cqww"    # or "sweeps"
+contest = "cqww"    # or "ss"
 ```
 
 Optional sections: `db_path` for SQLite persistence, `[rig]` for rig control, `[keyer]` for WinKeyer, `[[dxfeed.sources]]` for DX cluster spots. Each hardware section can be omitted — the TUI runs without it and logs a warning if a connection fails.
