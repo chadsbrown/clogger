@@ -262,7 +262,7 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
         rst_sent: "599".to_string(),
         my_exchange: HashMap::new(),
         esm_policy: EsmPolicy::default(),
-        bandmap_cursor: None,
+        bandmap_cursors: HashMap::new(),
         default_cw_speed: 28,
         serial_counter: None,
     };

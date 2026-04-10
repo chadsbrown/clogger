@@ -302,12 +302,14 @@ pub fn reduce(
             }
         },
         AppEvent::EsmTrigger => handle_esm(st, contest, macros),
-        AppEvent::BandmapUp | AppEvent::BandmapDown => {
-            let radio = st.radios.get(&st.focused_radio).filter(|r| r.freq_hz > 0);
-            let band = radio
+        AppEvent::BandmapUp { radio: target } | AppEvent::BandmapDown { radio: target } => {
+            let is_down = matches!(ev, AppEvent::BandmapDown { .. });
+
+            let radio_state = st.radios.get(&target).filter(|r| r.freq_hz > 0);
+            let band = radio_state
                 .map(|r| freq_to_band_label(r.freq_hz))
                 .unwrap_or_else(|| "40m".to_string());
-            let mode = radio.map(|r| r.mode.as_str()).unwrap_or("CW");
+            let mode = radio_state.map(|r| r.mode.as_str()).unwrap_or("CW");
 
             let spots = filtered_bandmap_spots(&st.bandmap, &band, mode);
             if spots.is_empty() {
@@ -315,41 +317,42 @@ pub fn reduce(
             }
 
             let len = spots.len();
-            let idx = match (ev, st.bandmap_cursor) {
-                (AppEvent::BandmapDown, None) => 0,
-                (AppEvent::BandmapDown, Some(i)) => (i + 1) % len,
-                (AppEvent::BandmapUp, None) => len - 1,
-                (AppEvent::BandmapUp, Some(i)) => (i + len - 1) % len,
-                _ => unreachable!(),
+            let prev = st.bandmap_cursors.get(&target).copied();
+            let idx = match (is_down, prev) {
+                (true, None) => 0,
+                (true, Some(i)) => (i + 1) % len,
+                (false, None) => len - 1,
+                (false, Some(i)) => (i + len - 1) % len,
             };
 
             let spot = &spots[idx];
-            let radio = st.focused_radio;
             let freq_hz = spot.freq_hz;
+            let call = spot.call.clone();
 
-            st.bandmap_cursor = Some(idx);
+            st.bandmap_cursors.insert(target, idx);
+
+            // Temporarily swap focus to target radio so helpers operate on it
+            let original_focus = st.focused_radio;
+            st.focused_radio = target;
             {
                 let entry = st.focused_entry_mut();
                 entry.mode = OpMode::Sp;
 
-                // Set call field to selected spot's callsign
                 if let Some(field) = entry.fields.iter_mut().find(|f| f.field_id == 1) {
-                    field.cursor = spot.call.len();
-                    field.value = spot.call.clone();
+                    field.cursor = call.len();
+                    field.value = call;
                 }
 
-                // Reset focus to call field
                 entry.focus = 0;
                 entry.scp_cycle_index = None;
             }
 
-            // Feedback + history only — skip SCP (callsign is known from spot)
-            // and skip redundant first revalidation.
             recompute_feedback(st, dupe_checker, mult_checker);
             apply_history_only(st, contest, call_history);
             revalidate_after_edit(st, contest);
+            st.focused_radio = original_focus;
 
-            vec![Effect::RigSet { radio, freq_hz }]
+            vec![Effect::RigSet { radio: target, freq_hz }]
         }
     }
 }
@@ -615,7 +618,7 @@ mod tests {
             rst_sent: "599".to_string(),
             my_exchange: HashMap::new(),
             esm_policy: EsmPolicy::default(),
-            bandmap_cursor: None,
+            bandmap_cursors: HashMap::new(),
             default_cw_speed: 28,
             serial_counter: None,
         }

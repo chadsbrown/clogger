@@ -90,7 +90,7 @@ pub fn bootstrap(config: SessionConfig) -> Result<Session> {
         rst_sent: config.rst_sent,
         my_exchange,
         esm_policy: EsmPolicy::default(),
-        bandmap_cursor: None,
+        bandmap_cursors: HashMap::new(),
         default_cw_speed: config.default_cw_speed,
         serial_counter: None,
     };

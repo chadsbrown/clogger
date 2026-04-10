@@ -27,11 +27,17 @@ pub fn spawn_terminal_reader(tx: mpsc::Sender<TerminalEvent>) {
                 (m, KeyCode::Char('e')) if m.contains(KeyModifiers::CONTROL) => {
                 TerminalEvent::OpenExportModal
             }
-            (m, KeyCode::Up) if m.contains(KeyModifiers::CONTROL) => {
-                    TerminalEvent::App(AppEvent::BandmapUp)
+                (m, KeyCode::Up) if m.contains(KeyModifiers::CONTROL | KeyModifiers::ALT) => {
+                    TerminalEvent::App(AppEvent::BandmapUp { radio: 2 })
+                }
+                (m, KeyCode::Down) if m.contains(KeyModifiers::CONTROL | KeyModifiers::ALT) => {
+                    TerminalEvent::App(AppEvent::BandmapDown { radio: 2 })
+                }
+                (m, KeyCode::Up) if m.contains(KeyModifiers::CONTROL) => {
+                    TerminalEvent::App(AppEvent::BandmapUp { radio: 1 })
                 }
                 (m, KeyCode::Down) if m.contains(KeyModifiers::CONTROL) => {
-                    TerminalEvent::App(AppEvent::BandmapDown)
+                    TerminalEvent::App(AppEvent::BandmapDown { radio: 1 })
                 }
                 (_, KeyCode::Up) => {
                     TerminalEvent::App(AppEvent::FocusRadio { radio: 1 })

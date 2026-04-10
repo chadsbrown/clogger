@@ -76,6 +76,7 @@ pub async fn run(
         so2r_configured: conn.so2r_configured,
         so2r_connected: conn.so2r_connected,
         scoreboard_configured: conn.scoreboard_configured,
+        bandmap_mode: conn.bandmap_mode,
         cw_echo_enabled,
         tx_radio: state.focused_radio,
         ..Default::default()
@@ -408,7 +409,7 @@ fn needs_analytics_recompute(event: &logger_core::AppEvent) -> bool {
         // Radio focus changes which band's analytics are shown
         AppEvent::FocusRadio { .. } | AppEvent::SwapRadios => true,
         // Bandmap cursor navigation
-        AppEvent::BandmapUp | AppEvent::BandmapDown => true,
+        AppEvent::BandmapUp { .. } | AppEvent::BandmapDown { .. } => true,
         // RigStatus handled by freq/mode comparison in caller
         AppEvent::RigStatus { .. } => false,
         // Timer, disconnect, op-mode, operator changes don't affect analytics

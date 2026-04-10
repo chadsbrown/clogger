@@ -4,6 +4,7 @@ contest = "cwt"
 db_path = "n9unx-cqww.db"
 my_name = "CHAD"
 my_xchg = "3151"
+bandmap = "dual"
 
 # Cursor style (default: blinking_block)
 # Options: blinking_block, steady_block, blinking_underline, steady_underline,

@@ -13,6 +13,8 @@ use ratatui::{
     layout::{Constraint, Layout},
 };
 
+use crate::config::BandmapMode;
+
 use crate::TuiState;
 
 pub fn render(frame: &mut Frame, app: &AppState, tui: &TuiState) {
@@ -90,15 +92,27 @@ pub fn render(frame: &mut Frame, app: &AppState, tui: &TuiState) {
         frame.render_widget(error, center[4]);
     }
 
-    // Right: bandmap
-    bandmap::render(frame, cols[2], app, tui);
+    // Right: bandmap(s)
+    match tui.bandmap_mode {
+        BandmapMode::Dual => {
+            let halves = Layout::vertical([
+                Constraint::Percentage(50),
+                Constraint::Percentage(50),
+            ])
+            .split(cols[2]);
+            bandmap::render(frame, halves[0], app, tui, 1);
+            bandmap::render(frame, halves[1], app, tui, 2);
+        }
+        BandmapMode::R1 => bandmap::render(frame, cols[2], app, tui, 1),
+        BandmapMode::R2 => bandmap::render(frame, cols[2], app, tui, 2),
+    }
 
     // Status bar
     status_bar::render(frame, rows[1], app, tui);
 
     // Footer
     let footer = ratatui::widgets::Paragraph::new(
-        " F1:CQ  F2:Exch  F3:TU  F5:Call  Esc:Stop  F12:Wipe  Enter:ESM  Ins:Run/S&P  \u{2191}\u{2193}:R1/R2  C-\u{2191}\u{2193}:Bandmap  C-E:Export  Ctrl-C:Quit",
+        " F1:CQ  F2:Exch  F3:TU  F5:Call  Esc:Stop  F12:Wipe  Enter:ESM  Ins:Run/S&P  \u{2191}\u{2193}:R1/R2  C-\u{2191}\u{2193}:BM R1  CA-\u{2191}\u{2193}:BM R2  C-E:Export  Ctrl-C:Quit",
     )
     .style(ratatui::style::Style::default().fg(ratatui::style::Color::DarkGray));
     frame.render_widget(footer, rows[2]);

@@ -40,6 +40,13 @@
 # (can also be set via --scp CLI flag)
 #scp_file = "master.scp"
 
+# Bandmap display mode (default: dual)
+#   dual — R1 and R2 bandmaps stacked; Ctrl+↑↓ = R1, Ctrl+Alt+↑↓ = R2
+#   r1   — single bandmap for Radio 1
+#   r2   — single bandmap for Radio 2
+# Key bindings are always fixed: Ctrl+↑↓ = R1, Ctrl+Alt+↑↓ = R2
+#bandmap = "dual"
+
 # Cursor style (default: blinking_block)
 # Options: blinking_block, steady_block, blinking_underline, steady_underline,
 #          blinking_bar, steady_bar

@@ -61,6 +61,6 @@ pub enum AppEvent {
         radio: RadioId,
     },
     EsmTrigger,
-    BandmapUp,
-    BandmapDown,
+    BandmapUp { radio: RadioId },
+    BandmapDown { radio: RadioId },
 }

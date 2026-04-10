@@ -93,7 +93,7 @@ pub struct AppState {
     pub rst_sent: String,
     pub my_exchange: HashMap<String, String>,
     pub esm_policy: EsmPolicy,
-    pub bandmap_cursor: Option<usize>,
+    pub bandmap_cursors: HashMap<RadioId, usize>,
     pub default_cw_speed: u8,
     pub serial_counter: Option<u32>,
 }

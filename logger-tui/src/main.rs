@@ -62,6 +62,7 @@ pub struct TuiState {
     pub so2r_connected: bool,
     pub scoreboard_status: ScoreboardStatus,
     pub export_modal: Option<ExportModal>,
+    pub bandmap_mode: config::BandmapMode,
 }
 
 impl Default for TuiState {
@@ -89,6 +90,7 @@ impl Default for TuiState {
             scoreboard_configured: false,
             scoreboard_status: ScoreboardStatus::Idle,
             export_modal: None,
+            bandmap_mode: config::BandmapMode::Dual,
         }
     }
 }
@@ -272,6 +274,7 @@ async fn main() -> Result<()> {
             so2r_configured,
             so2r_connected,
             scoreboard_configured,
+            bandmap_mode: config.bandmap,
         },
         so2r_switch,
         so2r_default_rx_mode,
@@ -290,4 +293,5 @@ pub struct ConnectionStatus {
     pub so2r_configured: bool,
     pub so2r_connected: bool,
     pub scoreboard_configured: bool,
+    pub bandmap_mode: config::BandmapMode,
 }

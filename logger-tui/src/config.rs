@@ -51,6 +51,17 @@ pub struct Config {
     pub cabrillo: logger_runtime::CabrilloConfig,
     #[serde(default)]
     pub scoreboard: ScoreboardSection,
+    #[serde(default)]
+    pub bandmap: BandmapMode,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BandmapMode {
+    #[default]
+    Dual,
+    R1,
+    R2,
 }
 
 #[derive(Debug, Default, Deserialize)]
