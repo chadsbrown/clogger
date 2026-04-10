@@ -85,6 +85,8 @@ async fn adapter_task(
             }
         };
 
+        tracing::debug!("scoreboard XML:\n{xml}");
+
         // POST to all endpoints in parallel
         let results = join_all(cfg.endpoints.iter().map(|ep| {
             post_to_endpoint(&client, ep, &xml)
@@ -158,25 +160,27 @@ fn serialize_xml(snap: &ScoreboardSnapshot) -> String {
     let _ = write!(xml, " overlay=\"{}\"", cat.overlay.as_str());
     let _ = write!(xml, " />\n");
 
-    // Breakdown
+    // Breakdown — band attributes use bare numbers ("20", "40") per the
+    // contestonlinescore.com XML spec, not "20M".
     let _ = write!(xml, "  <breakdown>\n");
     for row in &snap.breakdown.rows {
+        let band = scoreboard_band(&row.band);
         let _ = write!(
             xml,
             "    <qso band=\"{}\" mode=\"{}\">{}</qso>\n",
-            row.band, row.mode, row.qsos
+            band, row.mode, row.qsos
         );
         for (mult_type, count) in &row.mults {
             let _ = write!(
                 xml,
                 "    <mult type=\"{}\" band=\"{}\" mode=\"{}\">{}</mult>\n",
-                mult_type, row.band, row.mode, count
+                mult_type, band, row.mode, count
             );
         }
         let _ = write!(
             xml,
             "    <point band=\"{}\" mode=\"{}\">{}</point>\n",
-            row.band, row.mode, row.points
+            band, row.mode, row.points
         );
     }
     let _ = write!(xml, "  </breakdown>\n");
@@ -187,6 +191,16 @@ fn serialize_xml(snap: &ScoreboardSnapshot) -> String {
     let _ = write!(xml, "</dynamicresults>\n");
 
     xml
+}
+
+/// Convert internal band labels ("20M", "total") to the scoreboard XML
+/// format ("20", "Total"). Strips trailing "M" from band names.
+fn scoreboard_band(band: &str) -> String {
+    let s = band.trim();
+    if s.eq_ignore_ascii_case("total") {
+        return "Total".to_string();
+    }
+    s.trim_end_matches(|c: char| c == 'M' || c == 'm').to_string()
 }
 
 fn xml_escape(s: &str) -> String {
