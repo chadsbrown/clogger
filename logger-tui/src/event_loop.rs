@@ -67,8 +67,7 @@ pub async fn run(
     let mut tui_state = TuiState {
         log_display: initial_log_display,
         score: initial_score,
-        rig_configured: conn.rig_configured,
-        rig_connected: conn.rig_connected,
+        rigs: conn.rigs,
         keyer_configured: conn.keyer_configured,
         keyer_connected: conn.keyer_connected,
         dxfeed_configured: conn.dxfeed_configured,
@@ -134,9 +133,14 @@ pub async fn run(
                             // Non-keyboard events (RigStatus, spots, etc.) fall through
                         }
 
-                        if matches!(&app_event, logger_core::AppEvent::RigDisconnected { .. }) {
-                            tui_state.rig_connected = false;
-                            tui_state.error_message = Some("ERROR: RIG CONNECTION LOST".to_string());
+                        if let logger_core::AppEvent::RigDisconnected { radio } = &app_event {
+                            tui_state.rigs.insert(*radio, false);
+                            let label = if tui_state.rigs.len() > 1 {
+                                format!("RIG{radio}")
+                            } else {
+                                "RIG".to_string()
+                            };
+                            tui_state.error_message = Some(format!("ERROR: {label} CONNECTION LOST"));
                         }
 
                         // Capture previous freq/mode so we can detect meaningful

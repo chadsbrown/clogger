@@ -3,7 +3,7 @@ mod config;
 mod event_loop;
 mod ui;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::File;
 use std::sync::Arc;
 
@@ -51,12 +51,14 @@ pub struct TuiState {
     /// whether the connection succeeded). Used by the status bar to render a
     /// red "configured but not connected" indicator distinct from the empty
     /// "not configured at all" state.
-    pub rig_configured: bool,
     pub keyer_configured: bool,
     pub dxfeed_configured: bool,
     pub so2r_configured: bool,
     pub scoreboard_configured: bool,
-    pub rig_connected: bool,
+    /// Per-radio rig connection state, keyed by configured radio_id.
+    /// Empty when no rigs are configured. BTreeMap gives deterministic
+    /// render order in the status bar (RIG1 before RIG2).
+    pub rigs: BTreeMap<RadioId, bool>,
     pub keyer_connected: bool,
     pub dxfeed_connected: bool,
     pub so2r_connected: bool,
@@ -79,11 +81,10 @@ impl Default for TuiState {
             avail: AvailSummary::default(),
             rate: RateInfo::default(),
             error_message: None,
-            rig_configured: false,
             keyer_configured: false,
             dxfeed_configured: false,
             so2r_configured: false,
-            rig_connected: false,
+            rigs: BTreeMap::new(),
             keyer_connected: false,
             dxfeed_connected: false,
             so2r_connected: false,
@@ -137,17 +138,22 @@ async fn main() -> Result<()> {
     // Spawn terminal input reader
     adapters::terminal::spawn_terminal_reader(tui_tx.clone());
 
-    // Spawn rig adapters (one per configured rig, indexed by radio_id)
-    let rig_configured = !config.rigs.is_empty();
+    // Spawn rig adapters (one per configured rig, indexed by radio_id).
+    // `rig_status` tracks per-radio connection state for the status bar:
+    // every configured radio gets an entry, `true` if the adapter spawned
+    // successfully and `false` if it failed.
     let mut rigs: HashMap<RadioId, Arc<dyn Rig>> = HashMap::new();
-    let mut rig_connected = false;
+    let mut rig_status: BTreeMap<RadioId, bool> = BTreeMap::new();
     for rig_config in &config.rigs {
         match logger_runtime::spawn_rig_adapter(rig_config, app_tx.clone()).await {
             Ok(rig) => {
                 rigs.insert(rig_config.radio_id, rig);
-                rig_connected = true;
+                rig_status.insert(rig_config.radio_id, true);
             }
-            Err(e) => warn!("rig {} connection failed, continuing without: {e}", rig_config.radio_id),
+            Err(e) => {
+                warn!("rig {} connection failed, continuing without: {e}", rig_config.radio_id);
+                rig_status.insert(rig_config.radio_id, false);
+            }
         }
     }
 
@@ -265,8 +271,7 @@ async fn main() -> Result<()> {
         tui_rx,
         initial_log_display,
         ConnectionStatus {
-            rig_configured,
-            rig_connected,
+            rigs: rig_status,
             keyer_configured,
             keyer_connected,
             dxfeed_configured,
@@ -284,8 +289,9 @@ async fn main() -> Result<()> {
 }
 
 pub struct ConnectionStatus {
-    pub rig_configured: bool,
-    pub rig_connected: bool,
+    /// Per-radio rig connection state, keyed by configured radio_id.
+    /// Empty when no rigs are configured.
+    pub rigs: BTreeMap<RadioId, bool>,
     pub keyer_configured: bool,
     pub keyer_connected: bool,
     pub dxfeed_configured: bool,

@@ -43,7 +43,7 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState, tui: &TuiState) {
     //   omit  = not configured
     let mut right_spans: Vec<Span> = Vec::new();
     let push_indicator =
-        |spans: &mut Vec<Span<'static>>, label: &'static str, configured: bool, connected: bool| {
+        |spans: &mut Vec<Span<'static>>, label: String, configured: bool, connected: bool| {
             if !configured {
                 return;
             }
@@ -53,10 +53,20 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState, tui: &TuiState) {
             let color = if connected { Color::Green } else { Color::Red };
             spans.push(Span::styled(label, Style::default().fg(color)));
         };
-    push_indicator(&mut right_spans, "RIG", tui.rig_configured, tui.rig_connected);
-    push_indicator(&mut right_spans, "KEY", tui.keyer_configured, tui.keyer_connected);
-    push_indicator(&mut right_spans, "DXF", tui.dxfeed_configured, tui.dxfeed_connected);
-    push_indicator(&mut right_spans, "SO2R", tui.so2r_configured, tui.so2r_connected);
+    // Rig indicators: "RIG" for a single configured rig, "RIG1"/"RIG2"/... for
+    // multi-rig SO2R setups. Each rig's connection state is tracked independently.
+    let multi_rig = tui.rigs.len() > 1;
+    for (radio_id, connected) in &tui.rigs {
+        let label = if multi_rig {
+            format!("RIG{radio_id}")
+        } else {
+            "RIG".to_string()
+        };
+        push_indicator(&mut right_spans, label, true, *connected);
+    }
+    push_indicator(&mut right_spans, "KEY".to_string(), tui.keyer_configured, tui.keyer_connected);
+    push_indicator(&mut right_spans, "DXF".to_string(), tui.dxfeed_configured, tui.dxfeed_connected);
+    push_indicator(&mut right_spans, "SO2R".to_string(), tui.so2r_configured, tui.so2r_connected);
 
     // Scoreboard: tri-state — yellow=idle, green=ok, red=failing
     if tui.scoreboard_configured {
