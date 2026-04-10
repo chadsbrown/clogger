@@ -101,7 +101,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         contest_instance_id: 7,
         field_widths: &[(1, 12), (2, 5), (3, 10), (4, 4)],
         default_macros_fn: ns_sprint_macros,
-        history_mapping: &[("Name", 3)],
+        history_mapping: &[("Name", 3), ("State", 4)],
         uses_serial: true,
         cabrillo_id_fn: |mode| match mode {
             CategoryMode::CW => Some("NCCC-SPRINT"),
