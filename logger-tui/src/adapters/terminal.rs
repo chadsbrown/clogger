@@ -76,9 +76,16 @@ pub fn spawn_terminal_reader(tx: mpsc::Sender<TerminalEvent>, has_second_rig: bo
                 // Backtick: toggle OTRSP RX audio routing (mono <-> stereo).
                 // Intercepted here so it never reaches the entry field as text.
                 (_, KeyCode::Char('`')) => TerminalEvent::ToggleRxMode,
-                (_, KeyCode::Char(c)) => TerminalEvent::App(AppEvent::TextInput {
-                    s: c.to_uppercase().to_string(),
-                }),
+                (_, KeyCode::Char(c)) => {
+                    // `char::to_ascii_uppercase` is a single-branch bit op
+                    // on the char — no iterator overhead from the generic
+                    // `to_uppercase()`. Callsigns are ASCII-only, and the
+                    // reducer's CALL-field invariant only requires ASCII
+                    // uppercase. `char::to_string()` builds a minimally-sized
+                    // String via a stack utf-8 encode.
+                    let s = c.to_ascii_uppercase().to_string();
+                    TerminalEvent::App(AppEvent::TextInput { s })
+                }
                 (_, KeyCode::Enter) => TerminalEvent::App(AppEvent::KeyPress { key: Key::Enter }),
                 (_, KeyCode::Backspace) => TerminalEvent::App(AppEvent::KeyPress {
                     key: Key::Backspace,

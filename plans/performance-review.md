@@ -26,7 +26,18 @@ keystroke-to-visible latency) over raw throughput.
   one call site that actually needs an owned `String`
   (`esm.rs::log_and_clear` on QSO log, ~1/30s) does `.to_owned()` at the
   edge.
-- [ ] 3 — Fix char→string in terminal adapter (1.4)
+- [x] **3 — Fix char→string in terminal adapter** (1.4) — Replaced
+  `c.to_uppercase().to_string()` with `c.to_ascii_uppercase().to_string()`
+  in `logger-tui/src/adapters/terminal.rs`. Eliminates the `ToUppercase`
+  Display-iterator path in favor of a single-branch bit op; the resulting
+  String uses `char::to_string()` which builds a minimally-sized buffer
+  via stack utf-8 encode. The enum variant is unchanged
+  (`TextInput { s: String }` still allocates one small String per
+  keystroke). The "wider" fix — changing the variant to
+  `TextInput { c: char }` — remains available if instrumentation shows
+  the TextInput path is still hot; it requires touching ~28 test sites
+  in `reducer.rs` plus splitting strings in `logger-cli/src/runner.rs`
+  and `logger-tui/src/event_loop.rs` (export modal).
 - [ ] 4 — Bandmap filter cache in TuiState (2.1, 2.2)
 - [ ] 5 — Score breakdown skip-if-unchanged (2.3)
 - [ ] 6 — RigStatus dedup (3.3)
