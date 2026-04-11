@@ -36,8 +36,10 @@ pub struct SessionConfig {
     pub call_history_path: Option<PathBuf>,
     pub scp_path: Option<PathBuf>,
     pub start_serial: Option<u32>,
-    /// Passband QRM warning width in hertz. `None` disables the warning.
-    pub passband_qrm_width_hz: Option<u32>,
+    /// Enable the passband QRM warning. The width comes from the rig's
+    /// reported receive filter (or a mode-default fallback); this flag just
+    /// toggles the feature on/off.
+    pub show_passband_qrm: bool,
     /// Channel for hardware-task error events (persist, keyer, rig, so2r).
     /// Required: the TUI must pass its `app_tx` so per-device tasks can
     /// surface errors back to the main event loop.
@@ -103,7 +105,7 @@ pub fn bootstrap(config: SessionConfig) -> Result<Session> {
         bandmap_cursors: HashMap::new(),
         default_cw_speed: config.default_cw_speed,
         serial_counter: None,
-        passband_qrm_width_hz: config.passband_qrm_width_hz,
+        show_passband_qrm: config.show_passband_qrm,
         bandmap_version: 0,
     };
 

@@ -18,9 +18,9 @@ pub struct Script {
     /// Station's own exchange fields (keys become `my_<key>` config for the scorer).
     #[serde(default)]
     pub my_exchange: BTreeMap<String, String>,
-    /// Passband QRM warning width in hertz. `None` disables the warning.
+    /// Enable the passband QRM warning (width comes from the rig filter).
     #[serde(default)]
-    pub passband_qrm_width_hz: Option<u32>,
+    pub show_passband_qrm: bool,
     pub events: Vec<ScriptEvent>,
     #[serde(default)]
     pub expectations: Expectations,

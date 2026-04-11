@@ -554,14 +554,10 @@ fn snap_bandmap_cursor_to_freq(st: &mut AppState, radio: RadioId) {
 }
 
 fn recompute_passband_warning(st: &mut AppState) {
-    // Warning disabled when no width is configured.
-    let half_w = match st.passband_qrm_width_hz {
-        Some(w) => u64::from(w) / 2,
-        None => {
-            st.focused_entry_mut().is_passband_qrm = false;
-            return;
-        }
-    };
+    if !st.show_passband_qrm {
+        st.focused_entry_mut().is_passband_qrm = false;
+        return;
+    }
     let entry_mode = st.focused_entry().mode;
     if entry_mode != OpMode::Run {
         st.focused_entry_mut().is_passband_qrm = false;
@@ -569,6 +565,8 @@ fn recompute_passband_warning(st: &mut AppState) {
     }
     // Scan the bandmap with shared borrows only, then drop them before
     // writing `is_passband_qrm` back. No clones of `mode` or `my_call`.
+    // Half-width comes from the rig's reported filter width, falling back
+    // to a mode-dependent default when the backend doesn't report one.
     let found = {
         let Some(r) = st.radios.get(&st.focused_radio) else {
             st.focused_entry_mut().is_passband_qrm = false;
@@ -576,6 +574,10 @@ fn recompute_passband_warning(st: &mut AppState) {
         };
         let freq = r.freq_hz;
         let radio_mode = normalize_mode(r.mode.as_str());
+        let half_w = u64::from(
+            r.filter_width_hz
+                .unwrap_or_else(|| default_filter_width_hz(radio_mode)),
+        ) / 2;
         let my_call = st.my_call.as_str();
         st.bandmap.iter().any(|s| {
             s.call != my_call
@@ -764,7 +766,7 @@ mod tests {
             bandmap_cursors: HashMap::new(),
             default_cw_speed: 28,
             serial_counter: None,
-            passband_qrm_width_hz: None,
+            show_passband_qrm: false,
             bandmap_version: 0,
         }
     }
@@ -1409,10 +1411,12 @@ mod tests {
     fn passband_qrm_warning() {
         let contest = contest_from_id("cqww").unwrap();
         let mut st = mk_state();
-        st.passband_qrm_width_hz = Some(500);
+        st.show_passband_qrm = true;
         let macros = Macros::default();
 
-        // Set up radio on a known frequency, Run mode
+        // Set up radio on a known frequency, Run mode, with a 500 Hz CW
+        // filter — matching half-width (250) preserves the pre-rename
+        // pass/fail boundary of this test's spot placements.
         reduce(
             &mut st,
             contest.as_ref(),
@@ -1422,7 +1426,7 @@ mod tests {
                 freq_hz: 14_025_000,
                 mode: "CW".to_string(),
                 is_ptt: false,
-                filter_width_hz: None,
+                filter_width_hz: Some(500),
             },
         );
         assert!(!st.focused_entry().is_passband_qrm);

@@ -133,7 +133,7 @@ mod tests {
             bandmap_cursors: HashMap::new(),
             default_cw_speed: 28,
             serial_counter: None,
-            passband_qrm_width_hz: None,
+            show_passband_qrm: false,
             bandmap_version: 0,
         };
         st.radios.insert(1, RadioState {
@@ -180,7 +180,7 @@ mod tests {
             bandmap_cursors: HashMap::new(),
             default_cw_speed: 28,
             serial_counter: None,
-            passband_qrm_width_hz: None,
+            show_passband_qrm: false,
             bandmap_version: 0,
         };
 
@@ -207,7 +207,7 @@ mod tests {
             bandmap_cursors: HashMap::new(),
             default_cw_speed: 1,
             serial_counter: None,
-            passband_qrm_width_hz: None,
+            show_passband_qrm: false,
             bandmap_version: 0,
         };
 
@@ -234,7 +234,7 @@ mod tests {
             bandmap_cursors: HashMap::new(),
             default_cw_speed: 28,
             serial_counter: None,
-            passband_qrm_width_hz: None,
+            show_passband_qrm: false,
             bandmap_version: 0,
         };
         st.focused_entry_mut().fields[0].value = "K1ABC".to_string();

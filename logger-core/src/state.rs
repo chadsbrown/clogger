@@ -111,12 +111,12 @@ pub struct AppState {
     pub bandmap_cursors: HashMap<RadioId, BandmapCursor>,
     pub default_cw_speed: u8,
     pub serial_counter: Option<u32>,
-    /// Passband QRM warning width in hertz. When `Some(n)`, the warning fires
-    /// in Run mode if any bandmap spot (matching the focused radio's mode, not
-    /// `my_call`) sits within ±(n/2) of the focused radio's frequency. `None`
-    /// disables the warning entirely. Not derived from rig-reported filter
-    /// width — it's an operator-chosen threshold.
-    pub passband_qrm_width_hz: Option<u32>,
+    /// Passband QRM warning toggle. When `true`, the warning fires in Run
+    /// mode if any bandmap spot (matching the focused radio's mode, not
+    /// `my_call`) sits within ±(filter_width/2) of the focused radio's
+    /// frequency — using the rig's reported receive filter width, or a
+    /// mode-dependent default when the backend doesn't report one.
+    pub show_passband_qrm: bool,
     /// Monotonic counter that increments on every bandmap mutation (spot
     /// received or withdrawn). Consumers — notably the TUI `BandmapCache` —
     /// compare stored versions against this to detect when cached filtered

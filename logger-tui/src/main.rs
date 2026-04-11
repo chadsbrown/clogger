@@ -148,7 +148,7 @@ async fn main() -> Result<()> {
         call_history_path: cli.call_history.as_ref().or(config.call_history_file.as_ref()).cloned(),
         scp_path: cli.scp.as_ref().or(config.scp_file.as_ref()).cloned(),
         start_serial: None,
-        passband_qrm_width_hz: config.passband_qrm_width_hz,
+        show_passband_qrm: config.show_passband_qrm,
         app_tx: app_tx.clone(),
     })?;
 
