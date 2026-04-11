@@ -20,6 +20,12 @@ pub struct LogAdapter {
     /// tagged with this id in the qsolog store. A log session always
     /// represents one contest, so this is set at construction time.
     contest_instance_id: u64,
+    /// Monotonic counter that increments whenever the score state could
+    /// have changed — insert, undo, redo, or an initial rebuild from
+    /// disk. Consumers that build expensive score snapshots
+    /// (e.g. the scoreboard uploader) compare the current epoch against
+    /// the last one they built from and skip work when nothing moved.
+    score_epoch: u64,
 }
 
 impl LogAdapter {
@@ -29,6 +35,7 @@ impl LogAdapter {
             sink: None,
             scorer,
             contest_instance_id,
+            score_epoch: 0,
         }
     }
 
@@ -48,10 +55,12 @@ impl LogAdapter {
             sink: Some(sink),
             scorer,
             contest_instance_id,
+            score_epoch: 0,
         };
         // Populate scorer state from the loaded log
         let records = adapter.ordered_records();
         adapter.scorer.rebuild(&records);
+        adapter.score_epoch = adapter.score_epoch.wrapping_add(1);
         Ok(adapter)
     }
 
@@ -90,6 +99,7 @@ impl LogAdapter {
         if let Some(rec) = self.store.get(id) {
             self.scorer.on_inserted(rec);
         }
+        self.score_epoch = self.score_epoch.wrapping_add(1);
 
         Ok(id)
     }
@@ -109,6 +119,7 @@ impl LogAdapter {
         self.flush_pending_ops()?;
         let records = self.ordered_records();
         self.scorer.rebuild(&records);
+        self.score_epoch = self.score_epoch.wrapping_add(1);
         Ok(())
     }
 
@@ -119,6 +130,7 @@ impl LogAdapter {
         self.flush_pending_ops()?;
         let records = self.ordered_records();
         self.scorer.rebuild(&records);
+        self.score_epoch = self.score_epoch.wrapping_add(1);
         Ok(())
     }
 
@@ -141,6 +153,14 @@ impl LogAdapter {
 
     pub fn score_breakdown(&self) -> ScoreBreakdown {
         self.scorer.score_breakdown()
+    }
+
+    /// Monotonic counter that increments whenever the score state could
+    /// have changed. Consumers building expensive snapshots (e.g. the
+    /// scoreboard uploader) can compare against a previously-seen value
+    /// to avoid rebuilding when nothing moved.
+    pub fn score_epoch(&self) -> u64 {
+        self.score_epoch
     }
 
     /// Returns the highest serial number found in logged exchange_pairs, or 0 if none.

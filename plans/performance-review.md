@@ -55,7 +55,15 @@ keystroke-to-visible latency) over raw throughput.
   `reducer.rs:329` (bandmap navigation) kept using `filtered_bandmap_spots`
   directly — it's a cold path and adding cache access to the pure reducer
   would pollute the core/runtime boundary.
-- [ ] 5 — Score breakdown skip-if-unchanged (2.3)
+- [x] **5 — Score breakdown skip-if-unchanged** (2.3) — Added a
+  `score_epoch: u64` counter on `LogAdapter` that bumps on `insert`,
+  `undo`, `redo`, and the initial rebuild inside `open_db`. Exposed via
+  `LogAdapter::score_epoch()`. The TUI event loop tracks the last epoch
+  it sent a scoreboard snapshot for (initialized to `u64::MAX` so the
+  first event always sends) and only calls `log_adapter.score_breakdown()`
+  and pushes a fresh `ScoreboardSnapshot` when the current epoch differs.
+  Keystrokes, rig status updates, and spot arrivals — the overwhelming
+  majority of events — skip the breakdown build entirely.
 - [ ] 6 — RigStatus dedup (3.3)
 
 ## Framing

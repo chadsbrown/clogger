@@ -97,6 +97,11 @@ pub async fn run(
     let mut render_interval = tokio::time::interval(Duration::from_millis(50)); // 20 FPS
     let mut timer_interval = tokio::time::interval(Duration::from_secs(1));
 
+    // Track the last score epoch we shipped a scoreboard snapshot for.
+    // Initialized to a sentinel so the first event always sends. See
+    // `LogAdapter::score_epoch` for bump semantics.
+    let mut last_sent_score_epoch: u64 = u64::MAX;
+
     let result = loop {
         tokio::select! {
             ev = rx.recv() => {
@@ -207,20 +212,29 @@ pub async fn run(
                         // Score is always cheap (cached read).
                         tui_state.score = log_adapter.score_summary();
 
-                        // Update scoreboard snapshot
+                        // Update scoreboard snapshot — only rebuild the
+                        // expensive `score_breakdown()` when the log
+                        // adapter's score epoch has advanced since the
+                        // last snapshot we sent. Most events (keystrokes,
+                        // rig status updates, spot arrivals) don't touch
+                        // the score state; on those, we skip entirely.
                         if let (Some(handle), Some(cab_id), Some(call), Some(cat)) = (
                             &scoreboard_handle,
                             scoreboard_cabrillo_id,
                             &scoreboard_call,
                             &scoreboard_category,
                         ) {
-                            let _ = handle.snapshot_tx.send(Some(ScoreboardSnapshot {
-                                cabrillo_id: cab_id,
-                                call: call.clone(),
-                                ops: call.clone(),
-                                category: cat.clone(),
-                                breakdown: log_adapter.score_breakdown(),
-                            }));
+                            let current_epoch = log_adapter.score_epoch();
+                            if current_epoch != last_sent_score_epoch {
+                                let _ = handle.snapshot_tx.send(Some(ScoreboardSnapshot {
+                                    cabrillo_id: cab_id,
+                                    call: call.clone(),
+                                    ops: call.clone(),
+                                    category: cat.clone(),
+                                    breakdown: log_adapter.score_breakdown(),
+                                }));
+                                last_sent_score_epoch = current_epoch;
+                            }
                         }
 
                         // Analytics is expensive — only recompute when state
