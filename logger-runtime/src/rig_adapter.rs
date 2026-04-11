@@ -4,7 +4,7 @@ use std::time::Duration;
 use logger_core::AppEvent;
 use riglib::{Rig, RigEvent};
 use tokio::sync::{mpsc, watch};
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 use crate::config::RigConfig;
 
@@ -121,17 +121,7 @@ pub async fn spawn_rig_adapter(
     let freq_hz = rig.get_frequency(primary).await?;
     let mode = rig.get_mode(primary).await?;
     let is_ptt = rig.get_ptt().await.unwrap_or(false);
-    let passband_result = rig.get_passband(primary).await;
-    let filter_width_hz = match &passband_result {
-        Ok(pb) => {
-            debug!(radio = config.radio_id, filter_hz = pb.hz(), "initial passband read");
-            Some(pb.hz())
-        }
-        Err(e) => {
-            debug!(radio = config.radio_id, error = %e, "initial passband read failed");
-            None
-        }
-    };
+    let filter_width_hz = rig.get_passband(primary).await.ok().map(|pb| pb.hz());
 
     let mode_str = map_mode(&mode);
     // Each rig adapter is tied to a single radio_id (configured in TOML).
@@ -243,15 +233,11 @@ pub async fn spawn_rig_adapter(
             let freq_ok = poll_rig.get_frequency(primary).await.is_ok();
             let mode_ok = poll_rig.get_mode(primary).await.is_ok();
             // Passband polling is best-effort; not all backends implement it.
-            let passband_result = poll_rig.get_passband(primary).await;
-            let new_filter = match &passband_result {
-                Ok(pb) => Some(pb.hz()),
-                Err(e) => {
-                    debug!(radio = radio_id, error = %e, "passband poll failed");
-                    None
-                }
-            };
-            debug!(radio = radio_id, filter_hz = ?new_filter, "passband poll");
+            let new_filter = poll_rig
+                .get_passband(primary)
+                .await
+                .ok()
+                .map(|pb| pb.hz());
             let _ = filter_tx.send(new_filter);
             if freq_ok && mode_ok {
                 consecutive_errors = 0;

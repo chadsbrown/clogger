@@ -52,6 +52,14 @@
 #          blinking_bar, steady_bar
 #cursor_style = "steady_underline"
 
+# Passband QRM warning width in hertz (default: disabled)
+# When set, a yellow QRM badge appears in the status bar while you're in RUN
+# mode if any bandmap spot (matching the focused radio's mode, not your own
+# callsign) sits within ±(width / 2) of the focused radio's frequency.
+# Example: 500 matches a typical CW filter; 2400 matches a typical SSB filter.
+# Omit or comment out to disable the warning entirely.
+#passband_qrm_width_hz = 500
+
 # ---------------------------------------------------------------------------
 # CW macro overrides (optional — omit to use contest defaults)
 # Available placeholders: {MYCALL}, {MYZONE}, {RST_SENT}, {CALL},

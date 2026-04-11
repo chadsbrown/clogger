@@ -35,6 +35,8 @@ pub struct SessionConfig {
     pub call_history_path: Option<PathBuf>,
     pub scp_path: Option<PathBuf>,
     pub start_serial: Option<u32>,
+    /// Passband QRM warning width in hertz. `None` disables the warning.
+    pub passband_qrm_width_hz: Option<u32>,
 }
 
 pub struct Session {
@@ -96,6 +98,7 @@ pub fn bootstrap(config: SessionConfig) -> Result<Session> {
         bandmap_cursors: HashMap::new(),
         default_cw_speed: config.default_cw_speed,
         serial_counter: None,
+        passband_qrm_width_hz: config.passband_qrm_width_hz,
     };
 
     let contest_instance_id = contest.contest_instance_id();

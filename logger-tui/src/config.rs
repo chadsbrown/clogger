@@ -57,6 +57,11 @@ pub struct Config {
     pub scoreboard: ScoreboardSection,
     #[serde(default)]
     pub bandmap: BandmapMode,
+    /// Passband QRM warning width in hertz. When set, a `QRM` badge appears
+    /// while in Run mode if any bandmap spot lies within ±(width / 2) of the
+    /// focused radio's frequency and matches its mode. Omit to disable.
+    #[serde(default)]
+    pub passband_qrm_width_hz: Option<u32>,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize)]

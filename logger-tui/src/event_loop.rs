@@ -152,16 +152,6 @@ pub async fn run(
 
                         let needs_analytics = needs_analytics_recompute(&app_event);
 
-                        let passband_trace = tracing::enabled!(tracing::Level::DEBUG)
-                            && matches!(
-                                &app_event,
-                                logger_core::AppEvent::SpotReceived { .. }
-                                    | logger_core::AppEvent::SpotWithdrawn { .. }
-                                    | logger_core::AppEvent::RigStatus { .. }
-                                    | logger_core::AppEvent::SetOpMode { .. }
-                                    | logger_core::AppEvent::ToggleOpMode
-                            );
-
                         let effects = reduce(
                             &mut state,
                             contest.as_ref(),
@@ -172,43 +162,6 @@ pub async fn run(
                             scp.as_ref(),
                             app_event,
                         );
-
-                        if passband_trace {
-                            let entry = state.focused_entry();
-                            let radio = state.radios.get(&state.focused_radio);
-                            tracing::debug!(
-                                op_mode = ?entry.mode,
-                                focused_radio = state.focused_radio,
-                                rig_freq = ?radio.map(|r| r.freq_hz),
-                                rig_mode = ?radio.map(|r| r.mode.clone()),
-                                filter_hz = ?radio.and_then(|r| r.filter_width_hz),
-                                bandmap_spots = state.bandmap.len(),
-                                is_passband_qrm = entry.is_passband_qrm,
-                                "passband state after event"
-                            );
-                            for s in &state.bandmap {
-                                let (in_window, mode_match, delta) = match radio {
-                                    Some(r) => match r.filter_width_hz {
-                                        Some(fw) => {
-                                            let half = u64::from(fw) / 2;
-                                            let d = s.freq_hz.abs_diff(r.freq_hz);
-                                            (d <= half, s.mode == r.mode, Some(d))
-                                        }
-                                        None => (false, false, None),
-                                    },
-                                    None => (false, false, None),
-                                };
-                                tracing::debug!(
-                                    call = %s.call,
-                                    spot_freq = s.freq_hz,
-                                    spot_mode = %s.mode,
-                                    delta_hz = ?delta,
-                                    in_window,
-                                    mode_match,
-                                    "bandmap spot"
-                                );
-                            }
-                        }
                         if let Err(e) = dispatch_effects(
                             &effects,
                             &mut state,

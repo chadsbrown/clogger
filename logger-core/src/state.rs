@@ -98,6 +98,12 @@ pub struct AppState {
     pub bandmap_cursors: HashMap<RadioId, usize>,
     pub default_cw_speed: u8,
     pub serial_counter: Option<u32>,
+    /// Passband QRM warning width in hertz. When `Some(n)`, the warning fires
+    /// in Run mode if any bandmap spot (matching the focused radio's mode, not
+    /// `my_call`) sits within ±(n/2) of the focused radio's frequency. `None`
+    /// disables the warning entirely. Not derived from rig-reported filter
+    /// width — it's an operator-chosen threshold.
+    pub passband_qrm_width_hz: Option<u32>,
 }
 
 impl AppState {

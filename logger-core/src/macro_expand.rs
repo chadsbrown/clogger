@@ -133,6 +133,7 @@ mod tests {
             bandmap_cursors: HashMap::new(),
             default_cw_speed: 28,
             serial_counter: None,
+            passband_qrm_width_hz: None,
         };
         st.radios.insert(1, RadioState {
             freq_hz: 14_025_000,
@@ -178,6 +179,7 @@ mod tests {
             bandmap_cursors: HashMap::new(),
             default_cw_speed: 28,
             serial_counter: None,
+            passband_qrm_width_hz: None,
         };
 
         let out = expand_macro("CQ TEST <AR>", &st);
@@ -203,6 +205,7 @@ mod tests {
             bandmap_cursors: HashMap::new(),
             default_cw_speed: 1,
             serial_counter: None,
+            passband_qrm_width_hz: None,
         };
 
         let out = expand_macro("<5NN>", &st);
@@ -228,6 +231,7 @@ mod tests {
             bandmap_cursors: HashMap::new(),
             default_cw_speed: 28,
             serial_counter: None,
+            passband_qrm_width_hz: None,
         };
         st.focused_entry_mut().fields[0].value = "K1ABC".to_string();
 
