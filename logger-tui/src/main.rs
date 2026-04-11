@@ -142,9 +142,6 @@ async fn main() -> Result<()> {
     let (app_tx, mut app_rx) = mpsc::channel::<AppEvent>(256);
     let (tui_tx, tui_rx) = mpsc::channel::<adapters::terminal::TerminalEvent>(256);
 
-    // Spawn terminal input reader
-    adapters::terminal::spawn_terminal_reader(tui_tx.clone());
-
     // Spawn rig adapters (one per configured rig, indexed by radio_id).
     // `rig_status` tracks per-radio connection state for the status bar:
     // every configured radio gets an entry, `true` if the adapter spawned
@@ -163,6 +160,13 @@ async fn main() -> Result<()> {
             }
         }
     }
+
+    // Spawn terminal input reader. Needs `has_second_rig` so it can suppress
+    // R2-specific key bindings on single-rig setups; must happen after the
+    // rig spawn loop so the rig roster is known. Keystrokes pressed before
+    // this point stay buffered in the OS tty and arrive once the reader starts.
+    let has_second_rig = rig_status.len() >= 2;
+    adapters::terminal::spawn_terminal_reader(tui_tx.clone(), has_second_rig);
 
     // Optionally connect keyer (first rig's cw_speed overrides keyer speed_wpm)
     let keyer_configured = config.keyer.is_some();

@@ -42,6 +42,10 @@ pub async fn run(
     so2r_default_rx_mode: logger_core::So2rRxMode,
     scoreboard: Option<(ScoreboardHandle, &'static str, String, CategoryConfig)>,
 ) -> Result<()> {
+    // RX mode is a runtime knob — the config provides an initial value, and
+    // the operator can toggle it mid-session via the backtick keybinding.
+    let mut so2r_default_rx_mode = so2r_default_rx_mode;
+
     // Setup terminal
     terminal::enable_raw_mode()?;
     let cs = match cursor_style {
@@ -99,6 +103,25 @@ pub async fn run(
                                 step: crate::ExportStep::SelectFormat,
                             });
                         }
+                    }
+                    Some(TerminalEvent::ToggleRxMode) => {
+                        // Toggle OTRSP RX routing between mono and stereo.
+                        // ReverseStereo is config-only and collapses to Stereo
+                        // on its first toggle. No-op if OTRSP isn't configured
+                        // (so2r_adapter::set_rx swallows the None switch).
+                        so2r_default_rx_mode = match so2r_default_rx_mode {
+                            logger_core::So2rRxMode::Mono => logger_core::So2rRxMode::Stereo,
+                            logger_core::So2rRxMode::Stereo
+                            | logger_core::So2rRxMode::ReverseStereo => {
+                                logger_core::So2rRxMode::Mono
+                            }
+                        };
+                        logger_runtime::so2r_adapter::set_rx(
+                            so2r_switch.as_deref(),
+                            state.focused_radio,
+                            so2r_default_rx_mode,
+                        )
+                        .await;
                     }
                     Some(TerminalEvent::App(app_event)) => {
                         // If the export modal is open, intercept keyboard events
