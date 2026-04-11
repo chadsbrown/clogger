@@ -234,19 +234,31 @@ pub async fn spawn_rig_adapter(
     let poll_rig = Arc::clone(&rig);
     let poll_tx = tx.clone();
     tokio::spawn(async move {
+        // DIAGNOSTIC: filter_tx moved in so the watch channel's sender half
+        // stays alive for filter_rx readers. Its `.send()` is disabled
+        // below as part of the CI-V bus contention test (see commented
+        // get_passband block).
+        let _filter_tx = filter_tx;
         let mut interval = tokio::time::interval(Duration::from_millis(250));
         let mut consecutive_errors = 0u32;
         loop {
             interval.tick().await;
             let freq_ok = poll_rig.get_frequency(primary).await.is_ok();
             let mode_ok = poll_rig.get_mode(primary).await.is_ok();
-            // Passband polling is best-effort; not all backends implement it.
-            let new_filter = poll_rig
-                .get_passband(primary)
-                .await
-                .ok()
-                .map(|pb| pb.hz());
-            let _ = filter_tx.send(new_filter);
+            // DIAGNOSTIC: get_passband polling disabled to test whether
+            // CI-V traffic for filter width reads is what's making the
+            // IC-7610 ATT and FIL buttons feel unresponsive. Revert this
+            // block (and the `_filter_tx` rebind above) to restore normal
+            // filter-width tracking. The watch channel keeps whatever
+            // value get_passband returned at startup (line 132), so the
+            // reducer will still receive a reasonable filter_width_hz on
+            // the first RigStatus after a freq/mode change.
+            // let new_filter = poll_rig
+            //     .get_passband(primary)
+            //     .await
+            //     .ok()
+            //     .map(|pb| pb.hz());
+            // let _ = _filter_tx.send(new_filter);
             if freq_ok && mode_ok {
                 consecutive_errors = 0;
             } else {
