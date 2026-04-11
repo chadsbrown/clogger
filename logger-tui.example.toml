@@ -114,6 +114,17 @@
 # CW sending speed in WPM for this radio (used for < and > speed markers
 # in macros; falls back to keyer speed_wpm if omitted)
 #cw_speed = 36
+#
+# Declares that the operator has CI-V Transceive (Auto-Information) mode
+# enabled in the radio menu. This is a declaration, NOT a control —
+# clogger never reconfigures the rig; it must match the hardware setting.
+# When true, clogger skips its own freq/mode polling and receives rig
+# updates exclusively via the rig's broadcast frames. This avoids bus
+# collisions and front-panel lag on Icom radios caused by polling while
+# the rig is also broadcasting. When false (default), clogger polls at
+# 4 Hz as before.
+#   IC-7610: Menu → Set → Connectors → CI-V → CI-V Transceive: ON
+#transceive = true
 
 # Second rig for SO2R (omit if running single-radio)
 #[[rig]]
@@ -122,6 +133,7 @@
 #port = "/dev/ttyUSB2"
 #baud_rate = 38400
 #cw_speed = 36
+#transceive = false
 
 # ---------------------------------------------------------------------------
 # WinKeyer CW keyer (optional — omit entire section to run without)

@@ -225,6 +225,14 @@ pub struct RigConfig {
     pub baud_rate: Option<u32>,
     /// CW sending speed for this radio (used for < and > speed markers in macros)
     pub cw_speed: Option<u8>,
+    /// Declares whether the operator has CI-V Transceive (Auto-Information)
+    /// mode enabled on the radio. Must match the hardware menu setting.
+    /// When `true`, clogger disables its own frequency/mode/passband polling
+    /// and relies entirely on the rig's broadcast events (avoiding half-
+    /// duplex bus collisions that can make front-panel buttons feel laggy).
+    /// When `false`, clogger polls at 4 Hz as before. Default: `false`.
+    #[serde(default)]
+    pub transceive: bool,
 }
 
 fn default_radio_id() -> u8 {

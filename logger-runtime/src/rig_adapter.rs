@@ -78,7 +78,9 @@ pub async fn spawn_rig_adapter(
                 .into_iter()
                 .find(|m| normalize(m.name) == needle)
                 .ok_or_else(|| anyhow::anyhow!("icom model not found: {}", config.model))?;
-            let mut builder = riglib::icom::IcomBuilder::new(model).serial_port(&config.port);
+            let mut builder = riglib::icom::IcomBuilder::new(model)
+                .serial_port(&config.port)
+                .ai(config.transceive);
             if let Some(baud) = config.baud_rate {
                 builder = builder.baud_rate(baud);
             }
@@ -226,58 +228,55 @@ pub async fn spawn_rig_adapter(
         }
     });
 
-    // Poll frequency, mode, and passband at 4 Hz — get_frequency()/get_mode()
-    // emit events into the broadcast channel, which the subscription task
-    // forwards.  get_passband() doesn't emit broadcast events, so we update
-    // the watch channel and let the subscription task pick it up on the next
-    // broadcast event.
-    let poll_rig = Arc::clone(&rig);
-    let poll_tx = tx.clone();
-    tokio::spawn(async move {
-        // DIAGNOSTIC: _filter_tx / _poll_rig moved in so the watch channel's
-        // sender half and the rig handle stay alive (their Drop would
-        // otherwise signal shutdown to readers). The poll loop body below
-        // is fully disabled as part of the CI-V bus contention test —
-        // with CI-V Transceive ON the rig already broadcasts freq/mode/PTT
-        // changes, so our polling is redundant and races the rig's own
-        // broadcast frames on the half-duplex bus. Revert this whole
-        // block to restore normal polling behavior for rigs without
-        // transceive support.
-        let _filter_tx = filter_tx;
-        let _poll_rig = poll_rig;
-        let mut interval = tokio::time::interval(Duration::from_millis(250));
-        let mut consecutive_errors = 0u32;
-        loop {
-            interval.tick().await;
-            // DIAGNOSTIC: all CI-V polling disabled. freq/mode/ptt updates
-            // arrive via the subscription task's event stream while
-            // transceive mode is on. Disconnect detection is handled by
-            // the subscription task's RecvError::Closed branch.
-            let freq_ok = true;
-            let mode_ok = true;
-            // let freq_ok = _poll_rig.get_frequency(primary).await.is_ok();
-            // let mode_ok = _poll_rig.get_mode(primary).await.is_ok();
-            // let new_filter = _poll_rig
-            //     .get_passband(primary)
-            //     .await
-            //     .ok()
-            //     .map(|pb| pb.hz());
-            // let _ = _filter_tx.send(new_filter);
-            if freq_ok && mode_ok {
-                consecutive_errors = 0;
-            } else {
-                consecutive_errors += 1;
-                warn!("rig poll failed ({consecutive_errors} consecutive)");
-                if consecutive_errors >= 3 {
-                    warn!("rig poll: too many consecutive errors, stopping");
-                    let _ = poll_tx
-                        .send(AppEvent::RigDisconnected { radio: radio_id })
-                        .await;
-                    break;
+    // Poll frequency, mode, and passband at 4 Hz *only* when the operator
+    // has declared CI-V Transceive off on this rig. In transceive mode the
+    // rig already broadcasts freq/mode/PTT changes on the bus and the
+    // subscription task above handles them as RigEvents — polling would
+    // compete with those broadcasts on the half-duplex bus and cause
+    // front-panel lag on Icom radios. Filter width has no broadcast
+    // event, so in transceive mode the reducer falls back to the value
+    // read once at startup (or the mode defaults when absent).
+    if !config.transceive {
+        let poll_rig = Arc::clone(&rig);
+        let poll_tx = tx.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_millis(250));
+            let mut consecutive_errors = 0u32;
+            loop {
+                interval.tick().await;
+                let freq_ok = poll_rig.get_frequency(primary).await.is_ok();
+                let mode_ok = poll_rig.get_mode(primary).await.is_ok();
+                // Passband polling is best-effort; not all backends implement it.
+                let new_filter = poll_rig
+                    .get_passband(primary)
+                    .await
+                    .ok()
+                    .map(|pb| pb.hz());
+                let _ = filter_tx.send(new_filter);
+                if freq_ok && mode_ok {
+                    consecutive_errors = 0;
+                } else {
+                    consecutive_errors += 1;
+                    warn!("rig poll failed ({consecutive_errors} consecutive)");
+                    if consecutive_errors >= 3 {
+                        warn!("rig poll: too many consecutive errors, stopping");
+                        let _ = poll_tx
+                            .send(AppEvent::RigDisconnected { radio: radio_id })
+                            .await;
+                        break;
+                    }
                 }
             }
-        }
-    });
+        });
+    } else {
+        // Keep filter_tx alive for the subscription task's filter_rx reader.
+        // Dropping it would signal channel closure; holding it in this
+        // detached task costs one watch::Sender for the rig's lifetime.
+        tokio::spawn(async move {
+            let _hold = filter_tx;
+            std::future::pending::<()>().await;
+        });
+    }
 
     // Control task: drains RigCmd from an mpsc channel and calls the
     // corresponding Rig methods. Shares `Arc<dyn Rig>` with the poll and
