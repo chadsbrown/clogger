@@ -462,67 +462,371 @@ and max to ~124 ms when any effect touches hardware. Operators feel
 these as momentary freezes whenever they press F1/F2/F3 or log a QSO.
 On a serial port with latency spikes, it's worse.
 
-**Concrete shape of the fix:**
+---
 
-- `logger-runtime::spawn_keyer_task` — owns the `Box<dyn Keyer>`,
-  drains a `mpsc::UnboundedReceiver<KeyerCmd>` with variants for
-  `SendRaw(Vec<u8>)` and `Abort`. Processes commands in order
-  (ordering matters for sequential CW sends and the
-  abort-then-send pattern during cross-radio TX).
-- `logger-runtime::spawn_rig_control_task` — one per rig, owns
-  `Arc<dyn Rig>`, drains `mpsc<RigCmd>` with `SetFrequency(u64)` etc.
-- `logger-runtime::spawn_so2r_task` — owns the `Box<dyn So2rSwitch>`,
-  drains `mpsc<So2rCmd>` with `SetTx(RadioId)` / `SetRx(RadioId, Mode)`.
-- `logger-runtime::spawn_persist_task` — owns the `SqliteOpSink`,
-  drains `mpsc<Vec<LogOp>>` (the original 3.1 design).
+#### Investigation findings (2026-04-11)
 
-`LogAdapter::insert` becomes synchronous: in-memory store update
-only, then `persist_tx.send(ops)`. Same for the other effect
-handlers: they become channel sends with no `.await`.
+Before locking in the design, I spawned three parallel exploration
+agents against the source checkouts of the `winkey`, `riglib`, and
+`otrsp` crates. Condensed findings:
 
-**Ordering caveats:**
+**`winkey` — `/home/cbrown/.cargo/git/checkouts/winkey-0857052349758022/6587b70/`**
 
-- CW sends must be strictly ordered (F2 before F3 means F2 keys
-  first). A single mpsc channel to a single keyer task preserves
-  order — no parallelism.
-- The cross-radio TX switch pattern in `CwSend` currently does
-  `abort_cw` → `set_tx` → `send_cw` as three inline awaits. These
-  need to become a single atomic command to the keyer task (e.g.,
-  `KeyerCmd::SwitchAndSend { radio, text }`) or the keyer task has
-  to see them in order in the same channel.
-- OTRSP `set_tx` for TX routing and `set_rx` for RX routing can
-  probably share one task (they go to the same device).
+- `Keyer` trait at `src/keyer.rs:38` is `pub trait Keyer: Send + Sync`,
+  object-safe, all methods `async fn` taking `&self`.
+- Concrete `WinKeyer` (`src/winkeyer.rs:20`) holds no `Rc`/`RefCell`;
+  `Box<dyn Keyer + Send + Sync + 'static>` constructs fine.
+- The crate **already uses an internal actor pattern** (`src/io.rs`):
+  a spawned task owns the serial port and drains two mpsc channels —
+  `rt_tx` (priority, used for `abort()`) and `bg_tx` (used for
+  `send_raw`/`send_message`). The internal select is `biased;` with RT
+  ahead of BG.
+- **Abort semantics** (the critical question): `keyer.abort()` queues
+  `0x0A` (the WinKey wire-format abort byte) onto the RT channel. The
+  IO task processes RT before BG. If a `send_raw` is currently awaiting
+  `write_all` on the serial port, the abort waits for that write to
+  finish — but for a single message that's <1 ms, imperceptible. Once
+  `0x0A` lands on the wire, the WinKey **device** stops mid-character.
+  **Net: treat `abort()` as effectively preemptive from clogger's
+  perspective.** No fancy cancellation needed.
+- `send_raw` is tokio-cancel-safe but **not** protocol-safe: dropping
+  a `send_raw` future mid-flight could leave partial bytes on the wire
+  and confuse the device. **Don't cancel send futures externally.**
+- Events: `CharacterSent(char)`, `StatusChanged(busy)`, `Connected`,
+  `Disconnected`, etc. already exposed via `subscribe()`.
 
-**Error reporting:**
+**`riglib` — `/home/cbrown/.cargo/git/checkouts/riglib-4f4928004d11f4e1/0a37107/`**
 
-- The fire-and-forget path can't return
-  "keyer send failed" synchronously. Error events come back via a
-  separate `mpsc::Sender<AppEvent>` passed to each task (already the
-  pattern used by the rig adapter's `RigDisconnected` event). On
-  error, the task emits a `*Disconnected` or error-toast event that
-  the main loop handles.
-- The channel buffer should be bounded but generous (128 items?) so
-  transient backpressure doesn't drop CW characters. If the channel
-  fills, something is very wrong and we should emit an error event.
+- `Rig` trait at `crates/riglib-core/src/rig.rs:30` is
+  `pub trait Rig: Send + Sync`, object-safe, methods `async fn` taking
+  `&self`. Exposes `subscribe()` returning `broadcast::Receiver<RigEvent>`.
+- `IcomRig` (`crates/riglib-icom/src/rig.rs:57`) also uses an actor
+  pattern — the transport is owned exclusively by a spawned IO task
+  (`crates/riglib-icom/src/io.rs`) that drains two mpsc channels
+  (`rt_tx`/`bg_tx`, biased-select loop).
+- **Concurrent-access answer:** poll and control are strictly
+  serialized internally. Task A calling `rig.get_frequency` and task B
+  calling `rig.set_frequency` at the same time just queue and execute
+  in order. No serial-port interleaving, no data corruption. Proven in
+  practice by clogger's existing `rig_adapter.rs`, which already runs a
+  poll task + subscription task against `Arc<dyn Rig>` concurrently.
+- Broadcast events for mode/frequency/PTT changes are emitted by the
+  IO task whenever it reads a new value (whether the read was caused
+  by a `get_*` call, a `set_*` call, or a rig-initiated transceive
+  frame). So the poll task is not strictly necessary for broadcast —
+  it's a heartbeat fallback.
 
-**Durability caveats (from original 3.1):**
+**`otrsp` — `/home/cbrown/.cargo/git/checkouts/otrsp-4a15e45e103652b2/b8e150a/`**
 
-- `LogAdapter::insert` returning before the disk write completes
-  means a hard crash could lose the last few QSOs. With SQLite WAL
-  mode and a ~100 ms-ish lag between in-memory and on-disk, you
-  might lose 1-2 QSOs worst case. For a contest logger that's
-  acceptable — document it and optionally expose a "flush now"
-  command on a timer (every few seconds) for safety.
+- `So2rSwitch` trait at `src/switch.rs:31` is
+  `pub trait So2rSwitch: Send + Sync`, object-safe.
+- `OtrspDevice` (`src/device.rs:14`) also uses an actor pattern — a
+  single IO task owns the serial port.
+- **set_tx semantics — critical finding:** `set_tx` encodes
+  `TX1\r` / `TX2\r` and calls `write_all`. It returns after the serial
+  write completes (~1–5 ms at 9600 baud), **not after the physical
+  relay has finished switching**. OTRSP has no ack for write commands.
+  Real SO2R hardware (YCCC SO2R+, microHAM MK2R+, SO2RDuino) has
+  **relay propagation delays of 10–50 ms** after receiving the byte.
+  **This breaks the naive "serialize abort → set_tx → send_cw" plan:
+  serialization gets you serial-port ordering, but not relay-switched
+  ordering.** An explicit sleep is required between set_tx completion
+  and starting CW on the new radio. Recommended guardrail: **50 ms**.
+- Events: `TxChanged`, `RxChanged`, `Connected`, `Disconnected`.
 
-**Risk:** Higher than the originally-scoped 3.1. This touches
-persistence, rig control, keyer, and SO2R. Needs to be done carefully
-with tests. Effort bumped from the original "~1 day" to **~2-3 days**
-for all four device paths plus error reporting.
+---
 
-**Validation:** After landing, re-run the instrumented build against
-a similar workload (press F1/F2/F3 a bunch, log some QSOs) and
-expect p99 of reduce+dispatch to drop from ~100 ms to **<100 µs**
-(two orders of magnitude). Max should also stay under a millisecond.
+#### Design decisions (resolved)
+
+**D1. Send/Sync bounds.** ✅ No obstacle. All three trait objects work
+as `Arc<dyn T + Send + Sync + 'static>`. Multiple tasks can share an
+`Arc<dyn Rig>` or `Arc<dyn So2rSwitch>` — the crates serialize
+internally.
+
+**D2. One task per rig, merged poll + control + subscription.** Each
+rig gets a dedicated task that owns `Arc<dyn Rig>` and runs a
+`tokio::select!` over:
+
+- `poll_interval.tick()` → call `get_frequency`/`get_mode`/`get_passband`
+- `cmd_rx.recv()` → `RigCmd::SetFrequency(u64)` etc.
+- `events.recv()` → broadcast events from the rig → forward to
+  `app_tx` as `AppEvent::RigStatus`
+
+Replaces both the current subscription task and the current poll task
+in `rig_adapter.rs`. Cleaner, fewer moving parts.
+
+**D3. Keyer task owns `Arc<dyn So2rSwitch>` for cross-radio CW.** The
+cross-radio CW switch sequence (abort → set_tx → wait → send) is the
+only place where keyer and OTRSP need coordinated ordering. Instead of
+trying to sequence two independent tasks via channels, **give the
+keyer task direct access to the OTRSP handle** and let it execute the
+sequence internally, including the 50 ms relay-settle delay:
+
+```text
+KeyerTask::SendCw { target_radio, text }:
+    if target_radio != current_tx_radio:
+        keyer.abort().await          // <1ms via internal rt_tx
+        so2r.set_tx(target).await    // ~5ms serial write
+        sleep(50ms)                  // wait for relay to settle
+        current_tx_radio = target
+    keyer.send_raw(build_contest_message(text)).await
+```
+
+Both the keyer task and the so2r task share the same
+`Arc<dyn So2rSwitch>`. Concurrent access is safe because OTRSP's
+internal actor serializes commands. The keyer task is the sole source
+of `set_tx` calls; the so2r task handles `set_rx` (focus changes) and
+any future OTRSP commands that aren't CW-routing.
+
+**D4. Abort is effectively preemptive.** Use `keyer.abort().await`
+directly — the winkey crate's internal priority channel makes it fire
+within ~1 ms. No cooperative cancellation, no separate abort channel,
+no future-cancellation tricks. When the user presses Esc,
+`dispatch_effects` sends `KeyerCmd::Abort` via `try_send`; the keyer
+task picks it up next (after at most a sub-millisecond wait) and calls
+the crate's abort. Good enough.
+
+---
+
+#### Concrete task layout
+
+| Task | Count | Owns | Reads from | Writes to |
+|---|---|---|---|---|
+| `keyer_task` | 1 | `Box<dyn Keyer>`, `Arc<dyn So2rSwitch>` (for TX routing) | `mpsc<KeyerCmd>` | `mpsc<AppEvent>` (for errors, disconnects) |
+| `rig_task` | 1 per rig | `Arc<dyn Rig>` | `mpsc<RigCmd>`, rig's broadcast receiver, poll timer | `mpsc<AppEvent>` (RigStatus, errors, disconnects) |
+| `so2r_task` | 1 | `Arc<dyn So2rSwitch>` | `mpsc<So2rCmd>` | `mpsc<AppEvent>` (errors, disconnects) |
+| `persist_task` | 1 | `SqliteOpSink` | `mpsc<Vec<LogOp>>` | `mpsc<AppEvent>` (persist errors only) |
+
+Each task is a standard `tokio::spawn` with a `tokio::select!` loop
+that terminates when its command channel closes (signalling shutdown).
+
+---
+
+#### Command protocol per device
+
+```text
+enum KeyerCmd {
+    Send { radio: RadioId, text: String },   // full message, handles cross-radio
+    Abort,                                    // immediate
+    SetSpeed(u8),                             // future — not used today
+}
+
+enum RigCmd {
+    SetFrequency(u64),
+    // SetMode(...) — future
+}
+
+enum So2rCmd {
+    SetRx { radio: RadioId, mode: So2rRxMode },
+    // SetTx is NOT here — keyer_task owns that
+}
+
+// persist_task just takes Vec<LogOp> directly
+```
+
+`KeyerCmd::Send` carries the target `radio` so the task can decide
+whether it needs to do the cross-radio switch dance or just fire the
+send. The current `dispatch_effects` code that computes the switch
+(via `tui_state.tx_radio`) moves into the keyer task.
+
+`tui_state.tx_radio` has to stay in sync — the event loop optimistically
+updates it when dispatching `KeyerCmd::Send { radio, ... }`, before
+the keyer task actually performs the switch. That's fine because:
+- `tui_state.tx_radio` is only used to drive UI (the `TX` badge on the
+  entry line).
+- If the switch fails, the error event comes back and the UI recovers.
+
+---
+
+#### Backpressure policy per device
+
+- **Keyer** — bounded `mpsc::channel(32)`. On `try_send` full: log
+  warning + drop. Operator will hear the missed CW and can re-key. 32
+  is overkill for CW (typical F-key macros are 10–30 chars, WinKey
+  sends ~3 chars/sec at 40 WPM); 32 slots is ~5 minutes of backlog.
+- **Rig control** — bounded `mpsc::channel(32)`. On full: log + drop.
+  User hitting arrow keys too fast, not critical.
+- **OTRSP** — bounded `mpsc::channel(32)`. On full: log + drop.
+- **Persist** — **unbounded** (`mpsc::unbounded_channel`). Losing QSO
+  records is unacceptable. Unbounded means no backpressure; if the
+  SQLite task falls catastrophically behind, memory grows until we run
+  out, which is strictly better than losing QSOs. Emit a warning if
+  channel backlog exceeds (say) 128 items — that means something is
+  very wrong with disk I/O.
+
+---
+
+#### New `AppEvent` variants (error reporting)
+
+```text
+AppEvent::KeyerDisconnected                  // channel/serial closed
+AppEvent::KeyerError { message: String }     // transient send/abort failure
+AppEvent::So2rDisconnected                   // already needed for OTRSP disconnects
+AppEvent::So2rError { message: String }
+AppEvent::PersistError { message: String }   // SQLite write failed
+```
+
+`RigDisconnected { radio: RadioId }` already exists and is unchanged.
+The reducer treats all of these as no-ops (they don't affect the
+contest state machine); the TUI layer reads them to update status bar
+indicators and show error toasts. The existing `RigDisconnected`
+pattern in `event_loop.rs:~140` is the template.
+
+---
+
+#### Test infrastructure changes
+
+The golden-script runner in `logger-cli/src/runner.rs` currently
+constructs a `FakeKeyer` and passes it into `dispatch_effects`
+directly. After the refactor, `dispatch_effects` no longer touches the
+keyer — it sends to `keyer_tx`. The tests need to assert against what
+was sent, not what the keyer received.
+
+Minimal change: in `runner.rs`, spawn a lightweight "collector" task
+that drains `keyer_rx` into a `Vec<KeyerCmd>` that the test assertions
+can read. Same pattern for the rig, so2r, and persist channels. The
+existing `FakeKeyer`/`FakeRig` become collector-task internals rather
+than trait implementations.
+
+The 28 existing tests should keep passing with no behavior change — we
+just rewire how assertions observe effects. Tests that check
+`cw_sent_contains` now read from the collected `KeyerCmd` list instead
+of the fake keyer's recorded calls.
+
+---
+
+#### Startup wiring changes (`main.rs`)
+
+New shape:
+
+```text
+// Channels created before spawning hardware tasks
+let (keyer_tx,   keyer_rx)   = mpsc::channel::<KeyerCmd>(32);
+let (so2r_tx,    so2r_rx)    = mpsc::channel::<So2rCmd>(32);
+let (persist_tx, persist_rx) = mpsc::unbounded_channel::<PersistOp>();
+let mut rig_txs = HashMap::<RadioId, mpsc::Sender<RigCmd>>::new();
+
+// Spawn per-rig tasks (replaces current rig_adapter subscription+poll tasks)
+for rig_config in &config.rigs {
+    let rig = spawn_rig_adapter(rig_config, /*...*/).await?;
+    let (rig_tx, rig_rx) = mpsc::channel(32);
+    rig_txs.insert(rig_config.radio_id, rig_tx);
+    spawn_rig_task(rig_config.radio_id, rig, rig_rx, app_tx.clone());
+}
+
+// Spawn SO2R task
+if let Some(so2r) = so2r_switch {
+    let so2r_arc: Arc<dyn So2rSwitch> = Arc::from(so2r);
+    spawn_so2r_task(Arc::clone(&so2r_arc), so2r_rx, app_tx.clone());
+    // Keyer task also needs so2r_arc for cross-radio CW
+    let keyer_box = keyer.unwrap();  // or None handling
+    spawn_keyer_task(keyer_box, Some(so2r_arc), keyer_rx, app_tx.clone());
+} else {
+    if let Some(keyer_box) = keyer {
+        spawn_keyer_task(keyer_box, None, keyer_rx, app_tx.clone());
+    }
+}
+
+// Spawn persist task (if DB is configured)
+if let Some(sink) = sqlite_sink {
+    spawn_persist_task(sink, persist_rx, app_tx.clone());
+}
+
+// Event loop gets only the senders
+run_event_loop(
+    /*...state...*/,
+    keyer_tx,
+    rig_txs,
+    so2r_tx,
+    persist_tx,
+    /*...*/,
+).await
+```
+
+`run_event_loop` signature changes: drops `keyer: Option<Box<dyn Keyer>>`,
+`rigs: HashMap<RadioId, Arc<dyn Rig>>`, `so2r_switch: Option<Box<dyn So2rSwitch>>`;
+adds the sender handles above.
+
+`LogAdapter::insert` changes: the in-memory `store.insert` stays
+synchronous on the event loop; the `flush_pending_ops()` call becomes
+`persist_tx.send(ops)` instead of awaiting `sink.append_ops(&ops)`.
+The `SqliteOpSink` moves out of `LogAdapter` entirely — it's now owned
+by the persist task.
+
+---
+
+#### Implementation order
+
+Land incrementally, each step independently testable:
+
+1. **`logger-runtime::spawn_persist_task`** + `LogAdapter` refactor to
+   use the channel. Smallest blast radius — persist is already somewhat
+   isolated. Verifies the channel/task pattern in a simple case.
+2. **`logger-runtime::spawn_so2r_task`**, wire `Effect::So2rFocusChanged`
+   through it. No cross-device coordination needed, single command type.
+3. **`logger-runtime::spawn_rig_task`** (merged poll + control +
+   subscription forwarding). Replaces most of the current
+   `rig_adapter.rs`. Multi-step but scoped to one file.
+4. **`logger-runtime::spawn_keyer_task`** (the hardest, because of
+   cross-radio CW atomicity). The keyer task internally holds the
+   `Arc<dyn So2rSwitch>` for TX routing. Once landed, the event loop
+   has no remaining `.await`s on hardware.
+5. **New `AppEvent` variants** + TUI error-toast plumbing. Can be
+   done in parallel with any of 1–4.
+6. **Re-run instrumented build**, compare p99/max against the
+   baseline from 2026-04-11 04:29 UTC. Target: p99 < 100 µs, max < 1 ms.
+
+Estimated total: **2–3 days**.
+
+---
+
+#### Open questions remaining
+
+- **`keyer_task` shutdown coordination.** When the event loop exits, we
+  should drain any remaining `KeyerCmd`s so the last CW message
+  actually gets sent before the process quits. The channel close
+  signal needs a small grace window. Design TBD when landing step 4.
+- **Initial OTRSP routing at startup.** `main.rs` currently calls
+  `set_tx`/`set_rx` before the event loop to put OTRSP in a known
+  state. After the refactor, these become `so2r_tx.send(SetRx {...})`
+  + keyer_task's responsibility for initial TX state. Startup ordering
+  needs care — the so2r task must be running before the initial
+  commands go out, or they pile up in the channel and fire later.
+- **`FakeKeyer` abort behavior in tests.** The golden scripts have no
+  tests for abort semantics today; if we add abort tests, the fake
+  keyer task needs to honor them. Out of scope for this refactor.
+
+---
+
+#### Risk (post-investigation)
+
+**Lower than the original write-up.** All three crates already use
+actor patterns internally, so we're building on abstractions they
+already support rather than forcing new concurrency semantics. The
+main genuine risk is **cross-radio CW ordering** — getting the
+abort/set_tx/sleep/send sequence wrong could cause the first dits of a
+cross-radio message to route through the wrong radio. Mitigation:
+unit-test the keyer task's sequence logic against a mock OTRSP that
+records the order of its `set_tx` calls vs. the keyer's `send_raw`
+calls, with timestamps.
+
+Secondary risk: **channel saturation under pathological input**. A
+stuck SQLite disk would grow the unbounded persist channel until OOM.
+Mitigation: the warning threshold at 128 items and visible TUI alert.
+
+---
+
+#### Validation target
+
+After landing, re-run the instrumented build against a similar
+workload to the 2026-04-11 baseline (press F1/F2/F3 a bunch, log some
+QSOs, cross-radio switch, abort) and expect:
+
+- p99 of reduce+dispatch: **~100 ms → <100 µs** (three orders of
+  magnitude)
+- max of reduce+dispatch: **~124 ms → <1 ms**
+- p50/p95: unchanged (already in the microsecond range)
+- render/analytics: unchanged
 
 ### 3.2 `SpecSession` rebuild on undo/redo scales O(n) — warm path
 
