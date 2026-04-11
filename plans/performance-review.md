@@ -128,9 +128,23 @@ load can be 20–100 ms per write. With ~5 samples above 100 ms in a
 events during the test.
 
 **Implication**: plan item 3.1 is wider in scope than originally
-written. The architectural fix is not "move SQLite writes off the
-runtime" — it's **move all hardware I/O off the runtime**. See the
-expanded 3.1 below.
+written. The architectural fix is not "move SQLite writes to a
+background task" — it's **move all hardware I/O into dedicated
+per-device tasks**. See the expanded 3.1 below.
+
+**Mental-model note.** "Move off the runtime" was imprecise framing
+in the original plan. Tokio's runtime is fine; the problem is that
+the event loop is a single task doing everything, and `.await` inside
+a `tokio::select!` arm holds the whole select. Async gives you
+interleaving **between tasks**, not within a single task. While
+`dispatch_effects` is awaiting on `send_cw`, the render-tick arm of
+the same select can't fire, new keystrokes can't be processed, etc.
+Even if the underlying serial library is "truly async," the event
+loop task is blocked until the await returns. The fix is to give the
+runtime more tasks to interleave — specifically, dedicated
+per-device tasks that own their hardware and read commands from
+mpsc channels. The event loop then does `try_send(cmd)` (non-blocking)
+and moves on. See expanded 3.1.
 
 **What Items 1–5 accomplished**: the pure-software hot path (text
 input, backspace, focus change within a radio, rig status updates,
@@ -392,15 +406,42 @@ invariant assertions in debug builds.
 
 ## Tier 3 — Structural improvements (medium effort, targeted payoff)
 
-### 3.1 Move all hardware I/O off the async runtime — hot path (confirmed by measurement)
+### 3.1 Move hardware I/O into dedicated per-device tasks — hot path (confirmed by measurement)
 
-**Note:** Originally scoped as "SQLite writes off the async runtime."
-The post-items-1-5 baseline measurement (see Measurements section
-above) showed this is a broader problem: **every hardware-touching
-effect — CW send, CW abort, rig set, OTRSP RX/TX route — is awaited
-inline in `dispatch_effects`**, blocking the event loop on device I/O.
+**Note:** Originally scoped as "move SQLite writes off the async
+runtime." That framing was both too narrow (only SQLite) and
+misleading (the runtime isn't the problem). After the post-items-1-5
+baseline measurement (see Measurements section above), the real shape
+of the problem is clear: **every hardware-touching effect — CW send,
+CW abort, rig set, OTRSP RX/TX route, SQLite insert — is awaited
+inline inside `dispatch_effects`, which runs in the same single task
+as the UI event loop.** That await blocks the whole `tokio::select!`
+until the underlying device I/O returns — no render ticks, no
+keystroke handling, nothing.
+
 SQLite is one instance of this pattern; the others are arguably worse
-because they fire on every F-key press, not just on log insert.
+because they fire on every F-key press and arrow key, not just on log
+insert.
+
+**Why async doesn't already save us.** The `.await` on
+`send_cw`/`set_frequency`/etc. is a yield point, but only to **other
+tasks** — not to other arms of the same select. Tokio schedules the
+event-loop task off the CPU while the future is pending, and it will
+happily run the rig-polling task or the dxfeed task in the meantime,
+but it **can't** come back and fire the render-tick arm until the
+current arm's code (the entire `dispatch_effects` call) finishes.
+Async gives you parallelism between tasks, not within a single task.
+Right now the event loop is one big task and there's nothing to
+parallelize with.
+
+The fix is to **spawn a dedicated task per hardware device**. Each
+task owns the device handle and drains commands from an
+`mpsc::channel`. `dispatch_effects` then uses `try_send(cmd)` — a
+non-blocking enqueue that returns in nanoseconds. The event loop
+never touches hardware directly, and the runtime has genuine
+parallelism to exploit: the event loop task, the keyer task, the
+rig-control tasks, the OTRSP task, and the persist task all run
+concurrently under tokio.
 
 **Locations:**
 
@@ -415,19 +456,13 @@ because they fire on every F-key press, not just on log insert.
 - `logger-runtime/src/log_adapter.rs:~60-95` `insert` → SQLite
   `append_ops` — blocks on disk (the original 3.1 concern)
 
-**Problem:** Measured: p50 and p95 of the reduce+dispatch path are
+**Measured impact:** p50 and p95 of the reduce+dispatch path are
 1.1 µs and 7.6 µs respectively (excellent), but p99 jumps to ~100 ms
 and max to ~124 ms when any effect touches hardware. Operators feel
 these as momentary freezes whenever they press F1/F2/F3 or log a QSO.
 On a serial port with latency spikes, it's worse.
 
-**Fix (architectural):** For each hardware device, spawn a dedicated
-task at startup that owns the device handle and reads commands from
-an `mpsc::channel`. `dispatch_effects` becomes fire-and-forget —
-`keyer_tx.try_send(KeyerCmd::SendRaw(bytes))` is a non-blocking
-enqueue. The event loop never awaits on device I/O again.
-
-Concretely:
+**Concrete shape of the fix:**
 
 - `logger-runtime::spawn_keyer_task` — owns the `Box<dyn Keyer>`,
   drains a `mpsc::UnboundedReceiver<KeyerCmd>` with variants for
@@ -600,7 +635,7 @@ marginal.
 | 4 | Bandmap filter cache in TuiState | 2.1, 2.2 | ~4h | **Done** |
 | 5 | Score breakdown skip-if-unchanged | 2.3 | ~2h | **Done** |
 | 6 | RigStatus dedup | 3.3 | ~30m | Deprioritized — measured harmless |
-| 7 | **Hardware I/O off runtime (expanded 3.1)** | 3.1 | ~2-3d | **Highest priority** — measured impact: p99 = ~100 ms |
+| 7 | **Hardware I/O into dedicated per-device tasks (expanded 3.1)** | 3.1 | ~2-3d | **Highest priority** — measured impact: p99 = ~100 ms |
 | 8 | `compute_rate` incremental (ring buffer) | 2.4 | ~3h | Gated — analytics already under 200 µs per measurement |
 | 9 | `is_dupe` classification cache | 2.5 | ~4h | Gated — analytics already under 200 µs per measurement |
 | 10 | Tier 4 micro-opts as needed | 4.x | varies | Gated |
