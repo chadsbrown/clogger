@@ -129,12 +129,14 @@ pub fn reduce(
         AppEvent::SpotReceived { spot } => {
             st.bandmap.push(spot);
             st.bandmap_version = st.bandmap_version.wrapping_add(1);
+            snap_all_bandmap_cursors(st);
             recompute_passband_warning(st);
             Vec::new()
         }
         AppEvent::SpotWithdrawn { call } => {
             st.bandmap.retain(|s| s.call != call);
             st.bandmap_version = st.bandmap_version.wrapping_add(1);
+            snap_all_bandmap_cursors(st);
             recompute_passband_warning(st);
             Vec::new()
         }
@@ -551,6 +553,17 @@ fn snap_bandmap_cursor_to_freq(st: &mut AppState, radio: RadioId) {
         BandmapCursor::Between(pos)
     };
     st.bandmap_cursors.insert(radio, cursor);
+}
+
+/// Re-snap every known radio's bandmap cursor. Called when the bandmap
+/// itself changes (spot added/withdrawn): the rig hasn't moved, but the
+/// cursor indices now refer to a different sorted list, so the stored
+/// `On(i)` / `Between(i)` may no longer reflect the rig's real position.
+fn snap_all_bandmap_cursors(st: &mut AppState) {
+    let radios: Vec<RadioId> = st.radios.keys().copied().collect();
+    for radio in radios {
+        snap_bandmap_cursor_to_freq(st, radio);
+    }
 }
 
 fn recompute_passband_warning(st: &mut AppState) {
@@ -1685,6 +1698,81 @@ mod tests {
         assert_eq!(
             st.bandmap_cursors.get(&1).copied(),
             Some(crate::state::BandmapCursor::On(0))
+        );
+    }
+
+    #[test]
+    fn bandmap_cursor_updates_on_spot_received() {
+        let mut st = mk_state();
+        add_spot(&mut st, "DL1ABC", 14_023_000, "CW");
+        add_spot(&mut st, "W1AW", 14_027_000, "CW");
+        // Rig parked 1 kHz above DL1ABC, outside its 500 Hz filter — so
+        // initially the cursor is Between the two spots.
+        rig_status(&mut st, 1, 14_024_000, "CW", Some(500));
+        assert_eq!(
+            st.bandmap_cursors.get(&1).copied(),
+            Some(crate::state::BandmapCursor::Between(1))
+        );
+        // A new spot arrives at 14.024.000 — now inside the rig's filter.
+        // The cursor must re-snap even without a fresh RigStatus.
+        add_spot(&mut st, "K5ZD", 14_024_000, "CW");
+        // Sorted order is DL1ABC (14.023), K5ZD (14.024), W1AW (14.027).
+        // Rig is parked on K5ZD at index 1.
+        assert_eq!(
+            st.bandmap_cursors.get(&1).copied(),
+            Some(crate::state::BandmapCursor::On(1))
+        );
+    }
+
+    #[test]
+    fn bandmap_cursor_updates_on_spot_withdrawn() {
+        let mut st = mk_state();
+        add_spot(&mut st, "DL1ABC", 14_023_000, "CW");
+        add_spot(&mut st, "K5ZD", 14_025_000, "CW");
+        add_spot(&mut st, "W1AW", 14_027_000, "CW");
+        rig_status(&mut st, 1, 14_025_100, "CW", Some(500));
+        assert_eq!(
+            st.bandmap_cursors.get(&1).copied(),
+            Some(crate::state::BandmapCursor::On(1))
+        );
+        // Remove DL1ABC — index 1 now points to W1AW in the re-sorted
+        // list. Without re-snap the cursor would falsely highlight W1AW.
+        let contest = contest_from_id("cqww").unwrap();
+        let macros = Macros::default();
+        reduce(
+            &mut st,
+            contest.as_ref(),
+            &macros,
+            AppEvent::SpotWithdrawn {
+                call: "DL1ABC".to_string(),
+            },
+        );
+        // Sorted: K5ZD (0), W1AW (1). Rig 14.025.100 is on K5ZD at 0.
+        assert_eq!(
+            st.bandmap_cursors.get(&1).copied(),
+            Some(crate::state::BandmapCursor::On(0))
+        );
+    }
+
+    #[test]
+    fn bandmap_cursor_stays_between_when_new_spot_is_far() {
+        let mut st = mk_state();
+        add_spot(&mut st, "DL1ABC", 14_023_000, "CW");
+        add_spot(&mut st, "W1AW", 14_027_000, "CW");
+        rig_status(&mut st, 1, 14_025_000, "CW", Some(500));
+        assert_eq!(
+            st.bandmap_cursors.get(&1).copied(),
+            Some(crate::state::BandmapCursor::Between(1))
+        );
+        // A new spot below both — cursor stays Between, but the
+        // insertion index shifts up by one because a spot was inserted
+        // below the current position.
+        add_spot(&mut st, "K0XX", 14_022_000, "CW");
+        // Sorted: K0XX (0), DL1ABC (1), W1AW (2). Rig at 14.025.000 is
+        // still between DL1ABC and W1AW — now at insertion index 2.
+        assert_eq!(
+            st.bandmap_cursors.get(&1).copied(),
+            Some(crate::state::BandmapCursor::Between(2))
         );
     }
 
