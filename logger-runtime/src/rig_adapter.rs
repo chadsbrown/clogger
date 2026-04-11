@@ -234,26 +234,30 @@ pub async fn spawn_rig_adapter(
     let poll_rig = Arc::clone(&rig);
     let poll_tx = tx.clone();
     tokio::spawn(async move {
-        // DIAGNOSTIC: filter_tx moved in so the watch channel's sender half
-        // stays alive for filter_rx readers. Its `.send()` is disabled
-        // below as part of the CI-V bus contention test (see commented
-        // get_passband block).
+        // DIAGNOSTIC: _filter_tx / _poll_rig moved in so the watch channel's
+        // sender half and the rig handle stay alive (their Drop would
+        // otherwise signal shutdown to readers). The poll loop body below
+        // is fully disabled as part of the CI-V bus contention test —
+        // with CI-V Transceive ON the rig already broadcasts freq/mode/PTT
+        // changes, so our polling is redundant and races the rig's own
+        // broadcast frames on the half-duplex bus. Revert this whole
+        // block to restore normal polling behavior for rigs without
+        // transceive support.
         let _filter_tx = filter_tx;
+        let _poll_rig = poll_rig;
         let mut interval = tokio::time::interval(Duration::from_millis(250));
         let mut consecutive_errors = 0u32;
         loop {
             interval.tick().await;
-            let freq_ok = poll_rig.get_frequency(primary).await.is_ok();
-            let mode_ok = poll_rig.get_mode(primary).await.is_ok();
-            // DIAGNOSTIC: get_passband polling disabled to test whether
-            // CI-V traffic for filter width reads is what's making the
-            // IC-7610 ATT and FIL buttons feel unresponsive. Revert this
-            // block (and the `_filter_tx` rebind above) to restore normal
-            // filter-width tracking. The watch channel keeps whatever
-            // value get_passband returned at startup (line 132), so the
-            // reducer will still receive a reasonable filter_width_hz on
-            // the first RigStatus after a freq/mode change.
-            // let new_filter = poll_rig
+            // DIAGNOSTIC: all CI-V polling disabled. freq/mode/ptt updates
+            // arrive via the subscription task's event stream while
+            // transceive mode is on. Disconnect detection is handled by
+            // the subscription task's RecvError::Closed branch.
+            let freq_ok = true;
+            let mode_ok = true;
+            // let freq_ok = _poll_rig.get_frequency(primary).await.is_ok();
+            // let mode_ok = _poll_rig.get_mode(primary).await.is_ok();
+            // let new_filter = _poll_rig
             //     .get_passband(primary)
             //     .await
             //     .ok()
