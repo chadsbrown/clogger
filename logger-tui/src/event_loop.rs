@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::io;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use crossterm::{
@@ -45,6 +45,10 @@ pub async fn run(
     // RX mode is a runtime knob — the config provides an initial value, and
     // the operator can toggle it mid-session via the backtick keybinding.
     let mut so2r_default_rx_mode = so2r_default_rx_mode;
+
+    // Event-loop latency instrumentation. Records samples unconditionally;
+    // summary is emitted at debug level on shutdown (only visible with --debug).
+    let mut perf = crate::perf::PerfStats::new();
 
     // Setup terminal
     terminal::enable_raw_mode()?;
@@ -175,6 +179,7 @@ pub async fn run(
 
                         let needs_analytics = needs_analytics_recompute(&app_event);
 
+                        let rd_start = Instant::now();
                         let effects = reduce(
                             &mut state,
                             contest.as_ref(),
@@ -197,6 +202,7 @@ pub async fn run(
                         ).await {
                             break Err(e);
                         }
+                        perf.reduce_dispatch.record(rd_start.elapsed());
 
                         // Score is always cheap (cached read).
                         tui_state.score = log_adapter.score_summary();
@@ -220,7 +226,9 @@ pub async fn run(
                         // Analytics is expensive — only recompute when state
                         // that affects it has actually changed.
                         if needs_analytics {
+                            let a_start = Instant::now();
                             recompute_analytics(&state, &log_adapter, &mut tui_state);
+                            perf.analytics.record(a_start.elapsed());
                         } else {
                             // For RigStatus: recompute only if freq or mode changed
                             let cur_freq_mode = state
@@ -228,7 +236,9 @@ pub async fn run(
                                 .get(&state.focused_radio)
                                 .map(|r| (r.freq_hz, r.mode.clone()));
                             if cur_freq_mode != prev_freq_mode {
+                                let a_start = Instant::now();
                                 recompute_analytics(&state, &log_adapter, &mut tui_state);
+                                perf.analytics.record(a_start.elapsed());
                             }
                         }
                     }
@@ -254,9 +264,11 @@ pub async fn run(
                 }
             }
             _ = render_interval.tick() => {
+                let r_start = Instant::now();
                 terminal.draw(|frame| {
                     ui::render(frame, &state, &tui_state);
                 })?;
+                perf.render.record(r_start.elapsed());
             }
             _ = timer_interval.tick() => {
                 let now_ms = chrono::Utc::now().timestamp_millis();
@@ -294,6 +306,9 @@ pub async fn run(
     // Restore terminal
     terminal::disable_raw_mode()?;
     crossterm::execute!(io::stdout(), LeaveAlternateScreen, cursor::Show, cursor::SetCursorStyle::DefaultUserShape)?;
+
+    // Emit latency percentiles to the log (debug level — only shows with --debug)
+    perf.log_summary();
 
     result
 }

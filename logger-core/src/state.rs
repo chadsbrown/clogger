@@ -132,10 +132,25 @@ impl AppState {
         self.entries.get_mut(&radio)
     }
 
-    pub fn current_call(&self) -> String {
+    /// Return the focused radio's callsign as a borrowed `&str`.
+    ///
+    /// Relies on the invariant that field[0] (CALL) always holds an
+    /// already-uppercased value. Writers must enforce this:
+    ///
+    /// - `TextInput` chars are uppercased by the terminal adapter before
+    ///   reaching the reducer, so `insert_str` preserves the invariant.
+    /// - SCP and bandmap-navigation writes uppercase explicitly at the
+    ///   write site (see `reducer.rs`).
+    /// - `clear()` trivially preserves it.
+    ///
+    /// This method only trims whitespace (O(1), no allocation) and returns
+    /// a slice into the underlying field value. Used on the keystroke hot
+    /// path via `recompute_feedback`, `recompute_passband_warning`,
+    /// `apply_call_history`, `macro_expand`, and ESM guards.
+    pub fn current_call(&self) -> &str {
         self.focused_entry()
             .get_field_value_by_id(1)
-            .map(|v| v.trim().to_uppercase())
-            .unwrap_or_default()
+            .map(|v| v.trim())
+            .unwrap_or("")
     }
 }

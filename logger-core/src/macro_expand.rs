@@ -9,10 +9,10 @@ pub fn expand_macro(template: &str, st: &AppState) -> String {
         if let Some(ctx) = &entry.last_logged_context {
             (ctx.call.as_str(), Some(&ctx.fields))
         } else {
-            (call.as_str(), None)
+            (call, None)
         }
     } else {
-        (call.as_str(), None)
+        (call, None)
     };
 
     let my_zone = st.my_zone.to_string();

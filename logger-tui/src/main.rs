@@ -1,6 +1,7 @@
 mod adapters;
 mod config;
 mod event_loop;
+mod perf;
 mod ui;
 
 use std::collections::{BTreeMap, HashMap, HashSet};

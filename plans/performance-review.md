@@ -5,6 +5,32 @@ periodic-work loop, and the data persistence & scoring layers. Organized
 by impact and effort, prioritized for **responsiveness** (P99
 keystroke-to-visible latency) over raw throughput.
 
+## Progress
+
+- [x] **1 — Instrument the event loop (Rule 0)** — `logger-tui/src/perf.rs`
+  records ring-buffered samples for three metrics: reduce+dispatch time
+  per `TerminalEvent::App`, render time per `render_interval.tick()`, and
+  analytics time per `recompute_analytics` call. Summary percentiles
+  (min/mean/p50/p95/p99/max) are emitted at debug level on shutdown;
+  visible only with `--debug`. Overhead is a single `Instant::now()` pair
+  per event (~20-50 ns).
+- [x] **2 — Drop clones in `current_call`, `mode`, `my_call`** (1.1, 1.2, 1.3) —
+  `current_call()` now returns `&str` via a simple `.trim()` (zero
+  allocation). Relies on the CALL-field invariant that writers maintain
+  uppercase content; two non-uppercase write sites (SCP cycle, bandmap
+  navigation) now call `to_ascii_uppercase()` explicitly. `normalize_mode`
+  now returns `&'static str` (was `String`). `recompute_feedback` and
+  `recompute_passband_warning` restructured to compute results under
+  shared borrows and drop them before the mut borrow that writes results
+  back — no more `mode.clone()` or `my_call.clone()` per keystroke. The
+  one call site that actually needs an owned `String`
+  (`esm.rs::log_and_clear` on QSO log, ~1/30s) does `.to_owned()` at the
+  edge.
+- [ ] 3 — Fix char→string in terminal adapter (1.4)
+- [ ] 4 — Bandmap filter cache in TuiState (2.1, 2.2)
+- [ ] 5 — Score breakdown skip-if-unchanged (2.3)
+- [ ] 6 — RigStatus dedup (3.3)
+
 ## Framing
 
 Two things matter for a contest logger:

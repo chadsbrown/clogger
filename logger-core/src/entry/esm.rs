@@ -103,9 +103,11 @@ fn log_and_clear(
                 None
             };
 
-            // Snapshot context before clearing for repeat-to-previous
+            // Snapshot context before clearing for repeat-to-previous.
+            // `current_call` returns `&str`; this is the one place we allocate
+            // an owned copy, and it only fires once per QSO log.
             let last_ctx = LastLoggedContext {
-                call: st.current_call(),
+                call: st.current_call().to_owned(),
                 fields: st.focused_entry().fields.iter()
                     .map(|f| (f.label.to_ascii_uppercase(), f.value.clone()))
                     .collect(),

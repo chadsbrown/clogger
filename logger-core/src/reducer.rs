@@ -281,7 +281,10 @@ pub fn reduce(
                         Some(i) => (i + 1) % len,
                     };
                     entry.scp_cycle_index = Some(idx);
-                    let new_call = entry.scp_matches[idx].clone();
+                    // Uppercase here to maintain the CALL-field invariant that
+                    // `current_call()` relies on. SCP files are usually already
+                    // uppercase but we don't trust them.
+                    let new_call = entry.scp_matches[idx].to_ascii_uppercase();
                     if let Some(field) = entry.fields.iter_mut().find(|f| f.field_id == 1) {
                         field.cursor = new_call.len();
                         field.value = new_call.clone();
@@ -432,28 +435,30 @@ fn recompute_feedback(
     dupe_checker: &dyn DupeChecker,
     mult_checker: &dyn MultChecker,
 ) {
-    let call_norm = st.current_call();
-    if call_norm.is_empty() {
-        let entry = st.focused_entry_mut();
-        entry.is_dupe = false;
-        entry.is_new_mult = false;
-        return;
-    }
-    let (freq_hz, mode_str) = match st.radios.get(&st.focused_radio) {
-        Some(r) => (r.freq_hz, r.mode.clone()),
-        None => {
-            let entry = st.focused_entry_mut();
-            entry.is_dupe = false;
-            entry.is_new_mult = false;
-            return;
+    // Compute is_dupe / is_new_mult while we still hold shared borrows of
+    // `st.focused_entry()` (via `current_call`) and `st.radios`, then drop
+    // them before taking the mut borrow to write the results back.
+    let (is_dupe, is_new_mult) = {
+        let call_norm = st.current_call();
+        if call_norm.is_empty() {
+            (false, false)
+        } else {
+            match st.radios.get(&st.focused_radio) {
+                Some(r) => {
+                    let band = crate::contest::freq_to_band_label(r.freq_hz);
+                    let mode = normalize_mode(&r.mode);
+                    (
+                        dupe_checker.is_dupe(call_norm, &band, mode),
+                        mult_checker.is_new_mult(call_norm, &band, mode),
+                    )
+                }
+                None => (false, false),
+            }
         }
     };
-
-    let band = crate::contest::freq_to_band_label(freq_hz);
-    let mode = normalize_mode(&mode_str);
     let entry = st.focused_entry_mut();
-    entry.is_dupe = dupe_checker.is_dupe(&call_norm, &band, &mode);
-    entry.is_new_mult = mult_checker.is_new_mult(&call_norm, &band, &mode);
+    entry.is_dupe = is_dupe;
+    entry.is_new_mult = is_new_mult;
 }
 
 fn recompute_passband_warning(st: &mut AppState) {
@@ -470,17 +475,20 @@ fn recompute_passband_warning(st: &mut AppState) {
         st.focused_entry_mut().is_passband_qrm = false;
         return;
     }
-    let (freq, radio_mode) = match st.radios.get(&st.focused_radio) {
-        Some(r) => (r.freq_hz, r.mode.clone()),
-        None => {
+    // Scan the bandmap with shared borrows only, then drop them before
+    // writing `is_passband_qrm` back. No clones of `mode` or `my_call`.
+    let found = {
+        let Some(r) = st.radios.get(&st.focused_radio) else {
             st.focused_entry_mut().is_passband_qrm = false;
             return;
-        }
+        };
+        let freq = r.freq_hz;
+        let radio_mode = r.mode.as_str();
+        let my_call = st.my_call.as_str();
+        st.bandmap.iter().any(|s| {
+            s.call != my_call && s.mode == radio_mode && s.freq_hz.abs_diff(freq) <= half_w
+        })
     };
-    let my_call = st.my_call.clone();
-    let found = st.bandmap.iter().any(|s| {
-        s.call != my_call && s.mode == radio_mode && s.freq_hz.abs_diff(freq) <= half_w
-    });
     st.focused_entry_mut().is_passband_qrm = found;
 }
 
@@ -490,17 +498,25 @@ fn apply_call_history(
     call_history: &dyn CallHistoryLookup,
     scp: &dyn ScpLookup,
 ) {
-    let call_norm = st.current_call();
-    if call_norm.is_empty() {
-        clear_history_fields(st);
-        return;
-    }
+    // Capture `current_call` into scp lookups while the borrow is alive,
+    // then drop it before mutating the entry state.
+    let (partial, n_plus_one) = {
+        let call_norm = st.current_call();
+        if call_norm.is_empty() {
+            clear_history_fields(st);
+            return;
+        }
+        (
+            scp.partial_matches(call_norm, 10),
+            scp.n_plus_one_matches(call_norm, 10),
+        )
+    };
 
     // Update SCP matches
     {
         let entry = st.focused_entry_mut();
-        entry.scp_matches = scp.partial_matches(&call_norm, 10);
-        entry.scp_n1_matches = scp.n_plus_one_matches(&call_norm, 10);
+        entry.scp_matches = partial;
+        entry.scp_n1_matches = n_plus_one;
     }
 
     apply_history_lookup(st, contest, call_history);
@@ -513,8 +529,7 @@ fn apply_history_only(
     contest: &dyn ContestEntry,
     call_history: &dyn CallHistoryLookup,
 ) {
-    let call_norm = st.current_call();
-    if call_norm.is_empty() {
+    if st.current_call().is_empty() {
         clear_history_fields(st);
         return;
     }
@@ -527,8 +542,11 @@ fn apply_history_lookup(
     contest: &dyn ContestEntry,
     call_history: &dyn CallHistoryLookup,
 ) {
-    let call_norm = st.current_call();
-    let Some(pairs) = call_history.lookup(&call_norm) else {
+    // Perform the lookup while the borrow from `current_call` is alive;
+    // the `Option<Vec<..>>` return is fully owned so the borrow can be
+    // dropped before any mutation below.
+    let maybe_pairs = call_history.lookup(st.current_call());
+    let Some(pairs) = maybe_pairs else {
         for field in &mut st.focused_entry_mut().fields {
             if field.from_history {
                 field.value.clear();
@@ -580,14 +598,17 @@ fn clear_history_fields(st: &mut AppState) {
     entry.scp_n1_matches.clear();
 }
 
-fn normalize_mode(mode: &str) -> String {
-    match mode.trim().to_ascii_uppercase().as_str() {
-        "CW" => "CW",
-        "SSB" => "SSB",
-        "DIGITAL" => "DIGITAL",
-        _ => "OTHER",
+fn normalize_mode(mode: &str) -> &'static str {
+    let trimmed = mode.trim();
+    if trimmed.eq_ignore_ascii_case("CW") {
+        "CW"
+    } else if trimmed.eq_ignore_ascii_case("SSB") {
+        "SSB"
+    } else if trimmed.eq_ignore_ascii_case("DIGITAL") {
+        "DIGITAL"
+    } else {
+        "OTHER"
     }
-    .to_string()
 }
 
 #[cfg(test)]
