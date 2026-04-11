@@ -52,7 +52,7 @@ jobs:
           STAGING="staging"
           mkdir -p "$STAGING"
           cp "target/${{ matrix.target }}/release/${{ env.BIN_NAME }}" "$STAGING/"
-          cp README.md logger-tui.example.toml "$STAGING/" 2>/dev/null || true
+          cp README.md config.example.toml contest.example.toml "$STAGING/" 2>/dev/null || true
 
       - name: Stage release files (Windows)
         if: runner.os == 'Windows'
@@ -61,7 +61,8 @@ jobs:
           New-Item -ItemType Directory -Force -Path staging | Out-Null
           Copy-Item "target/${{ matrix.target }}/release/${{ env.BIN_NAME }}.exe" -Destination staging
           if (Test-Path "README.md") { Copy-Item "README.md" -Destination staging }
-          if (Test-Path "logger-tui.example.toml") { Copy-Item "logger-tui.example.toml" -Destination staging }
+          if (Test-Path "config.example.toml") { Copy-Item "config.example.toml" -Destination staging }
+          if (Test-Path "contest.example.toml") { Copy-Item "contest.example.toml" -Destination staging }
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v5

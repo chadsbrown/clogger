@@ -27,11 +27,16 @@ The workspace builds with `cargo build` and has three crates:
 - `logger-cli` — headless golden-script runner used for testing
 - `logger-core` — pure state-machine library, no IO
 
-To get started, copy `logger-tui.example.toml` to `logger-tui.toml`, fill
-in your callsign and hardware, and run:
+Config is split into two files: a stable one (`config.toml`) for station
+identity, hardware, and scoreboard settings, and a per-contest one
+(`contest.toml`) for the contest id, macros, db path, and category.
+To get started, copy both examples and fill them in:
 
 ```bash
-cargo run -p logger-tui -- --config logger-tui.toml
+cp config.example.toml config.toml       # edit: callsign, rig, keyer, etc.
+cp contest.example.toml contest.toml     # edit: contest id, macros, etc.
+
+cargo run -p logger-tui -- --config config.toml --contest contest.toml
 ```
 
 ## Dependencies

@@ -1,25 +1,33 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
+use anyhow::Context;
 use clap::Parser;
 use serde::Deserialize;
 
 #[derive(Parser)]
 #[command(name = "logger-tui", about = "Contest logger terminal UI")]
 pub struct Cli {
-    /// Path to TOML config file
+    /// Path to stable TOML config file (station identity, hardware, scoreboard).
+    /// This file usually doesn't change between contests.
     #[arg(short, long)]
     pub config: PathBuf,
 
-    /// SQLite database file (overrides db_path in config)
+    /// Path to the per-contest TOML file (contest id, macros, category,
+    /// call history, state-QP [station] passthrough). Switch this file when
+    /// you switch contests.
+    #[arg(long)]
+    pub contest: PathBuf,
+
+    /// SQLite database file (overrides db_path in contest file)
     #[arg(short, long)]
     pub db: Option<PathBuf>,
 
-    /// Call history file (.ch format, overrides call_history_file in config)
+    /// Call history file (.ch format, overrides call_history_file in contest file)
     #[arg(long)]
     pub call_history: Option<PathBuf>,
 
-    /// SCP file (.scp format, overrides scp_file in config)
+    /// SCP file (.scp format, overrides scp_file in config file)
     #[arg(long)]
     pub scp: Option<PathBuf>,
 
@@ -28,28 +36,19 @@ pub struct Cli {
     pub debug: bool,
 }
 
+/// Stable station/hardware configuration. Lives in `config.toml` and rarely
+/// changes between contests.
 #[derive(Debug, Deserialize)]
-pub struct Config {
+pub struct StableConfig {
     pub my_call: String,
     #[serde(default)]
     pub my_zone: u8,
-    pub contest: String,
     #[serde(default = "default_rst_sent")]
     pub rst_sent: String,
     pub my_name: Option<String>,
-    pub my_xchg: Option<String>,
-    /// Typed station-config passthrough for contest-engine. Keys are fed
-    /// verbatim to the scorer (e.g. `my_is_fl = true`, `my_county = "ALC"`,
-    /// `my_power_class = "LOW"`). Needed for state QSO parties and any spec
-    /// that requires config predicates beyond the basic zone/name/xchg set.
-    #[serde(default)]
-    pub station: BTreeMap<String, toml::Value>,
-    pub db_path: Option<PathBuf>,
-    pub call_history_file: Option<PathBuf>,
     pub scp_file: Option<PathBuf>,
     #[serde(default)]
     pub cursor_style: CursorStyle,
-    pub macros: Option<logger_runtime::MacroOverrides>,
     /// Multiple rigs supported via `[[rig]]` array of tables in TOML.
     /// For backward compatibility, a single `[rig]` table is also accepted.
     #[serde(default, rename = "rig")]
@@ -57,7 +56,6 @@ pub struct Config {
     pub keyer: Option<logger_runtime::KeyerConfig>,
     pub dxfeed: Option<logger_runtime::DxFeedConfig>,
     pub so2r: Option<logger_runtime::So2rConfig>,
-    pub category: Option<logger_runtime::CategoryConfig>,
     #[serde(default)]
     pub cabrillo: logger_runtime::CabrilloConfig,
     #[serde(default)]
@@ -70,6 +68,82 @@ pub struct Config {
     /// reported filter width — set this flag and let the radio tell us.
     #[serde(default)]
     pub show_passband_qrm: bool,
+}
+
+/// Per-contest configuration. Lives in `contest.toml` and changes when you
+/// switch contests. Holds the contest id, sent-exchange value, database path,
+/// call-history file, typed `[station]` passthrough for contest-engine, CW
+/// macro overrides, and Cabrillo category.
+#[derive(Debug, Deserialize)]
+pub struct ContestConfig {
+    pub contest: String,
+    pub my_xchg: Option<String>,
+    pub db_path: Option<PathBuf>,
+    pub call_history_file: Option<PathBuf>,
+    /// Typed station-config passthrough for contest-engine. Keys are fed
+    /// verbatim to the scorer (e.g. `my_is_fl = true`, `my_county = "ALC"`,
+    /// `my_power_class = "LOW"`). Needed for state QSO parties and any spec
+    /// that requires config predicates beyond the basic zone/name/xchg set.
+    #[serde(default)]
+    pub station: BTreeMap<String, toml::Value>,
+    pub macros: Option<logger_runtime::MacroOverrides>,
+    pub category: Option<logger_runtime::CategoryConfig>,
+}
+
+/// Merged runtime configuration. Assembled from `StableConfig` + `ContestConfig`
+/// at load time; the rest of the TUI and `bootstrap()` read from this flat
+/// shape so the split is purely a loading-boundary concern.
+#[derive(Debug)]
+pub struct Config {
+    pub my_call: String,
+    pub my_zone: u8,
+    pub contest: String,
+    pub rst_sent: String,
+    pub my_name: Option<String>,
+    pub my_xchg: Option<String>,
+    pub station: BTreeMap<String, toml::Value>,
+    pub db_path: Option<PathBuf>,
+    pub call_history_file: Option<PathBuf>,
+    pub scp_file: Option<PathBuf>,
+    pub cursor_style: CursorStyle,
+    pub macros: Option<logger_runtime::MacroOverrides>,
+    pub rigs: Vec<logger_runtime::RigConfig>,
+    pub keyer: Option<logger_runtime::KeyerConfig>,
+    pub dxfeed: Option<logger_runtime::DxFeedConfig>,
+    pub so2r: Option<logger_runtime::So2rConfig>,
+    pub category: Option<logger_runtime::CategoryConfig>,
+    pub cabrillo: logger_runtime::CabrilloConfig,
+    pub scoreboard: ScoreboardSection,
+    pub bandmap: BandmapMode,
+    pub show_passband_qrm: bool,
+}
+
+impl Config {
+    fn from_parts(stable: StableConfig, contest: ContestConfig) -> Self {
+        Self {
+            my_call: stable.my_call,
+            my_zone: stable.my_zone,
+            contest: contest.contest,
+            rst_sent: stable.rst_sent,
+            my_name: stable.my_name,
+            my_xchg: contest.my_xchg,
+            station: contest.station,
+            db_path: contest.db_path,
+            call_history_file: contest.call_history_file,
+            scp_file: stable.scp_file,
+            cursor_style: stable.cursor_style,
+            macros: contest.macros,
+            rigs: stable.rigs,
+            keyer: stable.keyer,
+            dxfeed: stable.dxfeed,
+            so2r: stable.so2r,
+            category: contest.category,
+            cabrillo: stable.cabrillo,
+            scoreboard: stable.scoreboard,
+            bandmap: stable.bandmap,
+            show_passband_qrm: stable.show_passband_qrm,
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -113,7 +187,15 @@ fn default_rst_sent() -> String {
 }
 
 pub fn load_config(cli: &Cli) -> anyhow::Result<Config> {
-    let text = std::fs::read_to_string(&cli.config)?;
-    let config: Config = toml::from_str(&text)?;
-    Ok(config)
+    let stable_text = std::fs::read_to_string(&cli.config)
+        .with_context(|| format!("reading config file {}", cli.config.display()))?;
+    let stable: StableConfig = toml::from_str(&stable_text)
+        .with_context(|| format!("parsing {}", cli.config.display()))?;
+
+    let contest_text = std::fs::read_to_string(&cli.contest)
+        .with_context(|| format!("reading contest file {}", cli.contest.display()))?;
+    let contest: ContestConfig = toml::from_str(&contest_text)
+        .with_context(|| format!("parsing {}", cli.contest.display()))?;
+
+    Ok(Config::from_parts(stable, contest))
 }
