@@ -21,6 +21,10 @@ pub struct Cli {
     /// SCP file (.scp format, overrides scp_file in config)
     #[arg(long)]
     pub scp: Option<PathBuf>,
+
+    /// Enable debug-level logging to clogger.log (default: info)
+    #[arg(long)]
+    pub debug: bool,
 }
 
 #[derive(Debug, Deserialize)]

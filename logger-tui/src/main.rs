@@ -98,14 +98,20 @@ impl Default for TuiState {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let cli = Cli::parse();
+
     let log_file = File::create("clogger.log")?;
+    let log_level = if cli.debug {
+        tracing::Level::DEBUG
+    } else {
+        tracing::Level::INFO
+    };
     tracing_subscriber::fmt()
         .with_writer(log_file)
-        .with_max_level(tracing::Level::INFO)
+        .with_max_level(log_level)
         .with_ansi(false)
         .init();
 
-    let cli = Cli::parse();
     let config = load_config(&cli)?;
 
     // Bootstrap session (contest, state, log adapter, call history, SCP)
