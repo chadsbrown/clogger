@@ -1,5 +1,7 @@
 # clogger
 
+![clogger screenshot](docs/clogger-20260410.png)
+
 A contest logger by Chad Brown, N9UNX.
 
 ## About
