@@ -31,6 +31,11 @@ pub use so2r_task::{So2rCmd, spawn_so2r_task};
 pub use analytics::{AvailSummary, RateInfo, WorkedCalls, compute_avail, compute_rate, compute_worked_calls};
 pub use bootstrap::{MacroOverrides, Session, SessionConfig, bootstrap};
 pub use scoring::{BandScore, BreakdownRow, ScoreBreakdown, ScoreSummary, scorer_for_contest};
+
+/// Typed config value consumed by contest-engine specs. Re-exported so
+/// frontends (TUI, CLI) can build `station_config` maps without a direct
+/// contest-engine dep.
+pub use contest_engine::spec::Value as ConfigValue;
 pub use scoreboard_adapter::{
     ScoreboardConfig, ScoreboardHandle, ScoreboardSnapshot, ScoreboardStatus,
     spawn_scoreboard_adapter,

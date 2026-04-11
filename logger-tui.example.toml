@@ -14,6 +14,8 @@
 
 # Contest identifier. Supported values:
 #   cqww, cwt, mst, naqp, arrl_dx, ns_sprint, ss
+#   State/province QSO parties: flqp, gaqp, inqp, miqp, moqp, ndqp, neqp,
+#     nhqp, nmqp, neqsop (Nebraska), onqp, qcqp, deqp
 #contest = "cqww"
 
 # RST sent (default: "599", used by cqww, arrl_dx)
@@ -28,6 +30,53 @@
 #   ns_sprint:  state/province            (e.g. "NC")
 # Expands as {MYXCHG} in CW macros.
 #my_xchg = "2187"
+
+# ---------------------------------------------------------------------------
+# [station] — typed config passthrough for contest-engine specs.
+#
+# State QSO parties and a few other contests require config values that
+# don't fit the generic my_name / my_xchg slots (booleans, enums, power
+# class, etc.). Keys here are fed verbatim to the scoring engine.
+#
+# Supported value types: bool, integer, string. Arrays/floats/datetimes
+# are rejected at load time.
+#
+# State QSO party config:
+#   my_is_<xx> (bool)     — set true if operating from inside the state,
+#                           false otherwise. Drives sent-exchange and
+#                           multiplier rules. The suffix is the state
+#                           abbreviation:
+#                             flqp → my_is_fl    gaqp   → my_is_ga
+#                             inqp → my_is_in    miqp   → my_is_mi
+#                             moqp → my_is_mo    ndqp   → my_is_nd
+#                             nhqp → my_is_nh    nmqp   → my_is_nm
+#                             deqp → my_is_de    onqp   → my_is_on
+#                             qcqp → my_is_qc
+#                             neqp (New England) and neqsop (Nebraska)
+#                               both use my_is_ne — one config key,
+#                               interpreted per contest.
+#   my_county (string)    — your county abbreviation when in-state
+#                           (e.g. "ALC" for Alachua in FLQP). Required
+#                           when my_is_<xx> = true, for every state QP
+#                           except onqp (uses my_area) and qcqp (uses
+#                           my_region).
+#   my_loc (string)       — your state/province/DXCC when out-of-state
+#                           (e.g. "NC", "ON", "DX"). Required when
+#                           my_is_<xx> = false.
+#   my_power_class        — "QRP" | "LOW" | "HIGH". Required by NMQP,
+#     (string)              DEQP, and NEQSOP; drives the final score
+#                           multiplier (QRP=5x, LOW=2x, HIGH=1x).
+#
+# Example: in-state Florida QSO Party entry from Alachua county, high power
+#[station]
+#my_is_fl = true
+#my_county = "ALC"
+#
+# Example: out-of-state entry in NMQP (low power from NC)
+#[station]
+#my_is_nm = false
+#my_loc = "NC"
+#my_power_class = "LOW"
 
 # SQLite database path for persistent logging (omit for in-memory only)
 #db_path = "n9unx-cqww.db"

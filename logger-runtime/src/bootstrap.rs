@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
+use contest_engine::spec::Value as ConfigValue;
 use logger_core::{
     AppEvent, AppState, CallHistoryLookup, ContestEntry, EntryState, EsmPolicy, Macros,
     NoCallHistory, NoScp, ScpLookup, contest_from_id,
@@ -30,6 +31,10 @@ pub struct SessionConfig {
     pub rst_sent: String,
     pub my_name: Option<String>,
     pub my_xchg: Option<String>,
+    /// Typed station-config passthrough. Keys are fed verbatim to contest-engine
+    /// as config values (e.g. `my_is_fl = Bool(true)` for state QSO parties).
+    /// Merged on top of back-compat defaults from `my_zone`, `my_name`, `my_xchg`.
+    pub station_config: HashMap<String, ConfigValue>,
     pub macro_overrides: Option<MacroOverrides>,
     pub default_cw_speed: u8,
     pub db_path: Option<PathBuf>,
@@ -81,8 +86,26 @@ pub fn bootstrap(config: SessionConfig) -> Result<Session> {
         my_exchange.insert("LOC".to_string(), xchg.clone());
     }
 
-    let scorer =
-        crate::scoring::scorer_for_contest(contest.as_ref(), config.my_zone, &my_exchange);
+    // Typed config map for contest-engine: back-compat defaults from my_zone +
+    // my_name/my_xchg, then overlay [station] passthrough so users can set
+    // typed config keys (e.g. `my_is_fl = true`) that specs require.
+    let mut scorer_config: HashMap<String, ConfigValue> = HashMap::new();
+    scorer_config.insert(
+        "my_cq_zone".to_string(),
+        ConfigValue::Int(i64::from(config.my_zone)),
+    );
+    if let Some(name) = &config.my_name {
+        scorer_config.insert("my_name".to_string(), ConfigValue::Text(name.clone()));
+    }
+    if let Some(xchg) = &config.my_xchg {
+        scorer_config.insert("my_xchg".to_string(), ConfigValue::Text(xchg.clone()));
+        scorer_config.insert("my_loc".to_string(), ConfigValue::Text(xchg.clone()));
+    }
+    for (key, value) in &config.station_config {
+        scorer_config.insert(key.clone(), value.clone());
+    }
+
+    let scorer = crate::scoring::scorer_for_contest(contest.as_ref(), scorer_config);
 
     // Initialize entries for both radios so SO2R works out of the box
     let mut entries = HashMap::new();

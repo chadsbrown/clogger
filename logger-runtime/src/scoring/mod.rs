@@ -8,11 +8,13 @@ use logger_core::ContestEntry;
 use qsolog::qso::QsoRecord;
 use qsolog::types::Band;
 
+#[derive(Debug, Clone)]
 pub struct BandScore {
     pub qsos: u32,
     pub mults: u32,
 }
 
+#[derive(Debug, Clone)]
 pub struct ScoreSummary {
     pub by_band: Vec<(String, BandScore)>,
     pub total_qsos: u32,
@@ -80,21 +82,10 @@ pub trait ContestScorer: Send + Sync {
 
 pub fn scorer_for_contest(
     contest: &dyn ContestEntry,
-    my_zone: u8,
-    my_exchange: &HashMap<String, String>,
+    config: HashMap<String, Value>,
 ) -> Box<dyn ContestScorer> {
     let contest_id = contest.contest_id();
     let contest_instance_id = contest.contest_instance_id();
-
-    // Build contest-engine config from my_zone + my_exchange
-    let mut config: HashMap<String, Value> = HashMap::new();
-    config.insert(
-        "my_cq_zone".to_string(),
-        Value::Int(i64::from(my_zone)),
-    );
-    for (k, v) in my_exchange {
-        config.insert(format!("my_{}", k.to_ascii_lowercase()), Value::Text(v.clone()));
-    }
 
     // Try spec-based scorer; fall back for contests without an embedded spec.
     // spec_by_id() is a compile-time embedded lookup — no filesystem access,

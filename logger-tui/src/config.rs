@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use clap::Parser;
@@ -37,6 +38,12 @@ pub struct Config {
     pub rst_sent: String,
     pub my_name: Option<String>,
     pub my_xchg: Option<String>,
+    /// Typed station-config passthrough for contest-engine. Keys are fed
+    /// verbatim to the scorer (e.g. `my_is_fl = true`, `my_county = "ALC"`,
+    /// `my_power_class = "LOW"`). Needed for state QSO parties and any spec
+    /// that requires config predicates beyond the basic zone/name/xchg set.
+    #[serde(default)]
+    pub station: BTreeMap<String, toml::Value>,
     pub db_path: Option<PathBuf>,
     pub call_history_file: Option<PathBuf>,
     pub scp_file: Option<PathBuf>,

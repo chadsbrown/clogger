@@ -1,0 +1,32 @@
+{
+  "contest": "nmqp",
+  "station_config": {
+    "my_is_nm": false,
+    "my_loc": "NC",
+    "my_power_class": "LOW"
+  },
+  "events": [
+    { "type": "RigStatus", "radio": 1, "freq_hz": 14025000, "mode": "CW", "is_ptt": false },
+    { "type": "SetMode", "mode": "Run" },
+    { "type": "Text", "s": "W5GAD" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "599" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "BER" },
+    { "type": "Key", "key": "Enter" },
+    { "type": "Key", "key": "Enter" }
+  ],
+  "expectations": {
+    "qsos": [
+      {
+        "call": "W5GAD",
+        "band": "20m",
+        "rst": "599",
+        "exchange": { "rst": "599", "loc": "BER" }
+      }
+    ],
+    "final_total_qsos": 1,
+    "final_total_mults": 1,
+    "final_claimed_score": 4
+  }
+}

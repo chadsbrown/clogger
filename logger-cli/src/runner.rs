@@ -11,7 +11,7 @@ use logger_core::{
 use serde::Serialize;
 use serde_json::Value;
 
-use logger_runtime::{LogAdapter, decode_exchange_pairs};
+use logger_runtime::{ConfigValue, LogAdapter, decode_exchange_pairs};
 
 use crate::{
     fakes::{fake_keyer::FakeKeyer, fake_rig::FakeRig},
@@ -26,6 +26,7 @@ struct RunArtifacts {
     cw_sent: Vec<String>,
     beep_error_count: usize,
     trace: Vec<TraceStep>,
+    score: logger_runtime::ScoreSummary,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -198,6 +199,15 @@ fn is_edit_distance_one(a: &str, b: &str) -> bool {
 /// Wrapper that overrides `uses_serial()` on an inner contest.
 struct SerialContest(Box<dyn ContestEntry>);
 
+fn json_to_config_value(v: &serde_json::Value) -> Option<ConfigValue> {
+    match v {
+        serde_json::Value::Bool(b) => Some(ConfigValue::Bool(*b)),
+        serde_json::Value::Number(n) => n.as_i64().map(ConfigValue::Int),
+        serde_json::Value::String(s) => Some(ConfigValue::Text(s.clone())),
+        _ => None,
+    }
+}
+
 impl ContestEntry for SerialContest {
     fn contest_id(&self) -> &str { self.0.contest_id() }
     fn contest_instance_id(&self) -> u64 { self.0.contest_instance_id() }
@@ -277,7 +287,28 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
     }
 
     let mut keyer = FakeKeyer::default();
-    let scorer = logger_runtime::scorer_for_contest(contest.as_ref(), st.my_zone, &st.my_exchange);
+
+    // Build typed config map for contest-engine: my_cq_zone + back-compat
+    // my_name/my_xchg/my_loc + station_config typed passthrough.
+    let mut scorer_config: HashMap<String, ConfigValue> = HashMap::new();
+    scorer_config.insert(
+        "my_cq_zone".to_string(),
+        ConfigValue::Int(i64::from(st.my_zone)),
+    );
+    for (k, v) in &st.my_exchange {
+        scorer_config.insert(
+            format!("my_{}", k.to_ascii_lowercase()),
+            ConfigValue::Text(v.clone()),
+        );
+    }
+    for (k, v) in &script.station_config {
+        let Some(cv) = json_to_config_value(v) else {
+            bail!("station_config[{}]: unsupported JSON type (must be bool, integer, or string)", k);
+        };
+        scorer_config.insert(k.clone(), cv);
+    }
+
+    let scorer = logger_runtime::scorer_for_contest(contest.as_ref(), scorer_config);
     let mut log = LogAdapter::new(scorer, contest.contest_instance_id());
     let mut rig = FakeRig::default();
     let mut beep_error_count = 0usize;
@@ -425,6 +456,7 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
     let full_cw = keyer.joined_text();
     let cw_sent = keyer.sent.iter().map(|(_, t)| t.clone()).collect();
 
+    let score = log.score_summary();
     Ok(RunArtifacts {
         st,
         records: log.ordered_records(),
@@ -432,6 +464,7 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
         cw_sent,
         beep_error_count,
         trace,
+        score,
     })
 }
 
@@ -683,6 +716,34 @@ fn validate_expectations(artifacts: &RunArtifacts, script: &Script) -> Result<()
         }
     }
 
+    if let Some(expected) = script.expectations.final_claimed_score
+        && artifacts.score.claimed_score != expected
+    {
+        bail!(
+            "expected final_claimed_score {}, got {}",
+            expected,
+            artifacts.score.claimed_score
+        );
+    }
+    if let Some(expected) = script.expectations.final_total_qsos
+        && artifacts.score.total_qsos != expected
+    {
+        bail!(
+            "expected final_total_qsos {}, got {}",
+            expected,
+            artifacts.score.total_qsos
+        );
+    }
+    if let Some(expected) = script.expectations.final_total_mults
+        && artifacts.score.total_mults != expected
+    {
+        bail!(
+            "expected final_total_mults {}, got {}",
+            expected,
+            artifacts.score.total_mults
+        );
+    }
+
     Ok(())
 }
 
@@ -752,6 +813,10 @@ mod tests {
             "so2r_serial_shared_counter.json",
             "cqww_passband_qrm.json",
             "bandmap_snap_to_freq.json",
+            "miqp_out_of_state_log.json",
+            "flqp_in_state_log.json",
+            "nmqp_power_class_out_of_state.json",
+            "flqp_rover_county_log.json",
         ];
 
         for script in scripts {

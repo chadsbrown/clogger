@@ -18,6 +18,11 @@ pub struct Script {
     /// Station's own exchange fields (keys become `my_<key>` config for the scorer).
     #[serde(default)]
     pub my_exchange: BTreeMap<String, String>,
+    /// Typed station-config passthrough. Keys are fed verbatim to contest-engine
+    /// (e.g. `"my_is_fl": true`, `"my_county": "ALC"`). JSON types map to
+    /// ConfigValue: bool→Bool, integer→Int, string→Text.
+    #[serde(default)]
+    pub station_config: BTreeMap<String, serde_json::Value>,
     /// Enable the passband QRM warning (width comes from the rig filter).
     #[serde(default)]
     pub show_passband_qrm: bool,
@@ -108,6 +113,14 @@ pub struct Expectations {
     pub final_radio_entries: BTreeMap<u8, RadioEntryExpectation>,
     /// Expected per-radio bandmap cursor state at end of script.
     pub final_bandmap_cursors: Option<BTreeMap<u8, BandmapCursor>>,
+    /// Expected `ScoreSummary.claimed_score` after all events. Useful for
+    /// verifying multiplier rules, power-class overrides, and bonus points
+    /// — things that don't surface in per-QSO expectations.
+    pub final_claimed_score: Option<i64>,
+    /// Expected `ScoreSummary.total_qsos`.
+    pub final_total_qsos: Option<u32>,
+    /// Expected `ScoreSummary.total_mults`.
+    pub final_total_mults: Option<u32>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]

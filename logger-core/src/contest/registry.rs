@@ -125,6 +125,159 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         exchange_schema_id: 2,
         auto_toggle_mode: false,
     },
+    // State QSO parties. All share the same shape: CALL + RST + LOC (county or
+    // state/province/DXCC depending on whether the op is inside the state).
+    // In-state vs out-of-state behavior is driven by `my_is_<state>` config,
+    // set via the `[station]` TOML section, not by the registry.
+    SpecContestMeta {
+        contest_id: "flqp",
+        contest_instance_id: 8,
+        // LOC width 8 leaves room for county-line mobiles sending "ALC/BAK".
+        field_widths: &[(1, 12), (2, 3), (3, 8)],
+        default_macros_fn: default_macros,
+        history_mapping: &[],
+        uses_serial: false,
+        cabrillo_id_fn: |_| Some("FL-QSO-PARTY"),
+        exchange_schema_id: 8,
+        auto_toggle_mode: false,
+    },
+    SpecContestMeta {
+        contest_id: "gaqp",
+        contest_instance_id: 9,
+        field_widths: &[(1, 12), (2, 3), (3, 4)],
+        default_macros_fn: default_macros,
+        history_mapping: &[],
+        uses_serial: false,
+        cabrillo_id_fn: |_| Some("GA-QSO-PARTY"),
+        exchange_schema_id: 9,
+        auto_toggle_mode: false,
+    },
+    SpecContestMeta {
+        contest_id: "inqp",
+        contest_instance_id: 10,
+        field_widths: &[(1, 12), (2, 3), (3, 5)],
+        default_macros_fn: default_macros,
+        history_mapping: &[],
+        uses_serial: false,
+        cabrillo_id_fn: |_| Some("IN-QSO-PARTY"),
+        exchange_schema_id: 10,
+        auto_toggle_mode: false,
+    },
+    SpecContestMeta {
+        contest_id: "miqp",
+        contest_instance_id: 11,
+        field_widths: &[(1, 12), (2, 3), (3, 4)],
+        default_macros_fn: default_macros,
+        history_mapping: &[],
+        uses_serial: false,
+        cabrillo_id_fn: |_| Some("MI-QSO-PARTY"),
+        exchange_schema_id: 11,
+        auto_toggle_mode: false,
+    },
+    SpecContestMeta {
+        contest_id: "moqp",
+        contest_instance_id: 12,
+        field_widths: &[(1, 12), (2, 3), (3, 3)],
+        default_macros_fn: default_macros,
+        history_mapping: &[],
+        uses_serial: false,
+        cabrillo_id_fn: |_| Some("MO-QSO-PARTY"),
+        exchange_schema_id: 12,
+        auto_toggle_mode: false,
+    },
+    SpecContestMeta {
+        contest_id: "ndqp",
+        contest_instance_id: 13,
+        field_widths: &[(1, 12), (2, 3), (3, 3)],
+        default_macros_fn: default_macros,
+        history_mapping: &[],
+        uses_serial: false,
+        cabrillo_id_fn: |_| Some("ND-QSO-PARTY"),
+        exchange_schema_id: 13,
+        auto_toggle_mode: false,
+    },
+    SpecContestMeta {
+        contest_id: "neqp",
+        contest_instance_id: 14,
+        field_widths: &[(1, 12), (2, 3), (3, 5)],
+        default_macros_fn: default_macros,
+        history_mapping: &[],
+        uses_serial: false,
+        // New England QP uses the bare "NEQP" contest ID, not "NE-QSO-PARTY".
+        cabrillo_id_fn: |_| Some("NEQP"),
+        exchange_schema_id: 14,
+        auto_toggle_mode: false,
+    },
+    SpecContestMeta {
+        contest_id: "nhqp",
+        contest_instance_id: 15,
+        field_widths: &[(1, 12), (2, 3), (3, 3)],
+        default_macros_fn: default_macros,
+        history_mapping: &[],
+        uses_serial: false,
+        // NH QSO Party is CW-only.
+        cabrillo_id_fn: |mode| match mode {
+            CategoryMode::CW => Some("NH-QSO-PARTY"),
+            _ => None,
+        },
+        exchange_schema_id: 15,
+        auto_toggle_mode: false,
+    },
+    SpecContestMeta {
+        contest_id: "nmqp",
+        contest_instance_id: 16,
+        field_widths: &[(1, 12), (2, 3), (3, 3)],
+        default_macros_fn: default_macros,
+        history_mapping: &[],
+        uses_serial: false,
+        cabrillo_id_fn: |_| Some("NM-QSO-PARTY"),
+        exchange_schema_id: 16,
+        auto_toggle_mode: false,
+    },
+    SpecContestMeta {
+        contest_id: "neqsop",
+        contest_instance_id: 17,
+        field_widths: &[(1, 12), (2, 3), (3, 4)],
+        default_macros_fn: default_macros,
+        history_mapping: &[],
+        uses_serial: false,
+        cabrillo_id_fn: |_| Some("NE-QSO-PARTY"),
+        exchange_schema_id: 17,
+        auto_toggle_mode: false,
+    },
+    SpecContestMeta {
+        contest_id: "onqp",
+        contest_instance_id: 18,
+        field_widths: &[(1, 12), (2, 3), (3, 3)],
+        default_macros_fn: default_macros,
+        history_mapping: &[],
+        uses_serial: false,
+        cabrillo_id_fn: |_| Some("ON-QSO-PARTY"),
+        exchange_schema_id: 18,
+        auto_toggle_mode: false,
+    },
+    SpecContestMeta {
+        contest_id: "qcqp",
+        contest_instance_id: 19,
+        field_widths: &[(1, 12), (2, 3), (3, 3)],
+        default_macros_fn: default_macros,
+        history_mapping: &[],
+        uses_serial: false,
+        cabrillo_id_fn: |_| Some("QC-QSO-PARTY"),
+        exchange_schema_id: 19,
+        auto_toggle_mode: false,
+    },
+    SpecContestMeta {
+        contest_id: "deqp",
+        contest_instance_id: 20,
+        field_widths: &[(1, 12), (2, 3), (3, 3)],
+        default_macros_fn: default_macros,
+        history_mapping: &[],
+        uses_serial: false,
+        cabrillo_id_fn: |_| Some("DE-QSO-PARTY"),
+        exchange_schema_id: 20,
+        auto_toggle_mode: false,
+    },
 ];
 
 pub fn find_spec_contest(id: &str) -> Option<&'static SpecContestMeta> {
@@ -183,5 +336,39 @@ fn ss_macros() -> Macros {
         f2: "{NR} {PREC} {CK} {SEC}".to_string(),
         f3: "TU {MYCALL}".to_string(),
         ..Macros::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every registered contest must have a matching embedded spec in
+    /// contest-engine, and every exchange_schema_id / contest_instance_id
+    /// must be unique. Guards against typos in `contest_id` and against
+    /// accidentally reusing an instance id when adding new contests.
+    #[test]
+    fn all_registered_contests_resolve_to_embedded_specs() {
+        let mut seen_instance = std::collections::HashSet::new();
+        let mut seen_schema = std::collections::HashSet::new();
+        for meta in SPEC_CONTESTS {
+            assert!(
+                contest_engine::spec::embedded::spec_by_id(meta.contest_id).is_some(),
+                "contest_id `{}` has no embedded spec in contest-engine",
+                meta.contest_id
+            );
+            assert!(
+                seen_instance.insert(meta.contest_instance_id),
+                "duplicate contest_instance_id {} ({})",
+                meta.contest_instance_id,
+                meta.contest_id
+            );
+            assert!(
+                seen_schema.insert(meta.exchange_schema_id),
+                "duplicate exchange_schema_id {} ({})",
+                meta.exchange_schema_id,
+                meta.contest_id
+            );
+        }
     }
 }

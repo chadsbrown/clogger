@@ -12,7 +12,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use clap::Parser;
 use logger_core::{AppEvent, RadioId, contest::BandmapCache};
-use logger_runtime::{AvailSummary, RateInfo, ScoreboardStatus, ScoreSummary};
+use logger_runtime::{AvailSummary, ConfigValue, RateInfo, ScoreboardStatus, ScoreSummary};
 use tokio::sync::mpsc;
 use tracing::warn;
 use logger_runtime::{Keyer, So2rSwitch};
@@ -135,6 +135,26 @@ async fn main() -> Result<()> {
         .find_map(|r| r.cw_speed)
         .or(config.keyer.as_ref().map(|k| k.speed_wpm))
         .unwrap_or(28);
+    // Convert the typed [station] TOML table into contest-engine ConfigValues.
+    // Bool/Int/String are supported; anything else (arrays, floats, datetimes)
+    // is a hard error at load time — specs only accept these three types.
+    let mut station_config: HashMap<String, ConfigValue> = HashMap::new();
+    for (key, value) in &config.station {
+        let cv = match value {
+            toml::Value::Boolean(b) => ConfigValue::Bool(*b),
+            toml::Value::Integer(i) => ConfigValue::Int(*i),
+            toml::Value::String(s) => ConfigValue::Text(s.clone()),
+            other => {
+                anyhow::bail!(
+                    "[station] key `{}` has unsupported TOML type `{}` — only bool, integer, and string are allowed",
+                    key,
+                    other.type_str()
+                );
+            }
+        };
+        station_config.insert(key.clone(), cv);
+    }
+
     let session = logger_runtime::bootstrap(logger_runtime::SessionConfig {
         contest_id: config.contest.clone(),
         my_call: config.my_call.clone(),
@@ -142,6 +162,7 @@ async fn main() -> Result<()> {
         rst_sent: config.rst_sent.clone(),
         my_name: config.my_name.clone(),
         my_xchg: config.my_xchg.clone(),
+        station_config,
         macro_overrides: config.macros,
         default_cw_speed,
         db_path: cli.db.as_ref().or(config.db_path.as_ref()).cloned(),

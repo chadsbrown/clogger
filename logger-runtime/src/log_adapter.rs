@@ -319,7 +319,7 @@ mod tests {
     #[test]
     fn undo_redo_placeholder_roundtrip() {
         let contest = contest_from_id("cqww").expect("cqww contest");
-        let scorer = scorer_for_contest(contest.as_ref(), 4, &std::collections::HashMap::new());
+        let scorer = scorer_for_contest(contest.as_ref(), std::collections::HashMap::new());
         let mut adapter = LogAdapter::new(scorer, 1);
 
         adapter.insert(sample_draft(), 1, 1, 1).expect("insert");
@@ -340,7 +340,7 @@ mod tests {
 
         {
             let scorer =
-                scorer_for_contest(contest.as_ref(), 4, &std::collections::HashMap::new());
+                scorer_for_contest(contest.as_ref(), std::collections::HashMap::new());
             let mut adapter = LogAdapter::open_db(scorer, 1, &db_path).expect("open_db");
             adapter.insert(sample_draft(), 1, 1, 1).expect("insert");
             adapter.undo().expect("undo");
@@ -349,7 +349,7 @@ mod tests {
 
         {
             let scorer =
-                scorer_for_contest(contest.as_ref(), 4, &std::collections::HashMap::new());
+                scorer_for_contest(contest.as_ref(), std::collections::HashMap::new());
             let adapter = LogAdapter::open_db(scorer, 1, &db_path).expect("reopen_db");
             let records = adapter.ordered_records();
             assert_eq!(records.len(), 1, "record should still exist after reload");
@@ -369,7 +369,7 @@ mod tests {
 
         {
             let scorer =
-                scorer_for_contest(contest.as_ref(), 4, &std::collections::HashMap::new());
+                scorer_for_contest(contest.as_ref(), std::collections::HashMap::new());
             let mut adapter = LogAdapter::open_db(scorer, 1, &db_path).expect("open_db");
             adapter.insert(sample_draft(), 1, 1, 1).expect("insert");
             adapter.undo().expect("undo");
@@ -379,7 +379,7 @@ mod tests {
 
         {
             let scorer =
-                scorer_for_contest(contest.as_ref(), 4, &std::collections::HashMap::new());
+                scorer_for_contest(contest.as_ref(), std::collections::HashMap::new());
             let adapter = LogAdapter::open_db(scorer, 1, &db_path).expect("reopen_db");
             let records = adapter.ordered_records();
             assert_eq!(records.len(), 1);
