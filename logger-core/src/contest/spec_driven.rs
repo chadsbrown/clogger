@@ -167,7 +167,7 @@ impl ContestEntry for SpecDrivenContest {
         Ok(QsoDraft {
             contest_id: self.spec.id.clone(),
             callsign: call,
-            band: super::freq_to_band_label(rig.as_ref().map(|r| r.freq_hz).unwrap_or(0)),
+            band: super::freq_to_band_label(rig.as_ref().map(|r| r.freq_hz).unwrap_or(0)).to_string(),
             mode: rig
                 .as_ref()
                 .map(|r| r.mode.to_ascii_uppercase())

@@ -1,4 +1,4 @@
-use logger_core::{AppState, RadioId, contest::{filtered_bandmap_spots, freq_to_band_label}};
+use logger_core::{AppState, RadioId, contest::{freq_to_band_label, normalize_mode}};
 use ratatui::{
     Frame,
     layout::{Constraint, Rect},
@@ -15,10 +15,15 @@ pub fn render(frame: &mut Frame, area: Rect, app: &AppState, tui: &TuiState, rad
         .filter(|r| r.freq_hz > 0);
     let band = radio
         .map(|r| freq_to_band_label(r.freq_hz))
-        .unwrap_or_else(|| "40m".to_string());
-    let mode = radio.map(|r| r.mode.as_str()).unwrap_or("CW");
+        .unwrap_or("40m");
+    // Normalize mode to a `&'static str` that lives in the cache key pool.
+    let mode = normalize_mode(radio.map(|r| r.mode.as_str()).unwrap_or("CW"));
 
-    let spots = filtered_bandmap_spots(&app.bandmap, &band, mode);
+    // Fetch through the shared TuiState cache. Interior-mutable via
+    // RefCell — cache miss triggers one filter+sort+dedup; subsequent
+    // renders at the same (band, mode, bandmap_version) hit the cache.
+    let mut cache = tui.bandmap_cache.borrow_mut();
+    let spots = cache.get_or_build(&app.bandmap, app.bandmap_version, band, mode);
 
     let cursor = app.bandmap_cursors.get(&radio_id).copied();
     let visible = area.height.saturating_sub(2) as usize; // borders

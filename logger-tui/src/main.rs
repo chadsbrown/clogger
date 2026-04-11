@@ -4,13 +4,14 @@ mod event_loop;
 mod perf;
 mod ui;
 
+use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::File;
 use std::sync::Arc;
 
 use anyhow::Result;
 use clap::Parser;
-use logger_core::{AppEvent, RadioId};
+use logger_core::{AppEvent, RadioId, contest::BandmapCache};
 use logger_runtime::{AvailSummary, RateInfo, ScoreboardStatus, ScoreSummary};
 use tokio::sync::mpsc;
 use tracing::warn;
@@ -66,6 +67,10 @@ pub struct TuiState {
     pub scoreboard_status: ScoreboardStatus,
     pub export_modal: Option<ExportModal>,
     pub bandmap_mode: config::BandmapMode,
+    /// Cached filtered bandmap spots keyed by (band, mode). Invalidated
+    /// by `AppState.bandmap_version`. `RefCell` allows rendering (which
+    /// only has `&TuiState`) to populate cache misses lazily.
+    pub bandmap_cache: RefCell<BandmapCache>,
 }
 
 impl Default for TuiState {
@@ -93,6 +98,7 @@ impl Default for TuiState {
             scoreboard_status: ScoreboardStatus::Idle,
             export_modal: None,
             bandmap_mode: config::BandmapMode::Dual,
+            bandmap_cache: RefCell::new(BandmapCache::new()),
         }
     }
 }

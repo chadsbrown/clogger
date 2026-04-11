@@ -467,14 +467,36 @@ fn recompute_analytics(state: &AppState, log_adapter: &LogAdapter, tui_state: &m
     let (freq_hz, mode) = state
         .radios
         .get(&state.focused_radio)
+        // NOTE: see compute_* calls below — we now route through the
+        // shared BandmapCache in TuiState so analytics and rendering
+        // don't re-filter the bandmap on every call.
         .map(|r| (r.freq_hz, r.mode.as_str()))
         .unwrap_or((0, "CW"));
 
-    let wc = logger_runtime::compute_worked_calls(&state.bandmap, freq_hz, mode, log_adapter);
+    // Borrow the BandmapCache once — shared by both compute_worked_calls
+    // and compute_avail so they only hit the filter machinery on cache
+    // misses (first call per bandmap version per (band, mode) key).
+    let mut cache = tui_state.bandmap_cache.borrow_mut();
+    let wc = logger_runtime::compute_worked_calls(
+        &state.bandmap,
+        state.bandmap_version,
+        &mut cache,
+        freq_hz,
+        mode,
+        log_adapter,
+    );
+    let avail = logger_runtime::compute_avail(
+        &state.bandmap,
+        state.bandmap_version,
+        &mut cache,
+        mode,
+        log_adapter,
+    );
+    drop(cache);
+
     tui_state.worked_calls = wc.worked;
     tui_state.mult_calls = wc.mults;
-
-    tui_state.avail = logger_runtime::compute_avail(&state.bandmap, mode, log_adapter);
+    tui_state.avail = avail;
 
     let now_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
     tui_state.rate = logger_runtime::compute_rate(log_adapter, now_ms);

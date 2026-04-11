@@ -267,6 +267,7 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
         default_cw_speed: 28,
         serial_counter: None,
         passband_qrm_width_hz: script.passband_qrm_width_hz,
+        bandmap_version: 0,
     };
     if let Some(v) = script.esm_policy.run_two_step {
         st.esm_policy.run_two_step = v;

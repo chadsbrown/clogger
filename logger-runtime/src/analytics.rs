@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use logger_core::contest::{band_freq_range, filtered_bandmap_spots, freq_to_band_label};
+use logger_core::contest::{BandmapCache, band_freq_range, freq_to_band_label, normalize_mode};
 use logger_core::{DupeChecker, MultChecker, Spot};
 
 use crate::log_adapter::LogAdapter;
@@ -28,6 +28,8 @@ pub struct WorkedCalls {
 
 pub fn compute_worked_calls(
     bandmap: &[Spot],
+    bandmap_version: u64,
+    bandmap_cache: &mut BandmapCache,
     freq_hz: u64,
     mode: &str,
     log_adapter: &LogAdapter,
@@ -37,12 +39,16 @@ pub fn compute_worked_calls(
         return result;
     }
     let band = freq_to_band_label(freq_hz);
-    for spot in filtered_bandmap_spots(bandmap, &band, mode) {
+    let mode = normalize_mode(mode);
+    // Iterate through the cached filter result — clone strings out
+    // individually to avoid holding the cache borrow past the loop.
+    let spots = bandmap_cache.get_or_build(bandmap, bandmap_version, band, mode);
+    for spot in spots {
         let call_norm = spot.call.to_ascii_uppercase();
-        if log_adapter.is_dupe(&call_norm, &band, mode) {
-            result.worked.insert(spot.call);
-        } else if log_adapter.is_new_mult(&call_norm, &band, mode) {
-            result.mults.insert(spot.call);
+        if log_adapter.is_dupe(&call_norm, band, mode) {
+            result.worked.insert(spot.call.clone());
+        } else if log_adapter.is_new_mult(&call_norm, band, mode) {
+            result.mults.insert(spot.call.clone());
         }
     }
     result
@@ -50,21 +56,24 @@ pub fn compute_worked_calls(
 
 pub fn compute_avail(
     bandmap: &[Spot],
+    bandmap_version: u64,
+    bandmap_cache: &mut BandmapCache,
     mode: &str,
     log_adapter: &LogAdapter,
 ) -> AvailSummary {
     let mut by_band = Vec::new();
     let mut total_qsos = 0u32;
     let mut total_mults = 0u32;
+    let mode = normalize_mode(mode);
     for &band in BAND_LABELS {
         let (min, _max) = band_freq_range(band);
         if min == 0 {
             continue;
         }
-        let spots = filtered_bandmap_spots(bandmap, band, mode);
+        let spots = bandmap_cache.get_or_build(bandmap, bandmap_version, band, mode);
         let mut qsos = 0u32;
         let mut mults = 0u32;
-        for s in &spots {
+        for s in spots {
             let call_norm = s.call.to_ascii_uppercase();
             if !log_adapter.is_dupe(&call_norm, band, mode) {
                 qsos += 1;

@@ -99,6 +99,7 @@ pub fn bootstrap(config: SessionConfig) -> Result<Session> {
         default_cw_speed: config.default_cw_speed,
         serial_counter: None,
         passband_qrm_width_hz: config.passband_qrm_width_hz,
+        bandmap_version: 0,
     };
 
     let contest_instance_id = contest.contest_instance_id();

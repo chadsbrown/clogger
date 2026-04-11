@@ -38,7 +38,23 @@ keystroke-to-visible latency) over raw throughput.
   the TextInput path is still hot; it requires touching ~28 test sites
   in `reducer.rs` plus splitting strings in `logger-cli/src/runner.rs`
   and `logger-tui/src/event_loop.rs` (export modal).
-- [ ] 4 — Bandmap filter cache in TuiState (2.1, 2.2)
+- [x] **4 — Bandmap filter cache in TuiState** (2.1, 2.2) —
+  `BandmapCache` struct added to `logger-core/src/contest/mod.rs`: small
+  `Vec<BandmapCacheEntry>` keyed by `(band, mode)` as `&'static str`,
+  invalidated by an `AppState.bandmap_version: u64` monotonic counter
+  that the reducer bumps on `SpotReceived`/`SpotWithdrawn`. Cache lives
+  in `TuiState` behind a `RefCell<BandmapCache>` so the
+  render path (which only has `&TuiState`) can `borrow_mut` and populate
+  lazily. `bandmap.rs::render`, `compute_worked_calls`, and
+  `compute_avail` all route through the cache. First touch per
+  `(band, mode)` per version pays the full filter+sort+dedup cost; all
+  subsequent touches in the same version are O(linear scan ≤12
+  entries) lookups. Also promoted `freq_to_band_label` and `normalize_mode`
+  to return `&'static str` (was `String`) — eliminates more per-keystroke
+  allocations and gives the cache zero-alloc keys. Reducer
+  `reducer.rs:329` (bandmap navigation) kept using `filtered_bandmap_spots`
+  directly — it's a cold path and adding cache access to the pure reducer
+  would pollute the core/runtime boundary.
 - [ ] 5 — Score breakdown skip-if-unchanged (2.3)
 - [ ] 6 — RigStatus dedup (3.3)
 

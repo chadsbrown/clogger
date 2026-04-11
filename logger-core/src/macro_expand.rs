@@ -134,6 +134,7 @@ mod tests {
             default_cw_speed: 28,
             serial_counter: None,
             passband_qrm_width_hz: None,
+            bandmap_version: 0,
         };
         st.radios.insert(1, RadioState {
             freq_hz: 14_025_000,
@@ -180,6 +181,7 @@ mod tests {
             default_cw_speed: 28,
             serial_counter: None,
             passband_qrm_width_hz: None,
+            bandmap_version: 0,
         };
 
         let out = expand_macro("CQ TEST <AR>", &st);
@@ -206,6 +208,7 @@ mod tests {
             default_cw_speed: 1,
             serial_counter: None,
             passband_qrm_width_hz: None,
+            bandmap_version: 0,
         };
 
         let out = expand_macro("<5NN>", &st);
@@ -232,6 +235,7 @@ mod tests {
             default_cw_speed: 28,
             serial_counter: None,
             passband_qrm_width_hz: None,
+            bandmap_version: 0,
         };
         st.focused_entry_mut().fields[0].value = "K1ABC".to_string();
 

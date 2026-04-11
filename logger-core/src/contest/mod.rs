@@ -12,7 +12,24 @@ pub fn contest_from_id(id: &str) -> Option<Box<dyn ContestEntry>> {
     None
 }
 
-pub fn freq_to_band_label(freq_hz: u64) -> String {
+/// Normalize an arbitrary rig mode string to one of the four canonical
+/// `&'static str` values used throughout clogger: `"CW"`, `"SSB"`,
+/// `"DIGITAL"`, or `"OTHER"`. Case-insensitive, trims whitespace. Returns
+/// a static slice — no allocation, safe to use as a map key or cache tag.
+pub fn normalize_mode(mode: &str) -> &'static str {
+    let trimmed = mode.trim();
+    if trimmed.eq_ignore_ascii_case("CW") {
+        "CW"
+    } else if trimmed.eq_ignore_ascii_case("SSB") {
+        "SSB"
+    } else if trimmed.eq_ignore_ascii_case("DIGITAL") {
+        "DIGITAL"
+    } else {
+        "OTHER"
+    }
+}
+
+pub fn freq_to_band_label(freq_hz: u64) -> &'static str {
     match freq_hz {
         1_800_000..=2_000_000 => "160m",
         3_500_000..=4_000_000 => "80m",
@@ -22,7 +39,6 @@ pub fn freq_to_band_label(freq_hz: u64) -> String {
         28_000_000..=29_700_000 => "10m",
         _ => "other",
     }
-    .to_string()
 }
 
 pub fn filtered_bandmap_spots(spots: &[crate::state::Spot], band: &str, mode: &str) -> Vec<crate::state::Spot> {
@@ -46,5 +62,73 @@ pub fn band_freq_range(band: &str) -> (u64, u64) {
         "15m" => (21_000_000, 21_450_000),
         "10m" => (28_000_000, 29_700_000),
         _ => (0, 0),
+    }
+}
+
+/// A small cache of `filtered_bandmap_spots` results, keyed by (band, mode).
+///
+/// The cache is invalidated by a monotonic version counter on `AppState`
+/// (`bandmap_version`) that bumps whenever the bandmap is mutated. Readers
+/// pass the current version into `get_or_build`; if it differs from the
+/// stored version, all entries are cleared and rebuilt on demand.
+///
+/// Designed for the contest TUI's two hot consumers:
+///
+/// - `bandmap.rs::render` (20 Hz × ≤2 radios = up to 40 lookups/sec)
+/// - `analytics::compute_worked_calls` and `compute_avail` (run on every
+///   text keystroke and spot event; `compute_avail` looks up 6 bands)
+///
+/// Keys are `&'static str` — callers normalize band via
+/// `freq_to_band_label` (returns `&'static str`) and mode via
+/// `normalize_mode` (returns `&'static str`). This avoids allocating a
+/// String per lookup.
+///
+/// Entry count is bounded by the distinct (band, mode) pairs the active
+/// session actually looks up — in practice ≤ 12 (6 bands × at most 2
+/// modes in SO2R). Linear scan is fine at this size.
+#[derive(Default)]
+pub struct BandmapCache {
+    version: u64,
+    entries: Vec<BandmapCacheEntry>,
+}
+
+struct BandmapCacheEntry {
+    band: &'static str,
+    mode: &'static str,
+    spots: Vec<crate::state::Spot>,
+}
+
+impl BandmapCache {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Fetch filtered spots for `(band, mode)`, rebuilding if the version
+    /// has advanced or this key is new. Returns a borrowed slice whose
+    /// lifetime is tied to `&mut self`.
+    pub fn get_or_build(
+        &mut self,
+        bandmap: &[crate::state::Spot],
+        bandmap_version: u64,
+        band: &'static str,
+        mode: &'static str,
+    ) -> &[crate::state::Spot] {
+        if self.version != bandmap_version {
+            self.entries.clear();
+            self.version = bandmap_version;
+        }
+        let idx = match self
+            .entries
+            .iter()
+            .position(|e| e.band == band && e.mode == mode)
+        {
+            Some(i) => i,
+            None => {
+                let spots = filtered_bandmap_spots(bandmap, band, mode);
+                self.entries.push(BandmapCacheEntry { band, mode, spots });
+                self.entries.len() - 1
+            }
+        };
+        &self.entries[idx].spots
     }
 }

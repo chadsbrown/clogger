@@ -104,6 +104,11 @@ pub struct AppState {
     /// disables the warning entirely. Not derived from rig-reported filter
     /// width — it's an operator-chosen threshold.
     pub passband_qrm_width_hz: Option<u32>,
+    /// Monotonic counter that increments on every bandmap mutation (spot
+    /// received or withdrawn). Consumers — notably the TUI `BandmapCache` —
+    /// compare stored versions against this to detect when cached filtered
+    /// results have gone stale.
+    pub bandmap_version: u64,
 }
 
 impl AppState {

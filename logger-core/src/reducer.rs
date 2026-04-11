@@ -1,6 +1,6 @@
 use crate::{
     contest::{
-        filtered_bandmap_spots, freq_to_band_label,
+        filtered_bandmap_spots, freq_to_band_label, normalize_mode,
         traits::{ContestEntry, EntryContext},
     },
     effects::Effect,
@@ -112,11 +112,13 @@ pub fn reduce(
         AppEvent::RigDisconnected { .. } => Vec::new(),
         AppEvent::SpotReceived { spot } => {
             st.bandmap.push(spot);
+            st.bandmap_version = st.bandmap_version.wrapping_add(1);
             recompute_passband_warning(st);
             Vec::new()
         }
         AppEvent::SpotWithdrawn { call } => {
             st.bandmap.retain(|s| s.call != call);
+            st.bandmap_version = st.bandmap_version.wrapping_add(1);
             recompute_passband_warning(st);
             Vec::new()
         }
@@ -323,10 +325,10 @@ pub fn reduce(
             let radio_state = st.radios.get(&target).filter(|r| r.freq_hz > 0);
             let band = radio_state
                 .map(|r| freq_to_band_label(r.freq_hz))
-                .unwrap_or_else(|| "40m".to_string());
+                .unwrap_or("40m");
             let mode = radio_state.map(|r| r.mode.as_str()).unwrap_or("CW");
 
-            let spots = filtered_bandmap_spots(&st.bandmap, &band, mode);
+            let spots = filtered_bandmap_spots(&st.bandmap, band, mode);
             if spots.is_empty() {
                 return Vec::new();
             }
@@ -598,18 +600,6 @@ fn clear_history_fields(st: &mut AppState) {
     entry.scp_n1_matches.clear();
 }
 
-fn normalize_mode(mode: &str) -> &'static str {
-    let trimmed = mode.trim();
-    if trimmed.eq_ignore_ascii_case("CW") {
-        "CW"
-    } else if trimmed.eq_ignore_ascii_case("SSB") {
-        "SSB"
-    } else if trimmed.eq_ignore_ascii_case("DIGITAL") {
-        "DIGITAL"
-    } else {
-        "OTHER"
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -683,6 +673,7 @@ mod tests {
             default_cw_speed: 28,
             serial_counter: None,
             passband_qrm_width_hz: None,
+            bandmap_version: 0,
         }
     }
 
