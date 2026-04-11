@@ -3,10 +3,11 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use logger_core::{
-    AppState, CallHistoryLookup, ContestEntry, EntryState, EsmPolicy, Macros, NoCallHistory,
-    NoScp, ScpLookup, contest_from_id,
+    AppEvent, AppState, CallHistoryLookup, ContestEntry, EntryState, EsmPolicy, Macros,
+    NoCallHistory, NoScp, ScpLookup, contest_from_id,
 };
 use serde::Deserialize;
+use tokio::sync::mpsc;
 use tracing::warn;
 
 use crate::log_adapter::LogAdapter;
@@ -37,6 +38,10 @@ pub struct SessionConfig {
     pub start_serial: Option<u32>,
     /// Passband QRM warning width in hertz. `None` disables the warning.
     pub passband_qrm_width_hz: Option<u32>,
+    /// Channel for hardware-task error events (persist, keyer, rig, so2r).
+    /// Required: the TUI must pass its `app_tx` so per-device tasks can
+    /// surface errors back to the main event loop.
+    pub app_tx: mpsc::Sender<AppEvent>,
 }
 
 pub struct Session {
@@ -104,7 +109,9 @@ pub fn bootstrap(config: SessionConfig) -> Result<Session> {
 
     let contest_instance_id = contest.contest_instance_id();
     let log_adapter = if let Some(db_path) = &config.db_path {
-        LogAdapter::open_db(scorer, contest_instance_id, db_path)?
+        // Persistence runs in a dedicated task; LogAdapter sends ops over
+        // an mpsc channel instead of blocking the event loop on disk I/O.
+        LogAdapter::open_db_async(scorer, contest_instance_id, db_path, config.app_tx.clone())?
     } else {
         LogAdapter::new(scorer, contest_instance_id)
     };

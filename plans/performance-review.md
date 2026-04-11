@@ -69,6 +69,54 @@ keystroke-to-visible latency) over raw throughput.
   reducer work, but won't move the latency distribution — rig status
   events already land in the fast-path column (microseconds). Expected
   delta: none in p50/p95/p99, slight reduction in total work per second.
+- [x] **7 — Hardware I/O into dedicated per-device tasks (expanded 3.1)** —
+  Five landed sub-steps:
+  1. **Persist task** — `logger-runtime/src/persist_task.rs`. `LogAdapter`
+     gained a `PersistBackend` enum with `None` / `Sync(SqliteOpSink)` /
+     `Async(mpsc::UnboundedSender<Vec<StoredOp>>)` variants. Production
+     uses Async via `open_db_async`, tests still use Sync via `open_db`
+     so existing round-trip tests keep working. Unbounded channel —
+     losing QSO writes is unacceptable; we'd rather grow memory.
+  2. **SO2R task** — `logger-runtime/src/so2r_task.rs`. `So2rCmd::SetRx`
+     handled by a dedicated task over a bounded channel. The task owns
+     an `Arc<dyn So2rSwitch>` clone; the keyer task holds another clone
+     for cross-radio CW. OTRSP's internal actor serializes commands, so
+     concurrent access is safe.
+  3. **Rig control task** — added inside the existing
+     `spawn_rig_adapter` (one per rig, returns `mpsc::Sender<RigCmd>`).
+     Runs alongside the existing poll and subscription tasks, sharing
+     `Arc<dyn Rig>` — riglib-icom's internal actor serializes all
+     commands, so poll+control concurrency is fine. The event loop
+     no longer holds `Arc<dyn Rig>` at all, only the command sender.
+  4. **Keyer task** — `logger-runtime/src/keyer_task.rs`. Owns
+     `Box<dyn Keyer>` + `Option<Arc<dyn So2rSwitch>>`. Handles
+     `KeyerCmd::Send { radio, text }` and `KeyerCmd::Abort`. Cross-radio
+     CW switch is atomic inside the task: `abort → set_tx → sleep(50ms)
+     → send_raw` — the 50 ms sleep covers OTRSP's relay propagation
+     delay. `keyer.abort()` uses winkey's internal priority channel
+     so it preempts pending sends within ~1 ms; no cooperative
+     cancellation needed. `build_contest_message` (the wire-format
+     encoder) moved into the task.
+  5. **Error event variants** — `AppEvent::KeyerDisconnected`,
+     `KeyerError`, `So2rDisconnected`, `So2rError`, `PersistError`.
+     Tasks emit these via a cloned `app_tx: Sender<AppEvent>`. Reducer
+     treats them as no-ops; event_loop updates status indicators and
+     the error banner. Bootstrap now takes `app_tx` in `SessionConfig`
+     and forwards it into `LogAdapter::open_db_async`.
+
+  `dispatch_effects` now has **zero `.await`s on hardware**. Every
+  previously-blocking effect (`CwSend`, `CwAbort`, `RigSet`,
+  `So2rFocusChanged`, `LogInsert`) is a non-blocking `try_send` to the
+  relevant task. `event_loop::run`'s signature dropped `keyer`,
+  `so2r_switch`, and `rigs`, replacing them with the three command
+  channel senders. Initial OTRSP routing moved from `event_loop::run`
+  into `main.rs` (pre-loop, one-shot). All 28 tests still pass with no
+  behavior change.
+
+  **Expected validation** (to be re-measured with the same
+  messing-around workload as the 2026-04-11 baseline): p99 of
+  reduce+dispatch should drop from ~100 ms to <100 µs, max from
+  ~124 ms to <1 ms. p50/p95 unchanged (already microsecond).
 
 ## Measurements
 

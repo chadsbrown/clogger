@@ -110,6 +110,14 @@ pub fn reduce(
             Vec::new()
         }
         AppEvent::RigDisconnected { .. } => Vec::new(),
+        // Hardware-task error events — purely TUI concerns (status bar,
+        // error banner). The reducer doesn't track device health in the
+        // contest state machine, so these are no-ops here.
+        AppEvent::KeyerDisconnected
+        | AppEvent::KeyerError { .. }
+        | AppEvent::So2rDisconnected
+        | AppEvent::So2rError { .. }
+        | AppEvent::PersistError { .. } => Vec::new(),
         AppEvent::SpotReceived { spot } => {
             st.bandmap.push(spot);
             st.bandmap_version = st.bandmap_version.wrapping_add(1);

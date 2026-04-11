@@ -15,7 +15,7 @@ use logger_core::{AppEvent, RadioId, contest::BandmapCache};
 use logger_runtime::{AvailSummary, RateInfo, ScoreboardStatus, ScoreSummary};
 use tokio::sync::mpsc;
 use tracing::warn;
-use logger_runtime::{Keyer, Rig, So2rSwitch};
+use logger_runtime::{Keyer, So2rSwitch};
 
 use config::{Cli, load_config};
 use ui::log_tail::LogRow;
@@ -121,6 +121,12 @@ async fn main() -> Result<()> {
 
     let config = load_config(&cli)?;
 
+    // Two-channel bridge: hardware adapters send AppEvent, terminal sends TerminalEvent.
+    // Created before bootstrap() so the persist task (spawned inside bootstrap when
+    // db_path is set) has a channel to send PersistError events on.
+    let (app_tx, mut app_rx) = mpsc::channel::<AppEvent>(256);
+    let (tui_tx, tui_rx) = mpsc::channel::<adapters::terminal::TerminalEvent>(256);
+
     // Bootstrap session (contest, state, log adapter, call history, SCP)
     // Pull cw_speed from the first rig that has it set, fallback to keyer or default
     let default_cw_speed = config
@@ -143,22 +149,22 @@ async fn main() -> Result<()> {
         scp_path: cli.scp.as_ref().or(config.scp_file.as_ref()).cloned(),
         start_serial: None,
         passband_qrm_width_hz: config.passband_qrm_width_hz,
+        app_tx: app_tx.clone(),
     })?;
-
-    // Two-channel bridge: hardware adapters send AppEvent, terminal sends TerminalEvent
-    let (app_tx, mut app_rx) = mpsc::channel::<AppEvent>(256);
-    let (tui_tx, tui_rx) = mpsc::channel::<adapters::terminal::TerminalEvent>(256);
 
     // Spawn rig adapters (one per configured rig, indexed by radio_id).
     // `rig_status` tracks per-radio connection state for the status bar:
     // every configured radio gets an entry, `true` if the adapter spawned
-    // successfully and `false` if it failed.
-    let mut rigs: HashMap<RadioId, Arc<dyn Rig>> = HashMap::new();
+    // successfully and `false` if it failed. Each adapter returns an
+    // mpsc sender for `RigCmd`s — the event loop never holds the rig
+    // handle itself; control operations go through this channel to a
+    // dedicated task that awaits on CI-V roundtrips.
+    let mut rig_txs: HashMap<RadioId, mpsc::Sender<logger_runtime::RigCmd>> = HashMap::new();
     let mut rig_status: BTreeMap<RadioId, bool> = BTreeMap::new();
     for rig_config in &config.rigs {
         match logger_runtime::spawn_rig_adapter(rig_config, app_tx.clone()).await {
-            Ok(rig) => {
-                rigs.insert(rig_config.radio_id, rig);
+            Ok(rig_tx) => {
+                rig_txs.insert(rig_config.radio_id, rig_tx);
                 rig_status.insert(rig_config.radio_id, true);
             }
             Err(e) => {
@@ -210,16 +216,20 @@ async fn main() -> Result<()> {
         }
     }
 
-    // Optionally connect OTRSP SO2R switch
+    // Optionally connect OTRSP SO2R switch. The handle is shared between
+    // multiple consumers via `Arc`: the event loop (for legacy direct set_tx
+    // during cross-radio CwSend — Step 4 will move this into the keyer task)
+    // and the so2r task (which owns SetRx commands). The underlying `otrsp`
+    // crate serializes commands internally, so concurrent access is safe.
     let so2r_configured = config.so2r.is_some();
     let mut so2r_connected = false;
-    let (so2r_switch, so2r_default_rx_mode): (Option<Box<dyn So2rSwitch>>, logger_core::So2rRxMode) =
+    let (so2r_switch, so2r_default_rx_mode): (Option<Arc<dyn So2rSwitch>>, logger_core::So2rRxMode) =
         if let Some(so2r_config) = &config.so2r {
             let mode = logger_runtime::so2r_adapter::parse_rx_mode(&so2r_config.default_rx_mode);
             match logger_runtime::so2r_adapter::connect_so2r(so2r_config).await {
                 Ok(switch) => {
                     so2r_connected = true;
-                    (Some(switch), mode)
+                    (Some(Arc::from(switch)), mode)
                 }
                 Err(e) => {
                     warn!("OTRSP connection failed, continuing without: {e}");
@@ -229,6 +239,46 @@ async fn main() -> Result<()> {
         } else {
             (None, logger_core::So2rRxMode::Mono)
         };
+
+    // Spawn the SO2R task if we have a switch. The task owns one clone of
+    // the Arc and drains RX-routing commands from the channel we're about
+    // to hand to the event loop.
+    let so2r_tx = so2r_switch.as_ref().map(|s| {
+        logger_runtime::spawn_so2r_task(Arc::clone(s), app_tx.clone())
+    });
+
+    // Initial OTRSP routing at startup: put the switch in a known state
+    // before the event loop starts. Direct awaits here are fine — they
+    // happen once at startup, not on the hot path. After this, all OTRSP
+    // commands go through either the so2r task (RX) or the keyer task (TX).
+    if let Some(switch) = so2r_switch.as_deref() {
+        logger_runtime::so2r_adapter::set_tx(
+            Some(switch),
+            session.state.focused_radio,
+        )
+        .await;
+        logger_runtime::so2r_adapter::set_rx(
+            Some(switch),
+            session.state.focused_radio,
+            so2r_default_rx_mode,
+        )
+        .await;
+    }
+
+    // Spawn the keyer task. Transfers ownership of the `Box<dyn Keyer>`
+    // and clones the so2r_switch Arc so the task can handle cross-radio
+    // TX routing atomically (abort → set_tx → settle → send). The keyer
+    // subscription (for CW echo events) was already taken above — it's a
+    // broadcast receiver, separate from the command channel.
+    let initial_tx_radio = session.state.focused_radio;
+    let keyer_tx = keyer.map(|k| {
+        logger_runtime::spawn_keyer_task(
+            k,
+            so2r_switch.as_ref().map(Arc::clone),
+            initial_tx_radio,
+            app_tx.clone(),
+        )
+    });
 
     // Optionally spawn scoreboard adapter
     let scoreboard_configured = !config.scoreboard.endpoints.is_empty();
@@ -279,8 +329,8 @@ async fn main() -> Result<()> {
         session.contest,
         session.macros,
         session.log_adapter,
-        rigs,
-        keyer,
+        rig_txs,
+        keyer_tx,
         keyer_rx,
         cw_echo_enabled,
         config.cursor_style,
@@ -299,7 +349,7 @@ async fn main() -> Result<()> {
             scoreboard_configured,
             bandmap_mode: config.bandmap,
         },
-        so2r_switch,
+        so2r_tx,
         so2r_default_rx_mode,
         scoreboard_handle,
     )

@@ -4,17 +4,36 @@ use anyhow::{Context, Result};
 use logger_core::{DupeChecker, MultChecker, QsoDraft};
 use qsolog::{
     core::store::QsoStore,
+    op::StoredOp,
     persist::{OpSink, sqlite::SqliteOpSink},
     qso::{ExchangeBlob, QsoDraft as StoreDraft, QsoFlags, QsoRecord},
     types::{Band, Mode, QsoId},
 };
+use tokio::sync::mpsc;
 use tracing::info;
 
 use crate::scoring::{ContestScorer, ScoreBreakdown, ScoreSummary};
 
+/// Persistence strategy for a `LogAdapter`.
+///
+/// - `None`: in-memory only. Used by `logger-cli` golden tests and any
+///   headless run without `db_path`.
+/// - `Sync`: direct synchronous SQLite writes via an owned `SqliteOpSink`.
+///   Used by `log_adapter`'s own unit tests (which need to read the DB
+///   back within the same process) and by any caller that can tolerate
+///   the write latency inline.
+/// - `Async`: writes are sent to a dedicated `persist_task` over an
+///   unbounded mpsc channel. The event loop never awaits on disk I/O.
+///   Used by the TUI in production via `bootstrap`.
+enum PersistBackend {
+    None,
+    Sync(SqliteOpSink),
+    Async(mpsc::UnboundedSender<Vec<StoredOp>>),
+}
+
 pub struct LogAdapter {
     store: QsoStore,
-    sink: Option<SqliteOpSink>,
+    persist: PersistBackend,
     scorer: Box<dyn ContestScorer>,
     /// The contest this adapter is logging for. All inserted QSOs are
     /// tagged with this id in the qsolog store. A log session always
@@ -32,13 +51,17 @@ impl LogAdapter {
     pub fn new(scorer: Box<dyn ContestScorer>, contest_instance_id: u64) -> Self {
         Self {
             store: QsoStore::new(),
-            sink: None,
+            persist: PersistBackend::None,
             scorer,
             contest_instance_id,
             score_epoch: 0,
         }
     }
 
+    /// Open a SQLite log and load its state, using **synchronous** writes.
+    /// Preserved for tests and for callers that don't run a tokio runtime.
+    /// The TUI uses `open_db_async` instead, which delegates writes to a
+    /// `persist_task`.
     pub fn open_db(
         scorer: Box<dyn ContestScorer>,
         contest_instance_id: u64,
@@ -52,12 +75,45 @@ impl LogAdapter {
         info!("loaded {count} QSOs from {}", path.display());
         let mut adapter = Self {
             store,
-            sink: Some(sink),
+            persist: PersistBackend::Sync(sink),
             scorer,
             contest_instance_id,
             score_epoch: 0,
         };
         // Populate scorer state from the loaded log
+        let records = adapter.ordered_records();
+        adapter.scorer.rebuild(&records);
+        adapter.score_epoch = adapter.score_epoch.wrapping_add(1);
+        Ok(adapter)
+    }
+
+    /// Open a SQLite log and load its state, sending subsequent writes to a
+    /// dedicated `persist_task`. The sink is moved into the task; after this
+    /// returns, the only way to write is through the channel (which the
+    /// adapter owns the sender for). The `LogAdapter::insert` path stays
+    /// synchronous-looking to the caller but does a non-blocking
+    /// channel send rather than a blocking disk write.
+    pub fn open_db_async(
+        scorer: Box<dyn ContestScorer>,
+        contest_instance_id: u64,
+        path: &Path,
+        err_tx: mpsc::Sender<logger_core::AppEvent>,
+    ) -> Result<Self> {
+        let sink = SqliteOpSink::open(path).map_err(|e| anyhow::anyhow!("open db: {e:?}"))?;
+        let store = sink
+            .load_store()
+            .map_err(|e| anyhow::anyhow!("load store: {e:?}"))?;
+        let count = store.ordered_ids().len();
+        info!("loaded {count} QSOs from {}", path.display());
+        // Transfer ownership of the sink to the persist task.
+        let persist_tx = crate::persist_task::spawn_persist_task(sink, err_tx);
+        let mut adapter = Self {
+            store,
+            persist: PersistBackend::Async(persist_tx),
+            scorer,
+            contest_instance_id,
+            score_epoch: 0,
+        };
         let records = adapter.ordered_records();
         adapter.scorer.rebuild(&records);
         adapter.score_epoch = adapter.score_epoch.wrapping_add(1);
@@ -134,17 +190,35 @@ impl LogAdapter {
         Ok(())
     }
 
-    /// Drain any pending ops from the store and append them to the SQLite sink
-    /// if one is attached. Called after operations that mutate the store.
+    /// Drain any pending ops from the store and flush them via the
+    /// configured persistence backend. Called after operations that mutate
+    /// the store. `None` is a no-op; `Sync` writes synchronously and can
+    /// return an error; `Async` sends to the persist task and never blocks
+    /// — failures there surface asynchronously via `PersistError`
+    /// `AppEvent`s on the main event channel.
     fn flush_pending_ops(&mut self) -> Result<()> {
-        if let Some(sink) = &mut self.sink {
-            let ops = self.store.drain_pending_ops();
-            if !ops.is_empty() {
-                sink.append_ops(&ops)
-                    .map_err(|e| anyhow::anyhow!("persist failed: {e:?}"))?;
+        match &mut self.persist {
+            PersistBackend::None => Ok(()),
+            PersistBackend::Sync(sink) => {
+                let ops = self.store.drain_pending_ops();
+                if !ops.is_empty() {
+                    sink.append_ops(&ops)
+                        .map_err(|e| anyhow::anyhow!("persist failed: {e:?}"))?;
+                }
+                Ok(())
+            }
+            PersistBackend::Async(tx) => {
+                let ops = self.store.drain_pending_ops();
+                if !ops.is_empty() {
+                    // Unbounded send — only fails if the receiver dropped,
+                    // which only happens at shutdown. Ignore errors: the
+                    // in-memory store update already succeeded and will
+                    // stay consistent for the lifetime of the process.
+                    let _ = tx.send(ops);
+                }
+                Ok(())
             }
         }
-        Ok(())
     }
 
     pub fn score_summary(&self) -> ScoreSummary {

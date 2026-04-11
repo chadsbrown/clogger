@@ -11,12 +11,10 @@ use logger_core::{AppState, CallHistoryLookup, ContestEntry, Effect, Macros, Rad
 use logger_runtime::LogAdapter;
 use ratatui::backend::CrosstermBackend;
 use tokio::sync::{broadcast, mpsc};
-use std::sync::Arc;
 use logger_runtime::{
-    CategoryConfig, Keyer, KeyerEvent, ReceiverId, Rig, ScoreboardHandle, ScoreboardSnapshot,
-    ScoreboardStatus, So2rSwitch,
+    CategoryConfig, KeyerEvent, ScoreboardHandle, ScoreboardSnapshot,
+    ScoreboardStatus,
 };
-use tracing::warn;
 
 use crate::TuiState;
 use crate::adapters::terminal::TerminalEvent;
@@ -28,8 +26,8 @@ pub async fn run(
     contest: Box<dyn ContestEntry>,
     macros: Macros,
     mut log_adapter: LogAdapter,
-    rigs: HashMap<RadioId, Arc<dyn Rig>>,
-    keyer: Option<Box<dyn Keyer>>,
+    rig_txs: HashMap<RadioId, mpsc::Sender<logger_runtime::RigCmd>>,
+    keyer_tx: Option<mpsc::Sender<logger_runtime::KeyerCmd>>,
     mut keyer_rx: Option<broadcast::Receiver<KeyerEvent>>,
     cw_echo_enabled: bool,
     cursor_style: crate::config::CursorStyle,
@@ -38,7 +36,7 @@ pub async fn run(
     mut rx: mpsc::Receiver<TerminalEvent>,
     initial_log_display: Vec<LogRow>,
     conn: crate::ConnectionStatus,
-    so2r_switch: Option<Box<dyn So2rSwitch>>,
+    so2r_tx: Option<mpsc::Sender<logger_runtime::So2rCmd>>,
     so2r_default_rx_mode: logger_core::So2rRxMode,
     scoreboard: Option<(ScoreboardHandle, &'static str, String, CategoryConfig)>,
 ) -> Result<()> {
@@ -89,10 +87,8 @@ pub async fn run(
         ..Default::default()
     };
 
-    // Initial OTRSP setup: route TX and RX to the focused radio at startup so
-    // the box is in a known state before any CW is sent.
-    logger_runtime::so2r_adapter::set_tx(so2r_switch.as_deref(), state.focused_radio).await;
-    logger_runtime::so2r_adapter::set_rx(so2r_switch.as_deref(), state.focused_radio, so2r_default_rx_mode).await;
+    // Initial OTRSP setup happens in `main.rs` before this function is called
+    // — the event loop no longer holds `so2r_switch` directly.
 
     let mut render_interval = tokio::time::interval(Duration::from_millis(50)); // 20 FPS
     let mut timer_interval = tokio::time::interval(Duration::from_secs(1));
@@ -125,12 +121,12 @@ pub async fn run(
                                 logger_core::So2rRxMode::Mono
                             }
                         };
-                        logger_runtime::so2r_adapter::set_rx(
-                            so2r_switch.as_deref(),
-                            state.focused_radio,
-                            so2r_default_rx_mode,
-                        )
-                        .await;
+                        if let Some(tx) = so2r_tx.as_ref() {
+                            let _ = tx.try_send(logger_runtime::So2rCmd::SetRx {
+                                radio: state.focused_radio,
+                                mode: so2r_default_rx_mode,
+                            });
+                        }
                     }
                     Some(TerminalEvent::App(app_event)) => {
                         // If the export modal is open, intercept keyboard events
@@ -165,14 +161,37 @@ pub async fn run(
                             // Non-keyboard events (RigStatus, spots, etc.) fall through
                         }
 
-                        if let logger_core::AppEvent::RigDisconnected { radio } = &app_event {
-                            tui_state.rigs.insert(*radio, false);
-                            let label = if tui_state.rigs.len() > 1 {
-                                format!("RIG{radio}")
-                            } else {
-                                "RIG".to_string()
-                            };
-                            tui_state.error_message = Some(format!("ERROR: {label} CONNECTION LOST"));
+                        // Hardware disconnect/error events update the status
+                        // bar indicators and the error banner before the
+                        // reducer sees them (the reducer treats them as no-ops).
+                        match &app_event {
+                            logger_core::AppEvent::RigDisconnected { radio } => {
+                                tui_state.rigs.insert(*radio, false);
+                                let label = if tui_state.rigs.len() > 1 {
+                                    format!("RIG{radio}")
+                                } else {
+                                    "RIG".to_string()
+                                };
+                                tui_state.error_message = Some(format!("ERROR: {label} CONNECTION LOST"));
+                            }
+                            logger_core::AppEvent::KeyerDisconnected => {
+                                tui_state.keyer_connected = false;
+                                tui_state.error_message = Some("ERROR: KEYER CONNECTION LOST".to_string());
+                            }
+                            logger_core::AppEvent::KeyerError { message } => {
+                                tui_state.error_message = Some(format!("KEYER: {message}"));
+                            }
+                            logger_core::AppEvent::So2rDisconnected => {
+                                tui_state.so2r_connected = false;
+                                tui_state.error_message = Some("ERROR: SO2R CONNECTION LOST".to_string());
+                            }
+                            logger_core::AppEvent::So2rError { message } => {
+                                tui_state.error_message = Some(format!("SO2R: {message}"));
+                            }
+                            logger_core::AppEvent::PersistError { message } => {
+                                tui_state.error_message = Some(format!("PERSIST: {message}"));
+                            }
+                            _ => {}
                         }
 
                         // Capture previous freq/mode so we can detect meaningful
@@ -200,9 +219,9 @@ pub async fn run(
                             &mut state,
                             &mut log_adapter,
                             &mut tui_state,
-                            &rigs,
-                            keyer.as_deref(),
-                            so2r_switch.as_deref(),
+                            &rig_txs,
+                            keyer_tx.as_ref(),
+                            so2r_tx.as_ref(),
                             so2r_default_rx_mode,
                         ).await {
                             break Err(e);
@@ -301,9 +320,9 @@ pub async fn run(
                     &mut state,
                     &mut log_adapter,
                     &mut tui_state,
-                    &rigs,
-                    keyer.as_deref(),
-                    so2r_switch.as_deref(),
+                    &rig_txs,
+                    keyer_tx.as_ref(),
+                    so2r_tx.as_ref(),
                     so2r_default_rx_mode,
                 ).await {
                     break Err(e);
@@ -332,19 +351,21 @@ async fn dispatch_effects(
     state: &mut AppState,
     log_adapter: &mut LogAdapter,
     tui_state: &mut TuiState,
-    rigs: &HashMap<RadioId, Arc<dyn Rig>>,
-    keyer: Option<&dyn Keyer>,
-    so2r_switch: Option<&dyn So2rSwitch>,
+    rig_txs: &HashMap<RadioId, mpsc::Sender<logger_runtime::RigCmd>>,
+    keyer_tx: Option<&mpsc::Sender<logger_runtime::KeyerCmd>>,
+    so2r_tx: Option<&mpsc::Sender<logger_runtime::So2rCmd>>,
     so2r_default_rx_mode: logger_core::So2rRxMode,
 ) -> Result<()> {
     for effect in effects {
         match effect {
             Effect::CwSend { radio, text } => {
-                // If TX is currently routed to a different radio, abort the
-                // in-flight CW and switch OTRSP before starting the new one.
+                // Update TUI state optimistically — the keyer task will
+                // actually perform the (possibly cross-radio) send
+                // asynchronously. If it needs to abort + switch OTRSP TX
+                // + wait for the relay + send, that whole sequence happens
+                // inside the keyer task (which holds the Arc<dyn So2rSwitch>
+                // clone). The event loop just enqueues the command.
                 if *radio != tui_state.tx_radio {
-                    logger_runtime::abort_cw(keyer).await;
-                    logger_runtime::so2r_adapter::set_tx(so2r_switch, *radio).await;
                     tui_state.tx_radio = *radio;
                 }
                 tui_state.cw_transmitting = true;
@@ -359,7 +380,12 @@ async fn dispatch_effects(
                         .echo_per_radio
                         .insert(*radio, strip_speed_markers(text));
                 }
-                logger_runtime::send_cw(keyer, text).await;
+                if let Some(tx) = keyer_tx {
+                    let _ = tx.try_send(logger_runtime::KeyerCmd::Send {
+                        radio: *radio,
+                        text: text.clone(),
+                    });
+                }
             }
             Effect::LogInsert { draft } => {
                 let now_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
@@ -401,17 +427,19 @@ async fn dispatch_effects(
                 }
             }
             Effect::RigSet { radio, freq_hz } => {
-                if let Some(rig) = rigs.get(radio) {
-                    // Each rig adapter is bound to a specific radio_id, so we
-                    // address its primary receiver (index 0).
-                    let rx = ReceiverId::from_index(0);
-                    if let Err(e) = rig.set_frequency(rx, *freq_hz).await {
-                        warn!("rig set_frequency failed: {e}");
-                    }
+                // Non-blocking: enqueue a SetFrequency command for the rig's
+                // dedicated control task. CI-V roundtrip latency no longer
+                // blocks the event loop.
+                if let Some(tx) = rig_txs.get(radio) {
+                    let _ = tx.try_send(logger_runtime::RigCmd::SetFrequency {
+                        hz: *freq_hz,
+                    });
                 }
             }
             Effect::CwAbort => {
-                logger_runtime::abort_cw(keyer).await;
+                if let Some(tx) = keyer_tx {
+                    let _ = tx.try_send(logger_runtime::KeyerCmd::Abort);
+                }
             }
             Effect::UiClearEntry => {
                 // State already reflects clear behavior in reducer
@@ -419,8 +447,14 @@ async fn dispatch_effects(
             Effect::So2rFocusChanged { radio } => {
                 // Entry focus changed: update RX audio to follow the operator's
                 // attention. Do NOT change TX routing — that stays where CW is
-                // currently being keyed.
-                logger_runtime::so2r_adapter::set_rx(so2r_switch, *radio, so2r_default_rx_mode).await;
+                // currently being keyed. Non-blocking: the command is enqueued
+                // to the so2r task which processes it asynchronously.
+                if let Some(tx) = so2r_tx {
+                    let _ = tx.try_send(logger_runtime::So2rCmd::SetRx {
+                        radio: *radio,
+                        mode: so2r_default_rx_mode,
+                    });
+                }
             }
         }
     }
@@ -468,9 +502,15 @@ fn needs_analytics_recompute(event: &logger_core::AppEvent) -> bool {
         AppEvent::BandmapUp { .. } | AppEvent::BandmapDown { .. } => true,
         // RigStatus handled by freq/mode comparison in caller
         AppEvent::RigStatus { .. } => false,
-        // Timer, disconnect, op-mode, operator changes don't affect analytics
+        // Timer, disconnect, op-mode, operator changes don't affect analytics.
+        // Hardware error/disconnect events are purely TUI status concerns.
         AppEvent::TimerTick { .. }
         | AppEvent::RigDisconnected { .. }
+        | AppEvent::KeyerDisconnected
+        | AppEvent::KeyerError { .. }
+        | AppEvent::So2rDisconnected
+        | AppEvent::So2rError { .. }
+        | AppEvent::PersistError { .. }
         | AppEvent::SetOpMode { .. }
         | AppEvent::ToggleOpMode
         | AppEvent::SetOperator { .. } => false,

@@ -19,11 +19,11 @@ pub fn parse_rx_mode(s: &str) -> So2rRxMode {
     }
 }
 
-fn radio_id_to_otrsp(radio: RadioId) -> Radio {
+pub(crate) fn radio_id_to_otrsp(radio: RadioId) -> Radio {
     if radio == 1 { Radio::Radio1 } else { Radio::Radio2 }
 }
 
-fn rx_mode_to_otrsp(mode: So2rRxMode) -> RxMode {
+pub(crate) fn rx_mode_to_otrsp(mode: So2rRxMode) -> RxMode {
     match mode {
         So2rRxMode::Mono => RxMode::Mono,
         So2rRxMode::Stereo => RxMode::Stereo,

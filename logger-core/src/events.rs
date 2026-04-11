@@ -61,6 +61,26 @@ pub enum AppEvent {
     RigDisconnected {
         radio: RadioId,
     },
+    /// WinKey / CW keyer lost its serial connection (detected by the keyer
+    /// task). The reducer treats this as a no-op; the TUI updates its
+    /// status indicator and error banner.
+    KeyerDisconnected,
+    /// Transient keyer failure (e.g., `send_raw` returned an error but the
+    /// connection may still be usable). Reducer no-op; TUI shows a toast.
+    KeyerError {
+        message: String,
+    },
+    /// OTRSP SO2R switch lost its serial connection.
+    So2rDisconnected,
+    /// Transient OTRSP failure.
+    So2rError {
+        message: String,
+    },
+    /// SQLite persist task failed to append ops. QSO is still in memory;
+    /// operator should be warned that the log is drifting from disk.
+    PersistError {
+        message: String,
+    },
     EsmTrigger,
     BandmapUp { radio: RadioId },
     BandmapDown { radio: RadioId },

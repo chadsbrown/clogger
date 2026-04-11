@@ -8,6 +8,14 @@ use tracing::{info, warn};
 
 use crate::config::RigConfig;
 
+/// Commands handled by the per-rig control task. Extend here as new
+/// rig-control effects are added to the reducer.
+#[derive(Debug, Clone)]
+pub enum RigCmd {
+    /// Tune the primary receiver to the given frequency (Hz).
+    SetFrequency { hz: u64 },
+}
+
 struct LastRigState {
     freq_hz: u64,
     mode: String,
@@ -56,7 +64,7 @@ fn normalize(name: &str) -> String {
 pub async fn spawn_rig_adapter(
     config: &RigConfig,
     tx: mpsc::Sender<AppEvent>,
-) -> anyhow::Result<Arc<dyn Rig>> {
+) -> anyhow::Result<mpsc::Sender<RigCmd>> {
     let rig_def = riglib::find_rig(&config.model)
         .ok_or_else(|| anyhow::anyhow!("unknown rig model: {}", config.model))?;
 
@@ -224,7 +232,7 @@ pub async fn spawn_rig_adapter(
     // the watch channel and let the subscription task pick it up on the next
     // broadcast event.
     let poll_rig = Arc::clone(&rig);
-    let poll_tx = tx;
+    let poll_tx = tx.clone();
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_millis(250));
         let mut consecutive_errors = 0u32;
@@ -255,5 +263,34 @@ pub async fn spawn_rig_adapter(
         }
     });
 
-    Ok(rig)
+    // Control task: drains RigCmd from an mpsc channel and calls the
+    // corresponding Rig methods. Shares `Arc<dyn Rig>` with the poll and
+    // subscription tasks — the underlying riglib implementation serializes
+    // commands internally via its own actor, so concurrent access is safe.
+    // This is what makes hardware operations non-blocking from the event
+    // loop's perspective: the event loop does `rig_tx.try_send(cmd)` and
+    // returns in nanoseconds; the control task picks it up and awaits on
+    // the CI-V roundtrip without blocking the UI.
+    let (cmd_tx, mut cmd_rx) = mpsc::channel::<RigCmd>(32);
+    let control_rig = Arc::clone(&rig);
+    let control_err_tx = tx;
+    tokio::spawn(async move {
+        while let Some(cmd) = cmd_rx.recv().await {
+            match cmd {
+                RigCmd::SetFrequency { hz } => {
+                    if let Err(e) = control_rig.set_frequency(primary, hz).await {
+                        warn!("rig {} set_frequency failed: {e}", radio_id);
+                        // Transient errors get surfaced to the UI as
+                        // RigError-style events could be added here; for
+                        // now, mirror the existing log-and-continue behavior.
+                        let _ = control_err_tx
+                            .send(AppEvent::RigDisconnected { radio: radio_id })
+                            .await;
+                    }
+                }
+            }
+        }
+    });
+
+    Ok(cmd_tx)
 }
