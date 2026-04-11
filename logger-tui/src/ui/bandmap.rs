@@ -1,4 +1,7 @@
-use logger_core::{AppState, RadioId, contest::{freq_to_band_label, normalize_mode}};
+use logger_core::{
+    AppState, BandmapCursor, RadioId,
+    contest::{freq_to_band_label, normalize_mode},
+};
 use ratatui::{
     Frame,
     layout::{Constraint, Rect},
@@ -26,38 +29,69 @@ pub fn render(frame: &mut Frame, area: Rect, app: &AppState, tui: &TuiState, rad
     let spots = cache.get_or_build(&app.bandmap, app.bandmap_version, band, mode);
 
     let cursor = app.bandmap_cursors.get(&radio_id).copied();
-    let visible = area.height.saturating_sub(2) as usize; // borders
-    let skip = if let Some(c) = cursor {
+    let highlight_idx = match cursor {
+        Some(BandmapCursor::On(i)) => Some(i),
+        _ => None,
+    };
+    let divider_idx = match cursor {
+        Some(BandmapCursor::Between(i)) => Some(i),
+        _ => None,
+    };
+
+    // Build all rows (including divider if the rig is parked between
+    // spots). Indexing below is over the final post-insertion vec.
+    let divider_style = Style::default().fg(Color::DarkGray);
+    let divider_row = || {
+        Row::new(vec![
+            Cell::from("───────"),
+            Cell::from("────────────"),
+        ])
+        .style(divider_style)
+    };
+    let mut all_rows: Vec<Row> = Vec::with_capacity(spots.len() + 1);
+    for (i, s) in spots.iter().enumerate() {
+        if divider_idx == Some(i) {
+            all_rows.push(divider_row());
+        }
+        let freq_khz = s.freq_hz as f64 / 1_000.0;
+        let row = Row::new(vec![
+            Cell::from(format!("{freq_khz:.1}")),
+            Cell::from(s.call.as_str()),
+        ]);
+        let styled = if highlight_idx == Some(i) {
+            row.style(Style::default().add_modifier(Modifier::REVERSED))
+        } else if tui.worked_calls.contains(&s.call) {
+            row.style(Style::default().fg(Color::DarkGray))
+        } else if tui.mult_calls.contains(&s.call) {
+            row.style(Style::default().fg(Color::Green))
+        } else {
+            row.style(Style::default().fg(Color::White))
+        };
+        all_rows.push(styled);
+    }
+    if divider_idx == Some(spots.len()) {
+        all_rows.push(divider_row());
+    }
+
+    // Scroll target: the cursor row (highlight or divider). For both
+    // variants this is the payload index; divider insertion doesn't
+    // shift it because the divider sits *at* that index.
+    let target = match cursor {
+        Some(BandmapCursor::On(i)) | Some(BandmapCursor::Between(i)) => Some(i),
+        None => None,
+    };
+    let total = all_rows.len();
+    let visible = area.height.saturating_sub(2) as usize;
+    let skip = if let Some(c) = target {
         if c < visible / 2 {
             0
         } else {
-            (c - visible / 2).min(spots.len().saturating_sub(visible))
+            (c - visible / 2).min(total.saturating_sub(visible))
         }
     } else {
-        spots.len().saturating_sub(visible)
+        total.saturating_sub(visible)
     };
-
-    let rows: Vec<Row> = spots
-        .iter()
-        .enumerate()
-        .skip(skip)
-        .map(|(i, s)| {
-            let freq_khz = s.freq_hz as f64 / 1_000.0;
-            let row = Row::new(vec![
-                Cell::from(format!("{freq_khz:.1}")),
-                Cell::from(s.call.as_str()),
-            ]);
-            if cursor == Some(i) {
-                row.style(Style::default().add_modifier(Modifier::REVERSED))
-            } else if tui.worked_calls.contains(&s.call) {
-                row.style(Style::default().fg(Color::DarkGray))
-            } else if tui.mult_calls.contains(&s.call) {
-                row.style(Style::default().fg(Color::Green))
-            } else {
-                row.style(Style::default().fg(Color::White))
-            }
-        })
-        .collect();
+    let rows: Vec<Row> = all_rows.into_iter().skip(skip).collect();
 
     let label = format!(" R{radio_id} Bandmap ({band}) ");
     let table = Table::new(

@@ -14,15 +14,32 @@ pub fn contest_from_id(id: &str) -> Option<Box<dyn ContestEntry>> {
 
 /// Normalize an arbitrary rig mode string to one of the four canonical
 /// `&'static str` values used throughout clogger: `"CW"`, `"SSB"`,
-/// `"DIGITAL"`, or `"OTHER"`. Case-insensitive, trims whitespace. Returns
-/// a static slice — no allocation, safe to use as a map key or cache tag.
+/// `"DIGITAL"`, or `"OTHER"`. Case-insensitive, trims whitespace. Also
+/// aliases common raw rig mode strings (`"USB"`, `"LSB"`, `"CWR"`,
+/// `"RTTY"`, etc.) onto their canonical category so code paths that
+/// bypass the rig adapter's own mode mapping (e.g. direct event
+/// injection in scripted tests) still match. Returns a static slice —
+/// no allocation, safe to use as a map key or cache tag.
 pub fn normalize_mode(mode: &str) -> &'static str {
     let trimmed = mode.trim();
-    if trimmed.eq_ignore_ascii_case("CW") {
+    if trimmed.eq_ignore_ascii_case("CW") || trimmed.eq_ignore_ascii_case("CWR") {
         "CW"
-    } else if trimmed.eq_ignore_ascii_case("SSB") {
+    } else if trimmed.eq_ignore_ascii_case("SSB")
+        || trimmed.eq_ignore_ascii_case("USB")
+        || trimmed.eq_ignore_ascii_case("LSB")
+    {
         "SSB"
-    } else if trimmed.eq_ignore_ascii_case("DIGITAL") {
+    } else if trimmed.eq_ignore_ascii_case("DIGITAL")
+        || trimmed.eq_ignore_ascii_case("RTTY")
+        || trimmed.eq_ignore_ascii_case("RTTYR")
+        || trimmed.eq_ignore_ascii_case("DATA-U")
+        || trimmed.eq_ignore_ascii_case("DATA-L")
+        || trimmed.eq_ignore_ascii_case("DATAU")
+        || trimmed.eq_ignore_ascii_case("DATAL")
+        || trimmed.eq_ignore_ascii_case("FT8")
+        || trimmed.eq_ignore_ascii_case("FT4")
+        || trimmed.eq_ignore_ascii_case("PSK31")
+    {
         "DIGITAL"
     } else {
         "OTHER"

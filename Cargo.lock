@@ -82,7 +82,7 @@ version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -93,7 +93,7 @@ checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
 dependencies = [
  "anstyle",
  "once_cell_polyfill",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -427,7 +427,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1192,7 +1192,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1530,7 +1530,7 @@ dependencies = [
 [[package]]
 name = "riglib"
 version = "0.1.0"
-source = "git+https://github.com/chadsbrown/riglib#0a371076f8f5138d5a4fded3fae0671efb27f7a9"
+source = "git+https://github.com/chadsbrown/riglib#41ccd1bd7a3f7355a998303b450e9f16340545b4"
 dependencies = [
  "riglib-core",
  "riglib-elecraft",
@@ -1544,7 +1544,7 @@ dependencies = [
 [[package]]
 name = "riglib-core"
 version = "0.1.0"
-source = "git+https://github.com/chadsbrown/riglib#0a371076f8f5138d5a4fded3fae0671efb27f7a9"
+source = "git+https://github.com/chadsbrown/riglib#41ccd1bd7a3f7355a998303b450e9f16340545b4"
 dependencies = [
  "async-trait",
  "thiserror 2.0.18",
@@ -1554,7 +1554,7 @@ dependencies = [
 [[package]]
 name = "riglib-elecraft"
 version = "0.1.0"
-source = "git+https://github.com/chadsbrown/riglib#0a371076f8f5138d5a4fded3fae0671efb27f7a9"
+source = "git+https://github.com/chadsbrown/riglib#41ccd1bd7a3f7355a998303b450e9f16340545b4"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1569,7 +1569,7 @@ dependencies = [
 [[package]]
 name = "riglib-flex"
 version = "0.1.0"
-source = "git+https://github.com/chadsbrown/riglib#0a371076f8f5138d5a4fded3fae0671efb27f7a9"
+source = "git+https://github.com/chadsbrown/riglib#41ccd1bd7a3f7355a998303b450e9f16340545b4"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1583,7 +1583,7 @@ dependencies = [
 [[package]]
 name = "riglib-icom"
 version = "0.1.0"
-source = "git+https://github.com/chadsbrown/riglib#0a371076f8f5138d5a4fded3fae0671efb27f7a9"
+source = "git+https://github.com/chadsbrown/riglib#41ccd1bd7a3f7355a998303b450e9f16340545b4"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1598,7 +1598,7 @@ dependencies = [
 [[package]]
 name = "riglib-kenwood"
 version = "0.1.0"
-source = "git+https://github.com/chadsbrown/riglib#0a371076f8f5138d5a4fded3fae0671efb27f7a9"
+source = "git+https://github.com/chadsbrown/riglib#41ccd1bd7a3f7355a998303b450e9f16340545b4"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1613,7 +1613,7 @@ dependencies = [
 [[package]]
 name = "riglib-text-io"
 version = "0.1.0"
-source = "git+https://github.com/chadsbrown/riglib#0a371076f8f5138d5a4fded3fae0671efb27f7a9"
+source = "git+https://github.com/chadsbrown/riglib#41ccd1bd7a3f7355a998303b450e9f16340545b4"
 dependencies = [
  "riglib-core",
  "tokio",
@@ -1624,7 +1624,7 @@ dependencies = [
 [[package]]
 name = "riglib-transport"
 version = "0.1.0"
-source = "git+https://github.com/chadsbrown/riglib#0a371076f8f5138d5a4fded3fae0671efb27f7a9"
+source = "git+https://github.com/chadsbrown/riglib#41ccd1bd7a3f7355a998303b450e9f16340545b4"
 dependencies = [
  "async-trait",
  "riglib-core",
@@ -1637,7 +1637,7 @@ dependencies = [
 [[package]]
 name = "riglib-yaesu"
 version = "0.1.0"
-source = "git+https://github.com/chadsbrown/riglib#0a371076f8f5138d5a4fded3fae0671efb27f7a9"
+source = "git+https://github.com/chadsbrown/riglib#41ccd1bd7a3f7355a998303b450e9f16340545b4"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1706,7 +1706,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1928,7 +1928,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a766e1110788c36f4fa1c2b71b387a7815aa65f88ce0229841826633d93723e"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -2027,7 +2027,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

@@ -669,6 +669,20 @@ fn validate_expectations(artifacts: &RunArtifacts, script: &Script) -> Result<()
         }
     }
 
+    if let Some(expected_cursors) = &script.expectations.final_bandmap_cursors {
+        for (radio_id, expected) in expected_cursors {
+            let got = artifacts.st.bandmap_cursors.get(radio_id).copied();
+            if got != Some(*expected) {
+                bail!(
+                    "radio {} expected bandmap_cursor {:?}, got {:?}",
+                    radio_id,
+                    expected,
+                    got
+                );
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -737,6 +751,7 @@ mod tests {
             "so2r_concurrent_inflight_qsos.json",
             "so2r_serial_shared_counter.json",
             "cqww_passband_qrm.json",
+            "bandmap_snap_to_freq.json",
         ];
 
         for script in scripts {

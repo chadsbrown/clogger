@@ -1,0 +1,14 @@
+{
+    "events": [
+        { "type": "Spot", "call": "DL1ABC", "freq_hz": 14023000, "mode": "CW" },
+        { "type": "Spot", "call": "K5ZD",   "freq_hz": 14025000, "mode": "CW" },
+        { "type": "Spot", "call": "W1AW",   "freq_hz": 14027000, "mode": "CW" },
+        { "type": "RigStatus", "radio": 1, "freq_hz": 14025100, "mode": "CW", "is_ptt": false, "filter_width_hz": 500 },
+        { "type": "RigStatus", "radio": 1, "freq_hz": 14026000, "mode": "CW", "is_ptt": false, "filter_width_hz": 500 }
+    ],
+    "expectations": {
+        "final_bandmap_cursors": {
+            "1": { "kind": "between", "index": 2 }
+        }
+    }
+}

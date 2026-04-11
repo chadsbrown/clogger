@@ -1,3 +1,4 @@
+use logger_core::BandmapCursor;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -105,6 +106,8 @@ pub struct Expectations {
     /// Per-radio entry expectations: keyed by radio_id
     #[serde(default)]
     pub final_radio_entries: BTreeMap<u8, RadioEntryExpectation>,
+    /// Expected per-radio bandmap cursor state at end of script.
+    pub final_bandmap_cursors: Option<BTreeMap<u8, BandmapCursor>>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]

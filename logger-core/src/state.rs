@@ -42,6 +42,19 @@ pub struct Spot {
     pub mode: String,
 }
 
+/// Per-radio bandmap cursor.
+///
+/// The bandmap is a discrete list but the rig is a continuous tuner, so
+/// two visual states are needed. `On` means a spot falls inside the rig's
+/// current receive passband — highlight that row. `Between` means the rig
+/// is parked in clear air — draw a divider at this insertion index.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind", content = "index")]
+pub enum BandmapCursor {
+    On(usize),
+    Between(usize),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QsoDraft {
     pub contest_id: String,
@@ -95,7 +108,7 @@ pub struct AppState {
     pub rst_sent: String,
     pub my_exchange: HashMap<String, String>,
     pub esm_policy: EsmPolicy,
-    pub bandmap_cursors: HashMap<RadioId, usize>,
+    pub bandmap_cursors: HashMap<RadioId, BandmapCursor>,
     pub default_cw_speed: u8,
     pub serial_counter: Option<u32>,
     /// Passband QRM warning width in hertz. When `Some(n)`, the warning fires
