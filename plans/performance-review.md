@@ -64,7 +64,80 @@ keystroke-to-visible latency) over raw throughput.
   and pushes a fresh `ScoreboardSnapshot` when the current epoch differs.
   Keystrokes, rig status updates, and spot arrivals — the overwhelming
   majority of events — skip the breakdown build entirely.
-- [ ] 6 — RigStatus dedup (3.3)
+- [ ] **6 — RigStatus dedup (3.3)** — Deprioritized after measurements
+  (see below). Still worth doing for cleaner semantics and less wasted
+  reducer work, but won't move the latency distribution — rig status
+  events already land in the fast-path column (microseconds). Expected
+  delta: none in p50/p95/p99, slight reduction in total work per second.
+
+## Measurements
+
+### Baseline after items 1–5 (2026-04-11 04:29 UTC)
+
+First instrumented run after completing items 1–5. Operator note: **not a
+real-contest workload** — messing around against the TUI with hardware
+connected, no QSOs actually logged. Small sample size, so the tail
+numbers are noisy. Still informative for rough diagnosis.
+
+```
+perf summary (last 512 samples per metric):
+  reduce+dispatch: n=512 min=0ns    mean=1.78ms   p50=1.1µs   p95=7.6µs    p99=99.98ms  max=123.57ms
+  render:          n=512 min=420µs  mean=761µs    p50=599µs   p95=1.60ms   p99=3.41ms   max=3.53ms
+  analytics:       n=315 min=15.6µs mean=67.5µs   p50=72.4µs  p95=99.8µs   p99=121.7µs  max=168.7µs
+```
+
+**Render** — comfortable. 3.5 ms max on a 50 ms budget (7%). The
+bandmap cache (item 4) and the string-alloc cleanups (items 1–3) kept
+per-frame work tight.
+
+**Analytics** — very tight. Under 200 µs worst-case. The bandmap cache
+cutting the 6-band filter loop (item 4) is visible here.
+
+**reduce+dispatch** — this is where the interesting signal is.
+
+- p50 = **1.1 µs**, p95 = **7.6 µs**. Pure-software path is excellent
+  — the allocation cleanups from items 1–3, 4 and the scoreboard skip
+  from item 5 worked as intended. The median keystroke path is
+  effectively free.
+- p99 = **99.98 ms**, max = **123.57 ms**. A 13,000× cliff from p95.
+  Rare but catastrophic — each outlier is the kind of blip operators
+  feel as a momentary freeze.
+
+### Revised diagnosis of the tail
+
+Initial hypothesis was SQLite writes in `LogAdapter::insert` (plan
+item 3.1). That hypothesis is **wrong for this session** — no QSOs
+were logged, so the insert path never ran.
+
+The actual culprit is **hardware I/O awaited inline in
+`dispatch_effects`** (`logger-tui/src/event_loop.rs:~330`). Every
+non-trivial effect blocks the event loop on device I/O:
+
+| Effect | `.await` call | Blocks on |
+|---|---|---|
+| `CwSend` | `send_cw(keyer, text).await` → `k.send_raw(&bytes).await` | WinKey serial |
+| `CwSend` (cross-radio) | `abort_cw` + `so2r::set_tx` | Keyer + OTRSP serial |
+| `CwAbort` | `abort_cw(keyer).await` | WinKey serial |
+| `RigSet` | `rig.set_frequency(rx, freq).await` | CI-V roundtrip |
+| `So2rFocusChanged` | `so2r::set_rx(...).await` | OTRSP serial |
+
+In this session, pressing F1/F2/F3 or Enter (ESM) produces `CwSend`
+effects that await on the WinKey serial port. USB-serial latency under
+load can be 20–100 ms per write. With ~5 samples above 100 ms in a
+512-sample window, the p99/max cliff is fully explained by ~5 CW-send
+events during the test.
+
+**Implication**: plan item 3.1 is wider in scope than originally
+written. The architectural fix is not "move SQLite writes off the
+runtime" — it's **move all hardware I/O off the runtime**. See the
+expanded 3.1 below.
+
+**What Items 1–5 accomplished**: the pure-software hot path (text
+input, backspace, focus change within a radio, rig status updates,
+spot arrivals) is now microsecond-scale. That's the path that was the
+original concern of most plan items, and it's now essentially free.
+The remaining problem is the much smaller set of events that touch
+hardware — a different class of problem requiring a different fix.
 
 ## Framing
 
@@ -319,30 +392,102 @@ invariant assertions in debug builds.
 
 ## Tier 3 — Structural improvements (medium effort, targeted payoff)
 
-### 3.1 Move SQLite writes off the async runtime — hot path (latent risk)
+### 3.1 Move all hardware I/O off the async runtime — hot path (confirmed by measurement)
 
-**Location:** `logger-runtime/src/log_adapter.rs:~60-95` calling
-`sink.append_ops()`
+**Note:** Originally scoped as "SQLite writes off the async runtime."
+The post-items-1-5 baseline measurement (see Measurements section
+above) showed this is a broader problem: **every hardware-touching
+effect — CW send, CW abort, rig set, OTRSP RX/TX route — is awaited
+inline in `dispatch_effects`**, blocking the event loop on device I/O.
+SQLite is one instance of this pattern; the others are arguably worse
+because they fire on every F-key press, not just on log insert.
 
-**Problem:** `LogAdapter::insert` runs the SQLite batch append
-synchronously on the tokio runtime thread. If the disk is busy or the
-WAL checkpoint fires, this blocks the event loop for an unpredictable
-amount of time. It hasn't bitten yet because logging is bursty (1 QSO
-per ~30 seconds, not per keystroke), but it's a latent responsiveness
-bomb.
+**Locations:**
 
-**Fix:** `tokio::task::spawn_blocking` for the SQLite writes, or —
-better — move persistence to a dedicated background task that owns
-the `SqliteOpSink` and receives op batches via an mpsc channel.
-`LogAdapter::insert` becomes synchronous (in-memory store only) + a
-fire-and-forget channel send. Durability guarantees shift: the TUI
-knows the insert happened in-memory but not yet on disk. For a contest
-logger this is fine (use WAL, sync periodically); just document it.
+- `logger-tui/src/event_loop.rs:~330` `dispatch_effects` — the common
+  site where every effect is awaited
+- `logger-runtime/src/keyer_adapter.rs` `send_cw` / `abort_cw` — block
+  on WinKey serial writes
+- `logger-runtime/src/rig_adapter.rs` `rig.set_frequency` — blocks on
+  CI-V roundtrip
+- `logger-runtime/src/so2r_adapter.rs` `set_rx` / `set_tx` — block on
+  OTRSP serial writes
+- `logger-runtime/src/log_adapter.rs:~60-95` `insert` → SQLite
+  `append_ops` — blocks on disk (the original 3.1 concern)
 
-**Risk:** Medium. Need to think about crash behavior — what's the
-contract with the operator if clogger crashes 5 seconds before the
-disk write? If "lose last ~2 QSOs" is acceptable, this is
-straightforward. If not, we need a more subtle approach.
+**Problem:** Measured: p50 and p95 of the reduce+dispatch path are
+1.1 µs and 7.6 µs respectively (excellent), but p99 jumps to ~100 ms
+and max to ~124 ms when any effect touches hardware. Operators feel
+these as momentary freezes whenever they press F1/F2/F3 or log a QSO.
+On a serial port with latency spikes, it's worse.
+
+**Fix (architectural):** For each hardware device, spawn a dedicated
+task at startup that owns the device handle and reads commands from
+an `mpsc::channel`. `dispatch_effects` becomes fire-and-forget —
+`keyer_tx.try_send(KeyerCmd::SendRaw(bytes))` is a non-blocking
+enqueue. The event loop never awaits on device I/O again.
+
+Concretely:
+
+- `logger-runtime::spawn_keyer_task` — owns the `Box<dyn Keyer>`,
+  drains a `mpsc::UnboundedReceiver<KeyerCmd>` with variants for
+  `SendRaw(Vec<u8>)` and `Abort`. Processes commands in order
+  (ordering matters for sequential CW sends and the
+  abort-then-send pattern during cross-radio TX).
+- `logger-runtime::spawn_rig_control_task` — one per rig, owns
+  `Arc<dyn Rig>`, drains `mpsc<RigCmd>` with `SetFrequency(u64)` etc.
+- `logger-runtime::spawn_so2r_task` — owns the `Box<dyn So2rSwitch>`,
+  drains `mpsc<So2rCmd>` with `SetTx(RadioId)` / `SetRx(RadioId, Mode)`.
+- `logger-runtime::spawn_persist_task` — owns the `SqliteOpSink`,
+  drains `mpsc<Vec<LogOp>>` (the original 3.1 design).
+
+`LogAdapter::insert` becomes synchronous: in-memory store update
+only, then `persist_tx.send(ops)`. Same for the other effect
+handlers: they become channel sends with no `.await`.
+
+**Ordering caveats:**
+
+- CW sends must be strictly ordered (F2 before F3 means F2 keys
+  first). A single mpsc channel to a single keyer task preserves
+  order — no parallelism.
+- The cross-radio TX switch pattern in `CwSend` currently does
+  `abort_cw` → `set_tx` → `send_cw` as three inline awaits. These
+  need to become a single atomic command to the keyer task (e.g.,
+  `KeyerCmd::SwitchAndSend { radio, text }`) or the keyer task has
+  to see them in order in the same channel.
+- OTRSP `set_tx` for TX routing and `set_rx` for RX routing can
+  probably share one task (they go to the same device).
+
+**Error reporting:**
+
+- The fire-and-forget path can't return
+  "keyer send failed" synchronously. Error events come back via a
+  separate `mpsc::Sender<AppEvent>` passed to each task (already the
+  pattern used by the rig adapter's `RigDisconnected` event). On
+  error, the task emits a `*Disconnected` or error-toast event that
+  the main loop handles.
+- The channel buffer should be bounded but generous (128 items?) so
+  transient backpressure doesn't drop CW characters. If the channel
+  fills, something is very wrong and we should emit an error event.
+
+**Durability caveats (from original 3.1):**
+
+- `LogAdapter::insert` returning before the disk write completes
+  means a hard crash could lose the last few QSOs. With SQLite WAL
+  mode and a ~100 ms-ish lag between in-memory and on-disk, you
+  might lose 1-2 QSOs worst case. For a contest logger that's
+  acceptable — document it and optionally expose a "flush now"
+  command on a timer (every few seconds) for safety.
+
+**Risk:** Higher than the originally-scoped 3.1. This touches
+persistence, rig control, keyer, and SO2R. Needs to be done carefully
+with tests. Effort bumped from the original "~1 day" to **~2-3 days**
+for all four device paths plus error reporting.
+
+**Validation:** After landing, re-run the instrumented build against
+a similar workload (press F1/F2/F3 a bunch, log some QSOs) and
+expect p99 of reduce+dispatch to drop from ~100 ms to **<100 µs**
+(two orders of magnitude). Max should also stay under a millisecond.
 
 ### 3.2 `SpecSession` rebuild on undo/redo scales O(n) — warm path
 
@@ -447,22 +592,32 @@ marginal.
 
 ## Recommended order of operations
 
-| Order | Item | Tier | Effort | Gated on measurement? |
+| Order | Item | Tier | Effort | Status |
 |---|---|---|---|---|
-| 1 | Instrument the event loop (Rule 0) | — | ~2h | No — always first |
-| 2 | Drop clones in `current_call`, `mode`, `my_call` | 1.1, 1.2, 1.3 | ~2h | No — obvious wins |
-| 3 | Fix char→string in terminal adapter | 1.4 | ~15m | No |
-| 4 | Bandmap filter cache in TuiState | 2.1, 2.2 | ~4h | No — impact is clear |
-| 5 | Score breakdown skip-if-unchanged | 2.3 | ~2h | No |
-| 6 | RigStatus dedup | 3.3 | ~30m | No |
-| 7 | `compute_rate` incremental (ring buffer) | 2.4 | ~3h | **Yes** — confirm it's hot first |
-| 8 | SQLite writes off runtime | 3.1 | ~1d | **Yes** — confirm blocking happens |
-| 9 | `is_dupe` classification cache | 2.5 | ~4h | **Yes** — confirm classify is the hot call |
-| 10 | Tier 4 micro-opts as needed | 4.x | varies | **Yes** |
+| 1 | Instrument the event loop (Rule 0) | — | ~2h | **Done** |
+| 2 | Drop clones in `current_call`, `mode`, `my_call` | 1.1, 1.2, 1.3 | ~2h | **Done** |
+| 3 | Fix char→string in terminal adapter | 1.4 | ~15m | **Done** |
+| 4 | Bandmap filter cache in TuiState | 2.1, 2.2 | ~4h | **Done** |
+| 5 | Score breakdown skip-if-unchanged | 2.3 | ~2h | **Done** |
+| 6 | RigStatus dedup | 3.3 | ~30m | Deprioritized — measured harmless |
+| 7 | **Hardware I/O off runtime (expanded 3.1)** | 3.1 | ~2-3d | **Highest priority** — measured impact: p99 = ~100 ms |
+| 8 | `compute_rate` incremental (ring buffer) | 2.4 | ~3h | Gated — analytics already under 200 µs per measurement |
+| 9 | `is_dupe` classification cache | 2.5 | ~4h | Gated — analytics already under 200 µs per measurement |
+| 10 | Tier 4 micro-opts as needed | 4.x | varies | Gated |
 
-Items 1–6 are unconditional — they're small and obviously right.
-Items 7–9 should only happen after instrumentation confirms they
-matter. Tier 4 is opportunistic.
+**Priority update after baseline measurement (2026-04-11):**
+
+Items 1–5 landed the pure-software wins the plan expected. The
+measurement surfaced that the tail latency problem was not what the
+plan originally predicted — it's not scoring, not analytics, not
+log-adapter state. It's **device I/O in `dispatch_effects`**. Item 7
+(the expanded 3.1) is now the only remaining item that will visibly
+change P99. Items 8 and 9 were gated on measurement showing they
+mattered; measurement shows they don't — analytics is already fast.
+Item 6 is still worth doing for cleanliness, but it won't show up in
+the perf numbers.
+
+If the next session only does one thing, it should be **item 7**.
 
 ---
 
