@@ -1,0 +1,117 @@
+# clogger per-contest config (contest.toml)
+#
+# This file holds settings that change each contest:
+# contest id, sent exchange value, database path, call history file,
+# CW macro overrides, Cabrillo category, and state-QSO-party config.
+#
+# Stable settings (callsign, zone, rigs, keyer, SO2R, cabrillo metadata,
+# scoreboard endpoints, UI prefs) live in a separate config.toml file.
+#
+# Copy this file per contest and edit:
+#   cp contest.example.toml cqww-cw.toml
+#
+# Invoke the TUI with both files:
+#   logger-tui --config config.toml --contest cqww-cw.toml
+
+# Contest identifier (required). Supported values:
+#   cqww, cwt, mst, naqp, arrl_dx, ns_sprint, ss
+#   State/province QSO parties: flqp, gaqp, inqp, miqp, moqp, ndqp, neqp,
+#     nhqp, nmqp, neqsop (Nebraska), onqp, qcqp, deqp
+contest = "gaqp"
+
+# Generic sent exchange field — meaning depends on the contest:
+#   cwt:        CWops membership number   (e.g. "2187")
+#   naqp:       state/province            (e.g. "NC")
+#   ns_sprint:  state/province            (e.g. "NC")
+# Expands as {MYXCHG} in CW macros.
+my_xchg = "IN"
+
+# SQLite database path for persistent logging (omit for in-memory only)
+db_path = "n9unx-gaqp-20260411.db"
+
+# Call history file (.ch format) for exchange pre-population.
+# Usually per-contest — a cwt.ch for CWT, master.ch for CQWW, etc.
+# (can also be set via --call-history CLI flag)
+#call_history_file = "master.ch"
+
+# ---------------------------------------------------------------------------
+# [station] — typed config passthrough for contest-engine specs.
+#
+# State QSO parties and a few other contests require config values that
+# don't fit the generic my_name / my_xchg slots (booleans, enums, power
+# class, etc.). Keys here are fed verbatim to the scoring engine.
+#
+# Supported value types: bool, integer, string. Arrays/floats/datetimes
+# are rejected at load time.
+#
+# State QSO party config:
+#   my_is_<xx> (bool)     — set true if operating from inside the state,
+#                           false otherwise. Drives sent-exchange and
+#                           multiplier rules. The suffix is the state
+#                           abbreviation:
+#                             flqp → my_is_fl    gaqp   → my_is_ga
+#                             inqp → my_is_in    miqp   → my_is_mi
+#                             moqp → my_is_mo    ndqp   → my_is_nd
+#                             nhqp → my_is_nh    nmqp   → my_is_nm
+#                             deqp → my_is_de    onqp   → my_is_on
+#                             qcqp → my_is_qc
+#                             neqp (New England) and neqsop (Nebraska)
+#                               both use my_is_ne — one config key,
+#                               interpreted per contest.
+#   my_county (string)    — your county abbreviation when in-state
+#                           (e.g. "ALC" for Alachua in FLQP). Required
+#                           when my_is_<xx> = true, for every state QP
+#                           except onqp (uses my_area) and qcqp (uses
+#                           my_region).
+#   my_loc (string)       — your state/province/DXCC when out-of-state
+#                           (e.g. "NC", "ON", "DX"). Required when
+#                           my_is_<xx> = false.
+#   my_power_class        — "QRP" | "LOW" | "HIGH". Required by NMQP,
+#     (string)              DEQP, and NEQSOP; drives the final score
+#                           multiplier (QRP=5x, LOW=2x, HIGH=1x).
+#
+# Example: in-state Florida QSO Party entry from Alachua county, high power
+[station]
+my_is_ga = false
+my_loc = "IN"
+my_power_class = "LOW"
+#my_county = "ALC"
+#
+# Example: out-of-state entry in NMQP (low power from NC)
+#[station]
+#my_is_nm = false
+#my_loc = "NC"
+#my_power_class = "LOW"
+
+# ---------------------------------------------------------------------------
+# CW macro overrides (optional — omit to use contest defaults)
+# Available placeholders: {MYCALL}, {MYZONE}, {RST_SENT}, {CALL},
+#   {MY<KEY>} (e.g. {MYNAME}, {MYXCHG}), {LABEL} (entry field values)
+# Speed control: < slows by 2 WPM, > speeds by 2 WPM (relative, stackable).
+#   e.g. "<5NN>" sends report 2 WPM slower then restores.
+#   Use {0} to explicitly restore original speed.
+# Prosigns: <AR>, <SK>, <BT>, <KN>, <AS> are sent as merged characters.
+# All keys use contest defaults if not specified.
+# ---------------------------------------------------------------------------
+#[macros]
+#f1 = "CQ TEST {MYCALL}"
+f2 = ">{RST_SENT}< {MYLOC}"    # exchange (faster)
+#f3 = "TU {MYCALL}"               # thank you
+#f5 = "{CALL}"                     # other station's call
+#f7 = "?"
+#f8 = "NR {MYZONE} {MYZONE}"
+#f9 = "QRL?"
+
+# ---------------------------------------------------------------------------
+# Cabrillo category — describes your entry for this specific contest.
+# Required when [[scoreboard]] is configured (in config.toml).
+# Also used for Cabrillo log file generation.
+# ---------------------------------------------------------------------------
+[category]
+power = "LOW"          # LOW | HIGH | QRP
+assisted = "ASSISTED"   # NON-ASSISTED | ASSISTED
+transmitter = "ONE"     # UNLIMITED | TWO | ONE
+operator = "SINGLE-OP"  # MULTI-OP | SINGLE-OP | MULTI-ONE | MULTI-TWO | MULTI-MULTI
+bands = "ALL"           # ALL | 160M | 80M | 40M | 20M | 15M | 10M | 6M | 2M
+mode = "CW"             # MIXED | CW | SSB | RTTY | DIGI
+#overlay = "N/A"         # N/A | TB-WIRES | ROOKIE | CLASSIC | WIRE-ONLY

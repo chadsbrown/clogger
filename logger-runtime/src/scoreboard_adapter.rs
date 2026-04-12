@@ -163,7 +163,8 @@ fn serialize_xml(snap: &ScoreboardSnapshot) -> String {
     let _ = write!(xml, " />\n");
 
     // Breakdown — band attributes use bare numbers ("20", "40") per the
-    // contestonlinescore.com XML spec, not "20M".
+    // contestonlinescore.com XML spec, not "20M". Summary row uses the
+    // literal token "total" (lowercase) for band and "ALL" for mode.
     let _ = write!(xml, "  <breakdown>\n");
     for row in &snap.breakdown.rows {
         let band = scoreboard_band(&row.band);
@@ -173,10 +174,19 @@ fn serialize_xml(snap: &ScoreboardSnapshot) -> String {
             band, row.mode, row.qsos
         );
         for (mult_type, count) in &row.mults {
+            // Skip zero-count mults — the spec accepts them but they're
+            // noise, and for state QPs we'd otherwise emit several 0-valued
+            // rows for variants that don't apply to the current operator.
+            if *count == 0 {
+                continue;
+            }
             let _ = write!(
                 xml,
                 "    <mult type=\"{}\" band=\"{}\" mode=\"{}\">{}</mult>\n",
-                mult_type, band, row.mode, count
+                scoreboard_mult_type(mult_type),
+                band,
+                row.mode,
+                count
             );
         }
         let _ = write!(
@@ -196,13 +206,44 @@ fn serialize_xml(snap: &ScoreboardSnapshot) -> String {
 }
 
 /// Convert internal band labels ("20M", "total") to the scoreboard XML
-/// format ("20", "Total"). Strips trailing "M" from band names.
+/// format ("20", "total"). Strips trailing "M" from band names; the summary
+/// row label must be lowercase "total" per the contestonlinescore.com spec
+/// — anything else is parsed as a third band and gets summed into the
+/// displayed QSO count.
 fn scoreboard_band(band: &str) -> String {
     let s = band.trim();
     if s.eq_ignore_ascii_case("total") {
-        return "Total".to_string();
+        return "total".to_string();
     }
     s.trim_end_matches(|c: char| c == 'M' || c == 'm').to_string()
+}
+
+/// Map a contest-engine multiplier ID to a spec-valid `type` attribute value
+/// for the scoreboard XML. The contestonlinescore.com spec defines seven
+/// allowed types (`zone`, `country`, `state`, `gridsquare`, `wpxprefix`,
+/// `prefix`, `hq`) — contest-engine's internal IDs (e.g. `zone_mult`,
+/// `county_mult`, `in_state_state_mult`) don't match any of them, so we need
+/// an explicit mapping. For state QSO parties, every location-style mult
+/// collapses onto `state` because the spec has no "county" bucket.
+fn scoreboard_mult_type(mult_id: &str) -> String {
+    match mult_id {
+        // State QSO parties — all county/state/province mults map to "state".
+        // DXCC mults (for in-state ops) map to "country".
+        "county_mult" | "in_state_state_mult" | "in_state_prov_mult" => {
+            "state".to_string()
+        }
+        "in_state_dxcc_mult" => "country".to_string(),
+        // For anything else, strip the `_mult` suffix contest-engine uses
+        // internally so names like `zone_mult` / `country_mult` / `state_mult`
+        // line up with the spec's bare values.
+        other => {
+            let lower = other.to_ascii_lowercase();
+            lower
+                .strip_suffix("_mult")
+                .map(str::to_string)
+                .unwrap_or(lower)
+        }
+    }
 }
 
 fn xml_escape(s: &str) -> String {

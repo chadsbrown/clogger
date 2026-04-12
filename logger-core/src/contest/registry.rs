@@ -134,7 +134,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         contest_instance_id: 8,
         // LOC width 8 leaves room for county-line mobiles sending "ALC/BAK".
         field_widths: &[(1, 12), (2, 3), (3, 8)],
-        default_macros_fn: default_macros,
+        default_macros_fn: flqp_macros,
         history_mapping: &[],
         uses_serial: false,
         cabrillo_id_fn: |_| Some("FL-QSO-PARTY"),
@@ -145,7 +145,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         contest_id: "gaqp",
         contest_instance_id: 9,
         field_widths: &[(1, 12), (2, 3), (3, 4)],
-        default_macros_fn: default_macros,
+        default_macros_fn: gaqp_macros,
         history_mapping: &[],
         uses_serial: false,
         cabrillo_id_fn: |_| Some("GA-QSO-PARTY"),
@@ -156,7 +156,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         contest_id: "inqp",
         contest_instance_id: 10,
         field_widths: &[(1, 12), (2, 3), (3, 5)],
-        default_macros_fn: default_macros,
+        default_macros_fn: inqp_macros,
         history_mapping: &[],
         uses_serial: false,
         cabrillo_id_fn: |_| Some("IN-QSO-PARTY"),
@@ -167,7 +167,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         contest_id: "miqp",
         contest_instance_id: 11,
         field_widths: &[(1, 12), (2, 3), (3, 4)],
-        default_macros_fn: default_macros,
+        default_macros_fn: miqp_macros,
         history_mapping: &[],
         uses_serial: false,
         cabrillo_id_fn: |_| Some("MI-QSO-PARTY"),
@@ -178,7 +178,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         contest_id: "moqp",
         contest_instance_id: 12,
         field_widths: &[(1, 12), (2, 3), (3, 3)],
-        default_macros_fn: default_macros,
+        default_macros_fn: moqp_macros,
         history_mapping: &[],
         uses_serial: false,
         cabrillo_id_fn: |_| Some("MO-QSO-PARTY"),
@@ -189,7 +189,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         contest_id: "ndqp",
         contest_instance_id: 13,
         field_widths: &[(1, 12), (2, 3), (3, 3)],
-        default_macros_fn: default_macros,
+        default_macros_fn: ndqp_macros,
         history_mapping: &[],
         uses_serial: false,
         cabrillo_id_fn: |_| Some("ND-QSO-PARTY"),
@@ -200,7 +200,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         contest_id: "neqp",
         contest_instance_id: 14,
         field_widths: &[(1, 12), (2, 3), (3, 5)],
-        default_macros_fn: default_macros,
+        default_macros_fn: neqp_macros,
         history_mapping: &[],
         uses_serial: false,
         // New England QP uses the bare "NEQP" contest ID, not "NE-QSO-PARTY".
@@ -212,7 +212,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         contest_id: "nhqp",
         contest_instance_id: 15,
         field_widths: &[(1, 12), (2, 3), (3, 3)],
-        default_macros_fn: default_macros,
+        default_macros_fn: nhqp_macros,
         history_mapping: &[],
         uses_serial: false,
         // NH QSO Party is CW-only.
@@ -227,7 +227,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         contest_id: "nmqp",
         contest_instance_id: 16,
         field_widths: &[(1, 12), (2, 3), (3, 3)],
-        default_macros_fn: default_macros,
+        default_macros_fn: nmqp_macros,
         history_mapping: &[],
         uses_serial: false,
         cabrillo_id_fn: |_| Some("NM-QSO-PARTY"),
@@ -238,7 +238,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         contest_id: "neqsop",
         contest_instance_id: 17,
         field_widths: &[(1, 12), (2, 3), (3, 4)],
-        default_macros_fn: default_macros,
+        default_macros_fn: neqsop_macros,
         history_mapping: &[],
         uses_serial: false,
         cabrillo_id_fn: |_| Some("NE-QSO-PARTY"),
@@ -249,7 +249,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         contest_id: "onqp",
         contest_instance_id: 18,
         field_widths: &[(1, 12), (2, 3), (3, 3)],
-        default_macros_fn: default_macros,
+        default_macros_fn: onqp_macros,
         history_mapping: &[],
         uses_serial: false,
         cabrillo_id_fn: |_| Some("ON-QSO-PARTY"),
@@ -260,7 +260,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         contest_id: "qcqp",
         contest_instance_id: 19,
         field_widths: &[(1, 12), (2, 3), (3, 3)],
-        default_macros_fn: default_macros,
+        default_macros_fn: qcqp_macros,
         history_mapping: &[],
         uses_serial: false,
         cabrillo_id_fn: |_| Some("QC-QSO-PARTY"),
@@ -271,7 +271,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         contest_id: "deqp",
         contest_instance_id: 20,
         field_widths: &[(1, 12), (2, 3), (3, 3)],
-        default_macros_fn: default_macros,
+        default_macros_fn: deqp_macros,
         history_mapping: &[],
         uses_serial: false,
         cabrillo_id_fn: |_| Some("DE-QSO-PARTY"),
@@ -338,6 +338,34 @@ fn ss_macros() -> Macros {
         ..Macros::default()
     }
 }
+
+/// Shared builder for state QSO party default macros. `state` is the call-up
+/// prefix (e.g. "GA", "FL", "NEQP"). F2 uses `{MYXCHG}` so the existing
+/// top-level `my_xchg` mechanism works for both in-state (county) and
+/// out-of-state (state/province) operators — the user picks what MYXCHG means
+/// for their entry.
+fn state_qp_macros_for(state: &str) -> Macros {
+    Macros {
+        f1: format!("CQ {state} {{MYCALL}}"),
+        f2: "{RST_SENT} {MYXCHG}".to_string(),
+        f3: "TU {MYCALL}".to_string(),
+        ..Macros::default()
+    }
+}
+
+fn flqp_macros() -> Macros { state_qp_macros_for("FL") }
+fn gaqp_macros() -> Macros { state_qp_macros_for("GA") }
+fn inqp_macros() -> Macros { state_qp_macros_for("IN") }
+fn miqp_macros() -> Macros { state_qp_macros_for("MI") }
+fn moqp_macros() -> Macros { state_qp_macros_for("MO") }
+fn ndqp_macros() -> Macros { state_qp_macros_for("ND") }
+fn neqp_macros() -> Macros { state_qp_macros_for("NEQP") }
+fn nhqp_macros() -> Macros { state_qp_macros_for("NH") }
+fn nmqp_macros() -> Macros { state_qp_macros_for("NM") }
+fn neqsop_macros() -> Macros { state_qp_macros_for("NE") }
+fn onqp_macros() -> Macros { state_qp_macros_for("ON") }
+fn qcqp_macros() -> Macros { state_qp_macros_for("QC") }
+fn deqp_macros() -> Macros { state_qp_macros_for("DE") }
 
 #[cfg(test)]
 mod tests {

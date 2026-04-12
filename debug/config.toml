@@ -1,0 +1,193 @@
+# clogger stable config (config.toml)
+#
+# This file holds settings that don't change between contests:
+# your callsign, zone, hardware (rig / keyer / SO2R), DX cluster feed,
+# personal Cabrillo metadata, scoreboard endpoints, and UI preferences.
+#
+# Per-contest settings (contest id, macros, db_path, call history, category,
+# state-QP [station] passthrough) live in a separate contest.toml file.
+#
+# Copy this file and uncomment/edit the values you need:
+#   cp config.example.toml config.toml
+#
+# Invoke the TUI with both files:
+#   logger-tui --config config.toml --contest contest.toml
+
+# Your callsign (required)
+my_call = "N9UNX"
+
+# Your CQ zone (required for cqww; harmless otherwise)
+#my_zone = 4
+
+# RST sent (default: "599", used by cqww, arrl_dx)
+rst_sent = "5NN"
+
+# Operator name — used by cwt, mst, naqp, ns_sprint.
+# Stable per operator; the contest-specific number/exchange lives in
+# contest.toml as my_xchg.
+my_name = "CHAD"
+
+# SCP file (.scp format) for Super Check Partial callsign suggestions.
+# Typically a single master.scp shared across all contests.
+# (can also be set via --scp CLI flag)
+scp_file = "master.scp"
+
+# Bandmap display mode (default: dual)
+#   dual — R1 and R2 bandmaps stacked; Ctrl+↑↓ = R1, Ctrl+Alt+↑↓ = R2
+#   r1   — single bandmap for Radio 1
+#   r2   — single bandmap for Radio 2
+# Key bindings are always fixed: Ctrl+↑↓ = R1, Ctrl+Alt+↑↓ = R2
+bandmap = "dual"
+
+# Cursor style (default: blinking_block)
+# Options: blinking_block, steady_block, blinking_underline, steady_underline,
+#          blinking_bar, steady_bar
+#cursor_style = "steady_underline"
+
+# Passband QRM warning (default: disabled)
+# When enabled, a yellow QRM badge appears in the status bar while you're in
+# RUN mode if any bandmap spot (matching the focused radio's mode, not your
+# own callsign) sits within the focused radio's current receive passband.
+# The width is taken from the rig's reported filter — set this flag and let
+# the radio tell us. If your rig backend doesn't report a filter width, a
+# mode-dependent default is used (CW: 500 Hz, SSB: 2400 Hz, DIGITAL: 500 Hz).
+show_passband_qrm = true
+
+# ---------------------------------------------------------------------------
+# Rig control (optional — omit entire section to run without)
+#
+# Use [[rig]] (array of tables) to configure one or two rigs. For SO2R,
+# add two [[rig]] sections with radio_id = 1 and radio_id = 2. Each rig
+# can be a different model. Single-radio setups can use just one [[rig]].
+#
+# NOTE: Each [[rig]] entry represents one physical rig with one primary
+# receiver. Rigs that expose multiple independent receivers (K3 + KRX3,
+# FlexRadio with multiple slices, IC-7610 with sub-RX) are not currently
+# supported as separate radios — only the primary receiver is tracked.
+# ---------------------------------------------------------------------------
+[[rig]]
+# Which radio this rig represents (1 or 2). Defaults to 1.
+radio_id = 1
+#
+# Model name (case/hyphen insensitive):
+#   Icom:     IC-7300, IC-7610, IC-7600, IC-7700, IC-7800, IC-7850, IC-7851,
+#             IC-9700, IC-705, IC-7300MKII, IC-7100, IC-9100, IC-7410, IC-905
+#   Yaesu:    FT-DX10, FT-DX101, FT-991A, FT-710, FTDX5000, FTDX9000
+#   Elecraft: K4, K3S, K3, KX3, KX2
+#   Kenwood:  TS-890S, TS-590SG, TS-480
+#   Flex:     FLEX-6600, FLEX-6700, FLEX-6400
+model = "IC-7610"
+#
+# Serial port (or IP address for FlexRadio)
+port = "COM13"
+#
+# Baud rate (optional — uses model default if omitted)
+#baud_rate = 115200
+#
+# CW sending speed in WPM for this radio (used for < and > speed markers
+# in macros; falls back to keyer speed_wpm if omitted)
+cw_speed = 30
+#
+# Declares that the operator has CI-V Transceive (Auto-Information) mode
+# enabled in the radio menu. This is a declaration, NOT a control —
+# clogger never reconfigures the rig; it must match the hardware setting.
+# When true, clogger skips its own freq/mode polling and receives rig
+# updates exclusively via the rig's broadcast frames. This avoids bus
+# collisions and front-panel lag on Icom radios caused by polling while
+# the rig is also broadcasting. When false (default), clogger polls at
+# 4 Hz as before.
+#   IC-7610: Menu → Set → Connectors → CI-V → CI-V Transceive: ON
+transceive = true
+
+# Second rig for SO2R (omit if running single-radio)
+[[rig]]
+radio_id = 2
+model = "IC-7610"
+port = "COM4"
+#baud_rate = 38400
+cw_speed = 30
+transceive = true
+
+# ---------------------------------------------------------------------------
+# WinKeyer CW keyer (optional — omit entire section to run without)
+# CW messages still appear in the TUI buffer even without a keyer.
+# ---------------------------------------------------------------------------
+[keyer]
+# Serial port for WinKeyer
+port = "COM9"
+#
+# Speed in words per minute (default: 28)
+#speed_wpm = 28
+#
+# Contest spacing — shortened wordspace (default: false)
+#contest_spacing = true
+#
+# Real-time CW echo — display characters one-by-one as the WinKeyer
+# echoes them back, instead of showing the full message at once (default: false)
+cw_echo = true
+#
+# Enable the WinKeyer's audio sidetone output (default: true).
+# Set to false to silence the WinKeyer's speaker — useful when your rig
+# provides its own sidetone, or for silent operation.
+sidetone = false
+
+# ---------------------------------------------------------------------------
+# OTRSP SO2R hardware switch (optional — omit entire section to run without)
+#
+# Connects to an OTRSP-compatible SO2R box (YCCC SO2R+, microHAM MK2R+,
+# RigSelect Pro, SO2RDuino, etc). The switch routes the keyer output, PTT,
+# and RX audio to the focused radio. The TUI emits OTRSP set_tx commands
+# automatically when focus changes (Up arrow = Radio 1, Down arrow = Radio 2)
+# or when CW is sent on a non-current radio.
+#
+# Required: a single keyer connection — OTRSP routes its output between rigs.
+# ---------------------------------------------------------------------------
+[so2r]
+# Serial port for the OTRSP device
+port = "COM10"
+#
+# Default RX audio routing mode applied when focus changes
+# Options:
+#   "mono"           — focused radio in both ears (default)
+#   "stereo"         — Radio 1 left ear, Radio 2 right ear
+#   "reverse_stereo" — Radio 1 right ear, Radio 2 left ear
+default_rx_mode = "stereo"
+
+# ---------------------------------------------------------------------------
+# DX cluster spots (optional — omit entire section to run without)
+# Multiple sources can be added with repeated [[dxfeed.sources]] sections.
+# ---------------------------------------------------------------------------
+[[dxfeed.sources]]
+host = "dxc.ng7m.com"
+port = 7373
+callsign = "N9UNX"
+#
+#[[dxfeed.sources]]
+#host = "dxc.k3lr.com"
+#port = 7300
+#callsign = "N9UNX"
+
+# ---------------------------------------------------------------------------
+# Cabrillo header metadata (optional). These fields appear in exported
+# Cabrillo log files. All are optional. Personal — lives with the station
+# identity, not the contest.
+# ---------------------------------------------------------------------------
+#[cabrillo]
+#club = "Yankee Clipper Contest Club"
+#operators = ["N9UNX"]
+#name = "Chad Brown"
+#address = ["123 Main St", "Anytown, ST 12345"]
+#email = "n9unx@example.com"
+#soapbox = ["Great conditions on 20m!", "First time trying SO2R"]
+
+# ---------------------------------------------------------------------------
+# Online scoreboard posting (optional). Repeat [[scoreboard.endpoints]] to
+# post to multiple services simultaneously. Default cadence: 120 seconds.
+# Spec: https://blog.contestonlinescore.com/online-scoring-xml-specification/
+# ---------------------------------------------------------------------------
+[scoreboard]
+interval_secs = 120
+#
+[[scoreboard.endpoints]]
+url = "https://contestonlinescore.com/post/"
+password = "gQGdRq5C9c"
