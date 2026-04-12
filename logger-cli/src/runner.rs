@@ -817,6 +817,7 @@ mod tests {
             "flqp_in_state_log.json",
             "nmqp_power_class_out_of_state.json",
             "flqp_rover_county_log.json",
+            "moqp_rover_county_log.json",
         ];
 
         for script in scripts {

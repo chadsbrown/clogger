@@ -178,6 +178,56 @@ impl ContestEntry for SpecDrivenContest {
         })
     }
 
+    /// Override: split into N drafts when any received field has a
+    /// `multi_value_sep` declared in the spec and its typed value contains
+    /// the separator. Handles county-line rovers in state QSO parties — e.g.
+    /// MOQP receiving "DAD/GRN/POL" yields three drafts, each with one
+    /// county, so contest-engine scores them as N independent QSOs (matching
+    /// N1MM / sponsor convention). At most one field is treated as
+    /// splittable per entry; if multiple fields declare a separator, only
+    /// the first one found is split to avoid combinatorial blow-up.
+    fn build_qso_drafts(
+        &self,
+        input: &EntryState,
+        ctx: &EntryContext,
+    ) -> Result<Vec<QsoDraft>, EntryError> {
+        let base = self.build_qso_draft(input, ctx)?;
+
+        for (idx, spec_field) in self.received_fields().iter().enumerate() {
+            let Some(sep) = spec_field.multi_value_sep.as_deref() else {
+                continue;
+            };
+            if sep.is_empty() {
+                continue;
+            }
+            let Some((_, raw_value)) = base.exchange_pairs.get(idx) else {
+                continue;
+            };
+            if !raw_value.contains(sep) {
+                continue;
+            }
+            let pieces: Vec<String> = raw_value
+                .split(sep)
+                .map(|p| p.trim().to_string())
+                .filter(|p| !p.is_empty())
+                .collect();
+            if pieces.len() <= 1 {
+                continue;
+            }
+            let drafts = pieces
+                .into_iter()
+                .map(|piece| {
+                    let mut draft = base.clone();
+                    draft.exchange_pairs[idx].1 = piece;
+                    draft
+                })
+                .collect();
+            return Ok(drafts);
+        }
+
+        Ok(vec![base])
+    }
+
     fn history_field_mapping(&self) -> Vec<(&str, u16)> {
         self.meta.history_mapping.iter().copied().collect()
     }

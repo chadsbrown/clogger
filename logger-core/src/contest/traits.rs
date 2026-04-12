@@ -39,6 +39,21 @@ pub trait ContestEntry {
         ctx: &EntryContext,
     ) -> Result<QsoDraft, EntryError>;
 
+    /// Build one or more drafts for a single ESM-log action. Returning more
+    /// than one handles the county-line rover pattern: when a state-QP
+    /// operator receives a multi-county exchange like "DAD/GRN/POL", each
+    /// county is logged as its own QsoRecord so scoring and Cabrillo output
+    /// match the N-QSOs-per-transmission convention that state QP sponsors
+    /// use. Default implementation wraps `build_qso_draft` in a Vec — for
+    /// contests that don't need splitting, overriding is not necessary.
+    fn build_qso_drafts(
+        &self,
+        input: &EntryState,
+        ctx: &EntryContext,
+    ) -> Result<Vec<QsoDraft>, EntryError> {
+        Ok(vec![self.build_qso_draft(input, ctx)?])
+    }
+
     /// Maps .ch column names to form field_ids for history pre-population.
     fn history_field_mapping(&self) -> Vec<(&str, u16)> {
         vec![]

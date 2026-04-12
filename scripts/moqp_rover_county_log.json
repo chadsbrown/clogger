@@ -1,37 +1,43 @@
 {
-  "contest": "flqp",
+  "contest": "moqp",
   "station_config": {
-    "my_is_fl": false,
+    "my_is_mo": false,
     "my_loc": "NC"
   },
   "events": [
     { "type": "RigStatus", "radio": 1, "freq_hz": 14025000, "mode": "CW", "is_ptt": false },
     { "type": "SetMode", "mode": "Run" },
-    { "type": "Text", "s": "K4OV" },
+    { "type": "Text", "s": "K0USY" },
     { "type": "Key", "key": "Space" },
     { "type": "Text", "s": "599" },
     { "type": "Key", "key": "Space" },
-    { "type": "Text", "s": "ALC/BAK" },
+    { "type": "Text", "s": "DAD/GRN/POL" },
     { "type": "Key", "key": "Enter" },
     { "type": "Key", "key": "Enter" }
   ],
   "expectations": {
     "qsos": [
       {
-        "call": "K4OV",
+        "call": "K0USY",
         "band": "20m",
         "rst": "599",
-        "exchange": { "rst": "599", "loc": "ALC" }
+        "exchange": { "rst": "599", "loc": "DAD" }
       },
       {
-        "call": "K4OV",
+        "call": "K0USY",
         "band": "20m",
         "rst": "599",
-        "exchange": { "rst": "599", "loc": "BAK" }
+        "exchange": { "rst": "599", "loc": "GRN" }
+      },
+      {
+        "call": "K0USY",
+        "band": "20m",
+        "rst": "599",
+        "exchange": { "rst": "599", "loc": "POL" }
       }
     ],
-    "final_total_qsos": 2,
-    "final_total_mults": 2,
-    "final_claimed_score": 8
+    "final_total_qsos": 3,
+    "final_total_mults": 3,
+    "final_claimed_score": 18
   }
 }

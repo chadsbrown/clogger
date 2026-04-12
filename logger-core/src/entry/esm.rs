@@ -90,11 +90,17 @@ fn log_and_clear(
 ) -> Vec<Effect> {
     claim_serial(st, contest);
     let ctx = entry_ctx(st);
-    match contest.build_qso_draft(st.focused_entry(), &ctx) {
-        Ok(mut draft) => {
-            // Append serial to exchange if assigned
+    match contest.build_qso_drafts(st.focused_entry(), &ctx) {
+        Ok(mut drafts) => {
+            // Append serial to each draft's exchange if assigned. For county-
+            // line rover splits, every generated draft shares the same serial
+            // because they all come from one transmission.
             if let Some(serial) = st.focused_entry().assigned_serial {
-                draft.exchange_pairs.push(("serial".to_string(), serial.to_string()));
+                for draft in &mut drafts {
+                    draft
+                        .exchange_pairs
+                        .push(("serial".to_string(), serial.to_string()));
+                }
             }
             let exch_text = compose_call_exchange(st, macros);
             let tu_text = if send_tu {
@@ -131,7 +137,11 @@ fn log_and_clear(
                     text: exch_text,
                 });
             }
-            effects.push(Effect::LogInsert { draft });
+            // Emit one LogInsert per draft. For single-county QSOs this is
+            // one effect; for rover splits it's N effects applied in order.
+            for draft in drafts {
+                effects.push(Effect::LogInsert { draft });
+            }
             if let Some(text) = tu_text {
                 effects.push(Effect::CwSend {
                     radio: st.focused_radio,
