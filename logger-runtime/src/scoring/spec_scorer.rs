@@ -33,6 +33,17 @@ pub struct SpecScorer {
     /// Ordered multiplier type IDs from the contest spec (e.g. ["zone", "country"]).
     mult_type_ids: Vec<String>,
     cached_summary: ScoreSummary,
+    /// Loose dupe set keyed on `(call_upper, band_lower, mode_upper)`.
+    /// contest-engine's `classify_call_lite_with_mode` can't answer dupe
+    /// queries for specs with `dupe_extra_rcvd_fields` set (state QPs use
+    /// `["loc"]` for rover handling) because the extra-field dupe key needs
+    /// the candidate exchange, which the lite-check API doesn't accept.
+    /// So we maintain our own call/band/mode set and check it first in
+    /// `is_dupe`. Accepts the rover false-positive: a return trip from the
+    /// same call on the same band+mode will flag as dupe even if the rover
+    /// has moved counties. The real dupe decision still fires at log time
+    /// via `apply_qso_with_mode` with the full exchange.
+    loose_dupes: HashSet<(String, String, String)>,
 }
 
 impl SpecScorer {
@@ -53,6 +64,7 @@ impl SpecScorer {
             mults_by_type_by_band: HashMap::new(),
             mult_type_ids: Vec::new(),
             cached_summary: ScoreSummary::default(),
+            loose_dupes: HashSet::new(),
         };
         scorer.init_session();
         scorer
@@ -78,6 +90,7 @@ impl SpecScorer {
                     .collect();
                 self.session = Some(session);
                 self.resolved_calls.clear();
+                self.loose_dupes.clear();
             }
             Err(e) => {
                 tracing::warn!("SpecScorer: session init failed for {}: {e}", self.spec_id);
@@ -124,6 +137,16 @@ impl SpecScorer {
         ) {
             Ok(summary) => {
                 let band_label = band_label_from_qsolog(rec.band);
+                // Record (call, band, mode) for the loose dupe indicator,
+                // regardless of whether contest-engine marked this record as
+                // a dupe. A rover re-apply with a different loc still counts
+                // as "we've already contacted this call on this band+mode"
+                // for UI purposes.
+                self.loose_dupes.insert((
+                    rec.callsign_norm.to_ascii_uppercase(),
+                    band_label.clone(),
+                    mode_label_for_loose(rec.mode),
+                ));
                 if !summary.is_dupe {
                     *self.qsos_by_band.entry(band_label.clone()).or_default() += 1;
                     *self.points_by_band.entry(band_label.clone()).or_default() +=
@@ -287,12 +310,29 @@ impl ContestScorer for SpecScorer {
     }
 
     fn is_dupe(&self, call_norm: &str, band: &str, mode: &str) -> bool {
+        let call_upper = call_norm.trim().to_ascii_uppercase();
+
+        // Loose check first: for any contest, (call, band, mode) previously
+        // logged → dupe. This is the only working signal for state QPs and
+        // other contests with `dupe_extra_rcvd_fields`, where contest-engine
+        // returns false on the lite-check API because the extra-field dupe
+        // key needs the candidate exchange. For contests without extra
+        // fields, this agrees with contest-engine's answer, so checking both
+        // is redundant but harmless.
+        let band_lower = band.trim().to_ascii_lowercase();
+        let mode_upper = mode.trim().to_ascii_uppercase();
+        if self
+            .loose_dupes
+            .contains(&(call_upper.clone(), band_lower, mode_upper))
+        {
+            return true;
+        }
+
         let session = match &self.session {
             Some(s) => s,
             None => return false,
         };
 
-        let call_upper = call_norm.trim().to_ascii_uppercase();
         if !self.resolved_calls.contains(&call_upper) {
             // Unknown call — never logged, so not a dupe.
             return false;
@@ -395,6 +435,17 @@ fn to_ce_mode(s: &str) -> CeMode {
     match s.to_ascii_uppercase().as_str() {
         "SSB" => CeMode::SSB,
         _ => CeMode::CW,
+    }
+}
+
+/// Canonicalize a qsolog Mode to the same uppercase string shape the reducer
+/// passes into `is_dupe`, so loose_dupes lookups line up with inserts.
+fn mode_label_for_loose(m: Mode) -> String {
+    match m {
+        Mode::CW => "CW".to_string(),
+        Mode::SSB => "SSB".to_string(),
+        Mode::Digital => "DIGITAL".to_string(),
+        _ => "OTHER".to_string(),
     }
 }
 
