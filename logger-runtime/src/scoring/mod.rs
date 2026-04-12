@@ -83,17 +83,24 @@ pub trait ContestScorer: Send + Sync {
 pub fn scorer_for_contest(
     contest: &dyn ContestEntry,
     config: HashMap<String, Value>,
-) -> Box<dyn ContestScorer> {
+) -> anyhow::Result<Box<dyn ContestScorer>> {
     let contest_id = contest.contest_id();
     let contest_instance_id = contest.contest_instance_id();
 
     // Try spec-based scorer; fall back for contests without an embedded spec.
     // spec_by_id() is a compile-time embedded lookup — no filesystem access,
-    // so the release binary is self-contained.
+    // so the release binary is self-contained. A failed `SpecScorer::new`
+    // (e.g. contest.toml missing a required `my_is_<state>` field) propagates
+    // out so `bootstrap` can refuse to start instead of silently dropping
+    // every QSO into a dead session.
     if contest_engine::spec::embedded::spec_by_id(contest_id).is_some() {
-        Box::new(spec_scorer::SpecScorer::new(contest_id, contest_instance_id, config))
+        Ok(Box::new(spec_scorer::SpecScorer::new(
+            contest_id,
+            contest_instance_id,
+            config,
+        )?))
     } else {
-        Box::new(unique_call::UniqueCallScorer::new())
+        Ok(Box::new(unique_call::UniqueCallScorer::new()))
     }
 }
 

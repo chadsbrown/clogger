@@ -1,5 +1,8 @@
 {
   "contest": "mst",
+  "my_exchange": {
+    "NAME": "CHAD"
+  },
   "call_history": [
     { "call": "W2XYZ", "fields": { "Name": "BOB" } }
   ],

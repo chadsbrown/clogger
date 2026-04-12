@@ -51,7 +51,7 @@ impl SpecScorer {
         spec_id: impl Into<String>,
         contest_instance_id: u64,
         config: HashMap<String, Value>,
-    ) -> Self {
+    ) -> anyhow::Result<Self> {
         let mut scorer = Self {
             spec_id: spec_id.into(),
             contest_instance_id,
@@ -66,16 +66,19 @@ impl SpecScorer {
             cached_summary: ScoreSummary::default(),
             loose_dupes: HashSet::new(),
         };
-        scorer.init_session();
-        scorer
+        scorer.init_session()?;
+        Ok(scorer)
     }
 
     /// Build a fresh empty session. Called at construction and by rebuild.
-    fn init_session(&mut self) {
-        let spec = match embedded::spec_by_id(&self.spec_id) {
-            Some(s) => s,
-            None => return,
-        };
+    /// Returns an error when contest-engine rejects the config (e.g. a state
+    /// QP config.toml missing a required `my_is_<state>` field) — at
+    /// construction the error propagates out of `SpecScorer::new`, refusing
+    /// to start the session. `rebuild` calls this through a warn-only shim
+    /// so a mid-session re-init doesn't panic the TUI.
+    fn init_session(&mut self) -> anyhow::Result<()> {
+        let spec = embedded::spec_by_id(&self.spec_id)
+            .ok_or_else(|| anyhow::anyhow!("contest spec `{}` not found in contest-engine embedded registry", self.spec_id))?;
         let domains = embedded::standard_domain_pack();
         let resolver = InMemoryResolver::new();
         let source = ResolvedStation::new("W", Continent::NA, true, true);
@@ -91,10 +94,18 @@ impl SpecScorer {
                 self.session = Some(session);
                 self.resolved_calls.clear();
                 self.loose_dupes.clear();
+                Ok(())
             }
             Err(e) => {
-                tracing::warn!("SpecScorer: session init failed for {}: {e}", self.spec_id);
                 self.session = None;
+                Err(anyhow::anyhow!(
+                    "contest-engine rejected session config for `{}`: {}. \
+                     Check your contest.toml `[station]` section — required fields \
+                     for state QSO parties include `my_is_<state>` (bool) plus \
+                     `my_county` or `my_loc` depending on in-state vs out-of-state.",
+                    self.spec_id,
+                    e
+                ))
             }
         }
     }
@@ -212,7 +223,13 @@ impl ContestScorer for SpecScorer {
         self.mults_by_band.clear();
         self.points_by_band.clear();
         self.mults_by_type_by_band.clear();
-        self.init_session();
+        // Mid-session re-init: if config somehow became invalid (shouldn't
+        // happen — it was validated at construction), warn but keep going.
+        // `self.session` will be None and subsequent apply_one calls return
+        // false. Bootstrap-time init is the gate that refuses startup.
+        if let Err(e) = self.init_session() {
+            tracing::warn!("SpecScorer: rebuild init_session failed for {}: {e}", self.spec_id);
+        }
 
         let cid = self.contest_instance_id;
         for rec in records

@@ -1,5 +1,9 @@
 {
   "contest": "ns_sprint",
+  "my_exchange": {
+    "NAME": "CHAD",
+    "LOC": "IN"
+  },
   "events": [
     { "type": "RigStatus", "radio": 1, "freq_hz": 14042000, "mode": "CW", "is_ptt": false },
     { "type": "SetMode", "mode": "Run" },

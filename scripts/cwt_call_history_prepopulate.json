@@ -1,5 +1,9 @@
 {
   "contest": "cwt",
+  "my_exchange": {
+    "NAME": "CHAD",
+    "XCHG": "2187"
+  },
   "call_history": [
     { "call": "K1ABC", "fields": { "Name": "CHAD", "Exch1": "1234" } },
     { "call": "W2XYZ", "fields": { "Name": "BOB", "Exch1": "5678" } }

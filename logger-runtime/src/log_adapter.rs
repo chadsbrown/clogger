@@ -299,7 +299,18 @@ fn to_mode(s: &str) -> Mode {
 mod tests {
     use super::LogAdapter;
     use crate::scoring::scorer_for_contest;
+    use contest_engine::spec::Value;
     use logger_core::contest_from_id;
+    use std::collections::HashMap;
+
+    /// Build a cqww config that satisfies the spec's required config_fields.
+    /// cqww requires `my_cq_zone`; without it, `scorer_for_contest` now errors
+    /// at construction instead of silently starting with a dead session.
+    fn cqww_test_config() -> HashMap<String, Value> {
+        let mut cfg = HashMap::new();
+        cfg.insert("my_cq_zone".to_string(), Value::Int(4));
+        cfg
+    }
 
     fn sample_draft() -> logger_core::QsoDraft {
         logger_core::QsoDraft {
@@ -316,10 +327,34 @@ mod tests {
         }
     }
 
+    /// Regression guard: `scorer_for_contest` must return an Err (not a
+    /// silent fallback) when a state QP is given an empty config that
+    /// doesn't satisfy its required `my_is_<state>` field. Prior behavior
+    /// was to log a warn and return a dead scorer, which silently dropped
+    /// every QSO for the whole contest.
+    #[test]
+    fn state_qp_missing_required_config_errors_at_init() {
+        let contest = contest_from_id("moqp").expect("moqp contest");
+        let result = scorer_for_contest(contest.as_ref(), HashMap::new());
+        let err = match result {
+            Ok(_) => panic!("empty moqp config must error, not succeed"),
+            Err(e) => e,
+        };
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("moqp"),
+            "error message should name the spec: {msg}"
+        );
+        assert!(
+            msg.contains("my_is") || msg.contains("[station]"),
+            "error message should hint at the missing required field: {msg}"
+        );
+    }
+
     #[test]
     fn undo_redo_placeholder_roundtrip() {
         let contest = contest_from_id("cqww").expect("cqww contest");
-        let scorer = scorer_for_contest(contest.as_ref(), std::collections::HashMap::new());
+        let scorer = scorer_for_contest(contest.as_ref(), cqww_test_config()).expect("scorer init");
         let mut adapter = LogAdapter::new(scorer, 1);
 
         adapter.insert(sample_draft(), 1, 1, 1).expect("insert");
@@ -340,7 +375,7 @@ mod tests {
 
         {
             let scorer =
-                scorer_for_contest(contest.as_ref(), std::collections::HashMap::new());
+                scorer_for_contest(contest.as_ref(), cqww_test_config()).expect("scorer init");
             let mut adapter = LogAdapter::open_db(scorer, 1, &db_path).expect("open_db");
             adapter.insert(sample_draft(), 1, 1, 1).expect("insert");
             adapter.undo().expect("undo");
@@ -349,7 +384,7 @@ mod tests {
 
         {
             let scorer =
-                scorer_for_contest(contest.as_ref(), std::collections::HashMap::new());
+                scorer_for_contest(contest.as_ref(), cqww_test_config()).expect("scorer init");
             let adapter = LogAdapter::open_db(scorer, 1, &db_path).expect("reopen_db");
             let records = adapter.ordered_records();
             assert_eq!(records.len(), 1, "record should still exist after reload");
@@ -369,7 +404,7 @@ mod tests {
 
         {
             let scorer =
-                scorer_for_contest(contest.as_ref(), std::collections::HashMap::new());
+                scorer_for_contest(contest.as_ref(), cqww_test_config()).expect("scorer init");
             let mut adapter = LogAdapter::open_db(scorer, 1, &db_path).expect("open_db");
             adapter.insert(sample_draft(), 1, 1, 1).expect("insert");
             adapter.undo().expect("undo");
@@ -379,7 +414,7 @@ mod tests {
 
         {
             let scorer =
-                scorer_for_contest(contest.as_ref(), std::collections::HashMap::new());
+                scorer_for_contest(contest.as_ref(), cqww_test_config()).expect("scorer init");
             let adapter = LogAdapter::open_db(scorer, 1, &db_path).expect("reopen_db");
             let records = adapter.ordered_records();
             assert_eq!(records.len(), 1);

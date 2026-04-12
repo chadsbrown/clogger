@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use contest_engine::spec::Value as ConfigValue;
 use logger_core::{
     AppEvent, AppState, CallHistoryLookup, ContestEntry, EntryState, EsmPolicy, Macros,
@@ -105,7 +105,13 @@ pub fn bootstrap(config: SessionConfig) -> Result<Session> {
         scorer_config.insert(key.clone(), value.clone());
     }
 
-    let scorer = crate::scoring::scorer_for_contest(contest.as_ref(), scorer_config);
+    let scorer = crate::scoring::scorer_for_contest(contest.as_ref(), scorer_config)
+        .with_context(|| {
+            format!(
+                "contest scorer init failed for `{}` — fix your contest.toml [station] section",
+                config.contest_id
+            )
+        })?;
 
     // Initialize entries for both radios so SO2R works out of the box
     let mut entries = HashMap::new();

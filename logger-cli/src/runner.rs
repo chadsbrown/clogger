@@ -308,7 +308,7 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
         scorer_config.insert(k.clone(), cv);
     }
 
-    let scorer = logger_runtime::scorer_for_contest(contest.as_ref(), scorer_config);
+    let scorer = logger_runtime::scorer_for_contest(contest.as_ref(), scorer_config)?;
     let mut log = LogAdapter::new(scorer, contest.contest_instance_id());
     let mut rig = FakeRig::default();
     let mut beep_error_count = 0usize;
