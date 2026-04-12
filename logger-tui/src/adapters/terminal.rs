@@ -40,6 +40,9 @@ pub fn spawn_terminal_reader(tx: mpsc::Sender<TerminalEvent>, has_second_rig: bo
                 (m, KeyCode::Char('e')) if m.contains(KeyModifiers::CONTROL) => {
                 TerminalEvent::OpenExportModal
             }
+                (m, KeyCode::Char('+')) if m.contains(KeyModifiers::CONTROL) => {
+                    TerminalEvent::App(AppEvent::QuickLog)
+                }
                 (m, KeyCode::Up)
                     if has_second_rig
                         && m.contains(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
@@ -97,6 +100,7 @@ pub fn spawn_terminal_reader(tx: mpsc::Sender<TerminalEvent>, has_second_rig: bo
                 (_, KeyCode::F(1)) => TerminalEvent::App(AppEvent::KeyPress { key: Key::F1 }),
                 (_, KeyCode::F(2)) => TerminalEvent::App(AppEvent::KeyPress { key: Key::F2 }),
                 (_, KeyCode::F(3)) => TerminalEvent::App(AppEvent::KeyPress { key: Key::F3 }),
+                (_, KeyCode::F(4)) => TerminalEvent::App(AppEvent::KeyPress { key: Key::F4 }),
                 (_, KeyCode::F(5)) => TerminalEvent::App(AppEvent::KeyPress { key: Key::F5 }),
                 (_, KeyCode::F(7)) => TerminalEvent::App(AppEvent::KeyPress { key: Key::F7 }),
                 (_, KeyCode::F(8)) => TerminalEvent::App(AppEvent::KeyPress { key: Key::F8 }),

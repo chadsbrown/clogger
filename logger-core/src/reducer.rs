@@ -5,7 +5,7 @@ use crate::{
     },
     effects::Effect,
     entry::{
-        esm::handle_esm,
+        esm::{handle_esm, quick_log},
         state::{EsmStep, OpMode},
     },
     events::{AppEvent, Key},
@@ -260,6 +260,10 @@ pub fn reduce(
                 radio: st.focused_radio,
                 text: expand_macro(&macros.f3, st),
             }],
+            Key::F4 => vec![Effect::CwSend {
+                radio: st.focused_radio,
+                text: expand_macro("{MYCALL}", st),
+            }],
             Key::F5 => vec![Effect::CwSend {
                 radio: st.focused_radio,
                 text: expand_macro(&macros.f5, st),
@@ -336,6 +340,7 @@ pub fn reduce(
                 }
             }
         },
+        AppEvent::QuickLog => quick_log(st, contest, macros),
         AppEvent::EsmTrigger => handle_esm(st, contest, macros),
         AppEvent::BandmapUp { radio: target } | AppEvent::BandmapDown { radio: target } => {
             let is_down = matches!(ev, AppEvent::BandmapDown { .. });

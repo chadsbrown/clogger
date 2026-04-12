@@ -6,6 +6,13 @@ use crate::{
     state::{AppState, LastLoggedContext, Macros},
 };
 
+pub fn quick_log(st: &mut AppState, contest: &dyn ContestEntry, macros: &Macros) -> Vec<Effect> {
+    if st.focused_entry().overall.is_invalid() {
+        return invalid_focus_effects(st);
+    }
+    log_and_clear(st, contest, macros, false, false)
+}
+
 pub fn handle_esm(st: &mut AppState, contest: &dyn ContestEntry, macros: &Macros) -> Vec<Effect> {
     if !st.focused_entry().esm_enabled {
         return Vec::new();

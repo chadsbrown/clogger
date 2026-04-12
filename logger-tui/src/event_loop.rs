@@ -495,6 +495,7 @@ fn needs_analytics_recompute(event: &logger_core::AppEvent) -> bool {
         // Keyboard/ESM may log a QSO or change entry fields
         AppEvent::KeyPress { .. }
         | AppEvent::TextInput { .. }
+        | AppEvent::QuickLog
         | AppEvent::EsmTrigger => true,
         // Radio focus changes which band's analytics are shown
         AppEvent::FocusRadio { .. } | AppEvent::SwapRadios => true,

@@ -362,11 +362,13 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
                     KeyValue::F1 => Key::F1,
                     KeyValue::F2 => Key::F2,
                     KeyValue::F3 => Key::F3,
+                    KeyValue::F4 => Key::F4,
                     KeyValue::Enter => Key::Enter,
                     KeyValue::Equal => Key::Equal,
                 },
             }),
             ScriptEvent::Esm => Some(AppEvent::EsmTrigger),
+            ScriptEvent::QuickLog => Some(AppEvent::QuickLog),
             ScriptEvent::Spot { call, freq_hz, mode } => Some(AppEvent::SpotReceived {
                 spot: Spot { call, freq_hz, mode },
             }),

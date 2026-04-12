@@ -62,6 +62,7 @@ pub enum ScriptEvent {
         key: KeyValue,
     },
     Esm,
+    QuickLog,
     Spot {
         call: String,
         freq_hz: u64,
@@ -88,6 +89,7 @@ pub enum KeyValue {
     F1,
     F2,
     F3,
+    F4,
     Enter,
     Equal,
 }

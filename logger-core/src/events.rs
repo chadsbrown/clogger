@@ -14,6 +14,7 @@ pub enum Key {
     F1,
     F2,
     F3,
+    F4,
     F5,
     F7,
     F8,
@@ -81,6 +82,7 @@ pub enum AppEvent {
     PersistError {
         message: String,
     },
+    QuickLog,
     EsmTrigger,
     BandmapUp { radio: RadioId },
     BandmapDown { radio: RadioId },
