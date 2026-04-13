@@ -97,6 +97,24 @@ pub fn spawn_terminal_reader(tx: mpsc::Sender<TerminalEvent>, has_second_rig: bo
                 (_, KeyCode::Left) => TerminalEvent::App(AppEvent::KeyPress { key: Key::Left }),
                 (_, KeyCode::Right) => TerminalEvent::App(AppEvent::KeyPress { key: Key::Right }),
                 (_, KeyCode::Tab) => TerminalEvent::App(AppEvent::KeyPress { key: Key::Tab }),
+                (m, KeyCode::F(n)) if m.contains(KeyModifiers::CONTROL | KeyModifiers::ALT) => {
+                    let key = match n {
+                        1 => Key::CtrlAltF1,
+                        2 => Key::CtrlAltF2,
+                        3 => Key::CtrlAltF3,
+                        4 => Key::CtrlAltF4,
+                        5 => Key::CtrlAltF5,
+                        6 => Key::CtrlAltF6,
+                        7 => Key::CtrlAltF7,
+                        8 => Key::CtrlAltF8,
+                        9 => Key::CtrlAltF9,
+                        10 => Key::CtrlAltF10,
+                        11 => Key::CtrlAltF11,
+                        12 => Key::CtrlAltF12,
+                        _ => continue,
+                    };
+                    TerminalEvent::App(AppEvent::KeyPress { key })
+                }
                 (_, KeyCode::F(1)) => TerminalEvent::App(AppEvent::KeyPress { key: Key::F1 }),
                 (_, KeyCode::F(2)) => TerminalEvent::App(AppEvent::KeyPress { key: Key::F2 }),
                 (_, KeyCode::F(3)) => TerminalEvent::App(AppEvent::KeyPress { key: Key::F3 }),

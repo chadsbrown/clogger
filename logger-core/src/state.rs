@@ -78,6 +78,18 @@ pub struct Macros {
     pub f9: String,
     /// If set, S&P ESM sends this instead of f2 for the exchange step.
     pub sp_f2: Option<String>,
+    pub ctrl_alt_f1: String,
+    pub ctrl_alt_f2: String,
+    pub ctrl_alt_f3: String,
+    pub ctrl_alt_f4: String,
+    pub ctrl_alt_f5: String,
+    pub ctrl_alt_f6: String,
+    pub ctrl_alt_f7: String,
+    pub ctrl_alt_f8: String,
+    pub ctrl_alt_f9: String,
+    pub ctrl_alt_f10: String,
+    pub ctrl_alt_f11: String,
+    pub ctrl_alt_f12: String,
 }
 
 impl Default for Macros {
@@ -91,6 +103,18 @@ impl Default for Macros {
             f8: String::new(),
             f9: String::new(),
             sp_f2: None,
+            ctrl_alt_f1: String::new(),
+            ctrl_alt_f2: String::new(),
+            ctrl_alt_f3: String::new(),
+            ctrl_alt_f4: String::new(),
+            ctrl_alt_f5: String::new(),
+            ctrl_alt_f6: String::new(),
+            ctrl_alt_f7: String::new(),
+            ctrl_alt_f8: String::new(),
+            ctrl_alt_f9: String::new(),
+            ctrl_alt_f10: String::new(),
+            ctrl_alt_f11: String::new(),
+            ctrl_alt_f12: String::new(),
         }
     }
 }

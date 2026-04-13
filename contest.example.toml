@@ -99,6 +99,9 @@ contest = "cqww"
 #f7 = "?"
 #f8 = "NR {MYZONE} {MYZONE}"
 #f9 = "QRL?"
+# Ctrl-Alt function keys (all default to empty / unbound):
+#ctrl_alt_f1 = "QRL?"
+#ctrl_alt_f2 = "AGN?"
 
 # ---------------------------------------------------------------------------
 # Cabrillo category — describes your entry for this specific contest.

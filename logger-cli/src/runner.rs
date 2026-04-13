@@ -256,6 +256,18 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
     if let Some(ref v) = ov.f7 { macros.f7 = v.clone(); }
     if let Some(ref v) = ov.f8 { macros.f8 = v.clone(); }
     if let Some(ref v) = ov.f9 { macros.f9 = v.clone(); }
+    if let Some(ref v) = ov.ctrl_alt_f1 { macros.ctrl_alt_f1 = v.clone(); }
+    if let Some(ref v) = ov.ctrl_alt_f2 { macros.ctrl_alt_f2 = v.clone(); }
+    if let Some(ref v) = ov.ctrl_alt_f3 { macros.ctrl_alt_f3 = v.clone(); }
+    if let Some(ref v) = ov.ctrl_alt_f4 { macros.ctrl_alt_f4 = v.clone(); }
+    if let Some(ref v) = ov.ctrl_alt_f5 { macros.ctrl_alt_f5 = v.clone(); }
+    if let Some(ref v) = ov.ctrl_alt_f6 { macros.ctrl_alt_f6 = v.clone(); }
+    if let Some(ref v) = ov.ctrl_alt_f7 { macros.ctrl_alt_f7 = v.clone(); }
+    if let Some(ref v) = ov.ctrl_alt_f8 { macros.ctrl_alt_f8 = v.clone(); }
+    if let Some(ref v) = ov.ctrl_alt_f9 { macros.ctrl_alt_f9 = v.clone(); }
+    if let Some(ref v) = ov.ctrl_alt_f10 { macros.ctrl_alt_f10 = v.clone(); }
+    if let Some(ref v) = ov.ctrl_alt_f11 { macros.ctrl_alt_f11 = v.clone(); }
+    if let Some(ref v) = ov.ctrl_alt_f12 { macros.ctrl_alt_f12 = v.clone(); }
 
     let mut entries = HashMap::new();
     entries.insert(1, EntryState::from_spec(&contest.form_spec()));

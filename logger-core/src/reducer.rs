@@ -284,6 +284,33 @@ pub fn reduce(
                     }]
                 }
             }
+            Key::CtrlAltF1 | Key::CtrlAltF2 | Key::CtrlAltF3 | Key::CtrlAltF4
+            | Key::CtrlAltF5 | Key::CtrlAltF6 | Key::CtrlAltF7 | Key::CtrlAltF8
+            | Key::CtrlAltF9 | Key::CtrlAltF10 | Key::CtrlAltF11 | Key::CtrlAltF12 => {
+                let text = match key {
+                    Key::CtrlAltF1 => &macros.ctrl_alt_f1,
+                    Key::CtrlAltF2 => &macros.ctrl_alt_f2,
+                    Key::CtrlAltF3 => &macros.ctrl_alt_f3,
+                    Key::CtrlAltF4 => &macros.ctrl_alt_f4,
+                    Key::CtrlAltF5 => &macros.ctrl_alt_f5,
+                    Key::CtrlAltF6 => &macros.ctrl_alt_f6,
+                    Key::CtrlAltF7 => &macros.ctrl_alt_f7,
+                    Key::CtrlAltF8 => &macros.ctrl_alt_f8,
+                    Key::CtrlAltF9 => &macros.ctrl_alt_f9,
+                    Key::CtrlAltF10 => &macros.ctrl_alt_f10,
+                    Key::CtrlAltF11 => &macros.ctrl_alt_f11,
+                    Key::CtrlAltF12 => &macros.ctrl_alt_f12,
+                    _ => unreachable!(),
+                };
+                if text.is_empty() {
+                    Vec::new()
+                } else {
+                    vec![Effect::CwSend {
+                        radio: st.focused_radio,
+                        text: expand_macro(text, st),
+                    }]
+                }
+            }
             Key::F12 => {
                 let entry = st.focused_entry_mut();
                 entry.clear_values();

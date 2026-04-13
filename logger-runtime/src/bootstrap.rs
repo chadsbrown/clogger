@@ -22,6 +22,18 @@ pub struct MacroOverrides {
     pub f7: Option<String>,
     pub f8: Option<String>,
     pub f9: Option<String>,
+    pub ctrl_alt_f1: Option<String>,
+    pub ctrl_alt_f2: Option<String>,
+    pub ctrl_alt_f3: Option<String>,
+    pub ctrl_alt_f4: Option<String>,
+    pub ctrl_alt_f5: Option<String>,
+    pub ctrl_alt_f6: Option<String>,
+    pub ctrl_alt_f7: Option<String>,
+    pub ctrl_alt_f8: Option<String>,
+    pub ctrl_alt_f9: Option<String>,
+    pub ctrl_alt_f10: Option<String>,
+    pub ctrl_alt_f11: Option<String>,
+    pub ctrl_alt_f12: Option<String>,
 }
 
 pub struct SessionConfig {
@@ -73,6 +85,18 @@ pub fn bootstrap(config: SessionConfig) -> Result<Session> {
         if let Some(ref v) = overrides.f7 { macros.f7 = v.clone(); }
         if let Some(ref v) = overrides.f8 { macros.f8 = v.clone(); }
         if let Some(ref v) = overrides.f9 { macros.f9 = v.clone(); }
+        if let Some(ref v) = overrides.ctrl_alt_f1 { macros.ctrl_alt_f1 = v.clone(); }
+        if let Some(ref v) = overrides.ctrl_alt_f2 { macros.ctrl_alt_f2 = v.clone(); }
+        if let Some(ref v) = overrides.ctrl_alt_f3 { macros.ctrl_alt_f3 = v.clone(); }
+        if let Some(ref v) = overrides.ctrl_alt_f4 { macros.ctrl_alt_f4 = v.clone(); }
+        if let Some(ref v) = overrides.ctrl_alt_f5 { macros.ctrl_alt_f5 = v.clone(); }
+        if let Some(ref v) = overrides.ctrl_alt_f6 { macros.ctrl_alt_f6 = v.clone(); }
+        if let Some(ref v) = overrides.ctrl_alt_f7 { macros.ctrl_alt_f7 = v.clone(); }
+        if let Some(ref v) = overrides.ctrl_alt_f8 { macros.ctrl_alt_f8 = v.clone(); }
+        if let Some(ref v) = overrides.ctrl_alt_f9 { macros.ctrl_alt_f9 = v.clone(); }
+        if let Some(ref v) = overrides.ctrl_alt_f10 { macros.ctrl_alt_f10 = v.clone(); }
+        if let Some(ref v) = overrides.ctrl_alt_f11 { macros.ctrl_alt_f11 = v.clone(); }
+        if let Some(ref v) = overrides.ctrl_alt_f12 { macros.ctrl_alt_f12 = v.clone(); }
     }
 
     let mut my_exchange = HashMap::new();
