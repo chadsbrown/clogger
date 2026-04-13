@@ -16,10 +16,16 @@ pub fn expand_macro(template: &str, st: &AppState) -> String {
     };
 
     let my_zone = st.my_zone.to_string();
-    let serial_str = entry
-        .assigned_serial
-        .map(|n| n.to_string())
-        .unwrap_or_default();
+    let prev_serial = entry
+        .last_logged_context
+        .as_ref()
+        .and_then(|ctx| ctx.serial);
+    let serial = if call.is_empty() {
+        prev_serial
+    } else {
+        entry.assigned_serial
+    };
+    let serial_str = serial.map(|n| n.to_string()).unwrap_or_default();
     let base = [
         ("{MYCALL}", st.my_call.as_str()),
         ("{MYZONE}", my_zone.as_str()),

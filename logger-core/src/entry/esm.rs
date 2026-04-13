@@ -124,6 +124,7 @@ fn log_and_clear(
                 fields: st.focused_entry().fields.iter()
                     .map(|f| (f.label.to_ascii_uppercase(), f.value.clone()))
                     .collect(),
+                serial: st.focused_entry().assigned_serial,
             };
 
             let entry = st.focused_entry_mut();

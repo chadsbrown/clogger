@@ -33,6 +33,7 @@ pub struct RadioState {
 pub struct LastLoggedContext {
     pub call: String,
     pub fields: Vec<(String, String)>,
+    pub serial: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
