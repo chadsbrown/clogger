@@ -88,7 +88,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
     SpecContestMeta {
         contest_id: "mst",
         contest_instance_id: 4,
-        field_widths: &[(1, 12), (2, 10)],
+        field_widths: &[(1, 12), (2, 10), (3, 5)],
         default_macros_fn: mst_macros,
         history_mapping: &[("Name", 2)],
         uses_serial: true,

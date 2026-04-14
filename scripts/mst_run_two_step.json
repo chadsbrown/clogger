@@ -3,6 +3,7 @@
   "my_exchange": {
     "NAME": "CHAD"
   },
+  "esm_policy": { "run_two_step": true },
   "call_history": [
     { "call": "W2XYZ", "fields": { "Name": "BOB" } }
   ],
@@ -13,18 +14,22 @@
     { "type": "Text", "s": "K1ABC" },
     { "type": "Key", "key": "Space" },
     { "type": "Text", "s": "VINCE" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "42" },
     { "type": "Key", "key": "Enter" },
     { "type": "Key", "key": "Enter" },
 
     { "type": "Text", "s": "W2XYZ" },
     { "type": "Key", "key": "Space" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "99" },
     { "type": "Key", "key": "Enter" },
     { "type": "Key", "key": "Enter" }
   ],
   "expectations": {
     "qsos": [
-      { "call": "K1ABC", "exchange": { "name": "VINCE", "serial": "1" } },
-      { "call": "W2XYZ", "exchange": { "name": "BOB", "serial": "2" } }
+      { "call": "K1ABC", "exchange": { "name": "VINCE", "nr": "42", "serial": "1" } },
+      { "call": "W2XYZ", "exchange": { "name": "BOB", "nr": "99", "serial": "2" } }
     ],
     "cw_sent_contains": [
       "K1ABC",
