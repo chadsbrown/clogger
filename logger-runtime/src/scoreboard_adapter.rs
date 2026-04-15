@@ -200,6 +200,7 @@ fn serialize_xml(snap: &ScoreboardSnapshot) -> String {
     let _ = write!(xml, "  <score>{}</score>\n", snap.breakdown.claimed_score);
     let _ = write!(xml, "  <timestamp>{}</timestamp>\n", timestamp);
     let _ = write!(xml, "  <soft>CLogger</soft>\n");
+    let _ = write!(xml, "  <version>{}</version>\n", env!("CARGO_PKG_VERSION"));
     let _ = write!(xml, "</dynamicresults>\n");
 
     xml
