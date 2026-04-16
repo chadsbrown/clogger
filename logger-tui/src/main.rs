@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::File;
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
 use logger_core::{AppEvent, RadioId, contest::BandmapCache};
 use logger_runtime::{AvailSummary, ConfigValue, RateInfo, ScoreboardStatus, ScoreSummary};
@@ -229,14 +229,20 @@ async fn main() -> Result<()> {
         _ => (None, false),
     };
 
-    // Optionally connect dxfeed
+    // Optionally connect dxfeed. Any error from `spawn_dxfeed_adapter`
+    // here is a *config* problem (bad filter_file path/JSON, invalid
+    // [dxfeed.skimmer_quality] values, builder validation) — not a
+    // network failure. Cluster connection issues surface as runtime
+    // events after spawn and don't come out of this Result. Fail fast
+    // so the operator doesn't unknowingly run a contest without the
+    // filtering they asked for.
     let dxfeed_configured = config.dxfeed.is_some();
     let mut dxfeed_connected = false;
     if let Some(dxfeed_config) = &config.dxfeed {
-        match logger_runtime::spawn_dxfeed_adapter(dxfeed_config, app_tx.clone()).await {
-            Ok(()) => { dxfeed_connected = true; }
-            Err(e) => warn!("dxfeed connection failed, continuing without: {e}"),
-        }
+        logger_runtime::spawn_dxfeed_adapter(dxfeed_config, app_tx.clone())
+            .await
+            .context("dxfeed config invalid — refusing to start")?;
+        dxfeed_connected = true;
     }
 
     // Optionally connect OTRSP SO2R switch. The handle is shared between

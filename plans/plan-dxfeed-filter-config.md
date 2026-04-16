@@ -117,17 +117,32 @@ Mirrors how `db_path` works. Trivial extension once the stable-config
 path is shipped: add `Option<PathBuf>` to `ContestConfig`, merge in
 `Config::from_parts()`, contest overrides stable.
 
-### Spot metadata for downstream filtering
+### Spot metadata on `AppEvent::SpotReceived` (UI / context-aware filters)
 
 dxfeed parses `snr_db`, `wpm`, `unique_originators`, and originator kind
-(skimmer vs human) per `SpotObservation`, but the clogger `Spot` struct
-(`logger-core/src/state.rs`) only carries `call`, `freq_hz`, `mode`. To
-support clogger-side filters like "drop RBN spots below 8 dB SNR" or
-"prefer human spotters in dedup," extend `Spot` to carry the metadata
-and surface it in `AppEvent::SpotReceived`.
+per `SpotObservation`, but the clogger `Spot` struct
+(`logger-core/src/state.rs`) only carries `call`, `freq_hz`, `mode`.
 
-This would unlock filters that the dxfeed crate doesn't (and shouldn't)
-own — they're consumer policy, not pipeline policy.
+**Note:** simple SNR/WPM filtering is *already* available today via
+`filter_file` — the `[skimmer]` block in
+`dxfeed::filter::config::SkimmerMetricFiltersSerde` accepts `snr_db =
+(min, max)` and `wpm = (min, max)` ranges and drops non-matching spots
+before they reach clogger. Same for spotter blocklists
+(`[spotter]`), band/callsign rules, geo, etc. For most "reduce noise"
+use cases no `Spot` struct change is needed.
+
+The `Spot` extension is only needed to unlock things the filter pipeline
+*can't* do:
+- **Display** SNR/WPM decorations in the bandmap UI so the operator can
+  eyeball spot quality at a glance.
+- Filters that mix dxfeed data with clogger runtime state (e.g., tighter
+  SNR threshold on bands where you've already worked many stations, or
+  preferring human-spotter corroboration for calls flagged as multipliers).
+- Post-hoc debugging ("why did this busted call get through?" is easier
+  with the observation metadata visible).
+
+If picked up: add optional fields to `Spot` and `AppEvent::SpotReceived`
+so existing tests and call sites don't need to change all at once.
 
 ### Observability of dropped spots
 
