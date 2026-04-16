@@ -1,3 +1,6 @@
+use std::path::PathBuf;
+use std::time::Duration;
+
 use serde::Deserialize;
 
 // ---------------------------------------------------------------------------
@@ -279,6 +282,12 @@ fn default_rx_mode() -> String {
 #[derive(Debug, Deserialize)]
 pub struct DxFeedConfig {
     pub sources: Vec<DxFeedSourceConfig>,
+    /// Optional path to a JSON file containing a dxfeed `FilterConfigSerde`.
+    /// When set, the file is loaded at startup; missing/invalid → fail to start.
+    pub filter_file: Option<PathBuf>,
+    /// Optional skimmer quality engine overrides. Any field omitted from the
+    /// `[dxfeed.skimmer_quality]` TOML section uses dxfeed's default.
+    pub skimmer_quality: Option<SkimmerQualityConfigSerde>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -286,4 +295,158 @@ pub struct DxFeedSourceConfig {
     pub host: String,
     pub port: u16,
     pub callsign: String,
+}
+
+/// TOML-friendly mirror of `dxfeed::skimmer::config::SkimmerQualityConfig`
+/// with all fields optional. Decoupling lets us name fields for TOML
+/// (`lookback_window_secs` reads better than a `Duration`) and accept
+/// partial overrides without making the user copy every default.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SkimmerQualityConfigSerde {
+    pub enabled: Option<bool>,
+    pub compute_valid: Option<bool>,
+    pub compute_busted: Option<bool>,
+    pub compute_qsy: Option<bool>,
+    pub gate_skimmer_output: Option<bool>,
+    pub allow_valid: Option<bool>,
+    pub allow_qsy: Option<bool>,
+    pub allow_unknown: Option<bool>,
+    pub allow_busted: Option<bool>,
+    pub valid_required_distinct_skimmers: Option<u8>,
+    pub valid_freq_window_hz: Option<i64>,
+    pub lookback_window_secs: Option<u64>,
+    pub busted_freq_window_hz: Option<i64>,
+    pub similar_call_max_edit_distance: Option<u8>,
+    pub qsy_freq_window_hz: Option<i64>,
+    pub apply_only_to_skimmer: Option<bool>,
+    pub max_tracked_observations: Option<usize>,
+}
+
+impl SkimmerQualityConfigSerde {
+    /// Convert into dxfeed's `SkimmerQualityConfig`, filling missing fields
+    /// from `SkimmerQualityConfig::default()`.
+    pub fn to_dxfeed(&self) -> dxfeed::skimmer::config::SkimmerQualityConfig {
+        let mut cfg = dxfeed::skimmer::config::SkimmerQualityConfig::default();
+        if let Some(v) = self.enabled { cfg.enabled = v; }
+        if let Some(v) = self.compute_valid { cfg.compute_valid = v; }
+        if let Some(v) = self.compute_busted { cfg.compute_busted = v; }
+        if let Some(v) = self.compute_qsy { cfg.compute_qsy = v; }
+        if let Some(v) = self.gate_skimmer_output { cfg.gate_skimmer_output = v; }
+        if let Some(v) = self.allow_valid { cfg.allow_valid = v; }
+        if let Some(v) = self.allow_qsy { cfg.allow_qsy = v; }
+        if let Some(v) = self.allow_unknown { cfg.allow_unknown = v; }
+        if let Some(v) = self.allow_busted { cfg.allow_busted = v; }
+        if let Some(v) = self.valid_required_distinct_skimmers {
+            cfg.valid_required_distinct_skimmers = v;
+        }
+        if let Some(v) = self.valid_freq_window_hz { cfg.valid_freq_window_hz = v; }
+        if let Some(v) = self.lookback_window_secs {
+            cfg.lookback_window = Duration::from_secs(v);
+        }
+        if let Some(v) = self.busted_freq_window_hz { cfg.busted_freq_window_hz = v; }
+        if let Some(v) = self.similar_call_max_edit_distance {
+            cfg.similar_call_max_edit_distance = v;
+        }
+        if let Some(v) = self.qsy_freq_window_hz { cfg.qsy_freq_window_hz = v; }
+        if let Some(v) = self.apply_only_to_skimmer { cfg.apply_only_to_skimmer = v; }
+        if let Some(v) = self.max_tracked_observations { cfg.max_tracked_observations = v; }
+        cfg
+    }
+
+    /// Sanity-check before passing to dxfeed: catch nonsensical values that
+    /// dxfeed would silently accept but produce useless behavior.
+    pub fn validate(&self) -> anyhow::Result<()> {
+        if let Some(0) = self.valid_required_distinct_skimmers {
+            anyhow::bail!(
+                "[dxfeed.skimmer_quality] valid_required_distinct_skimmers must be >= 1"
+            );
+        }
+        if let Some(0) = self.lookback_window_secs {
+            anyhow::bail!("[dxfeed.skimmer_quality] lookback_window_secs must be > 0");
+        }
+        if let Some(v) = self.valid_freq_window_hz {
+            if v <= 0 {
+                anyhow::bail!("[dxfeed.skimmer_quality] valid_freq_window_hz must be > 0");
+            }
+        }
+        if let Some(v) = self.busted_freq_window_hz {
+            if v <= 0 {
+                anyhow::bail!("[dxfeed.skimmer_quality] busted_freq_window_hz must be > 0");
+            }
+        }
+        if let Some(v) = self.qsy_freq_window_hz {
+            if v <= 0 {
+                anyhow::bail!("[dxfeed.skimmer_quality] qsy_freq_window_hz must be > 0");
+            }
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn skimmer_serde_defaults_match_dxfeed_defaults() {
+        let empty = SkimmerQualityConfigSerde::default();
+        let converted = empty.to_dxfeed();
+        let baseline = dxfeed::skimmer::config::SkimmerQualityConfig::default();
+        assert_eq!(converted.enabled, baseline.enabled);
+        assert_eq!(
+            converted.valid_required_distinct_skimmers,
+            baseline.valid_required_distinct_skimmers
+        );
+        assert_eq!(converted.valid_freq_window_hz, baseline.valid_freq_window_hz);
+        assert_eq!(converted.lookback_window, baseline.lookback_window);
+        assert_eq!(converted.allow_busted, baseline.allow_busted);
+        assert_eq!(converted.apply_only_to_skimmer, baseline.apply_only_to_skimmer);
+    }
+
+    #[test]
+    fn skimmer_serde_partial_override_keeps_other_defaults() {
+        let toml = r#"
+            valid_required_distinct_skimmers = 5
+            lookback_window_secs = 90
+        "#;
+        let parsed: SkimmerQualityConfigSerde = toml::from_str(toml).expect("parse");
+        let converted = parsed.to_dxfeed();
+        let baseline = dxfeed::skimmer::config::SkimmerQualityConfig::default();
+        assert_eq!(converted.valid_required_distinct_skimmers, 5);
+        assert_eq!(converted.lookback_window, Duration::from_secs(90));
+        // Untouched fields stay at the dxfeed default.
+        assert_eq!(converted.valid_freq_window_hz, baseline.valid_freq_window_hz);
+        assert_eq!(converted.busted_freq_window_hz, baseline.busted_freq_window_hz);
+        assert_eq!(
+            converted.similar_call_max_edit_distance,
+            baseline.similar_call_max_edit_distance
+        );
+        assert_eq!(converted.allow_busted, baseline.allow_busted);
+    }
+
+    #[test]
+    fn skimmer_serde_validates_zero_skimmer_requirement() {
+        let toml = "valid_required_distinct_skimmers = 0";
+        let parsed: SkimmerQualityConfigSerde = toml::from_str(toml).unwrap();
+        let err = parsed.validate().unwrap_err();
+        assert!(err.to_string().contains("valid_required_distinct_skimmers"));
+    }
+
+    #[test]
+    fn skimmer_serde_validates_negative_freq_window() {
+        let toml = "valid_freq_window_hz = -1";
+        let parsed: SkimmerQualityConfigSerde = toml::from_str(toml).unwrap();
+        let err = parsed.validate().unwrap_err();
+        assert!(err.to_string().contains("valid_freq_window_hz"));
+    }
+
+    #[test]
+    fn skimmer_serde_rejects_unknown_field() {
+        // `deny_unknown_fields` should catch typos so users don't think a
+        // setting is taking effect when it's silently ignored.
+        let toml = "valid_requierd_distinct_skimmers = 5";
+        let res: Result<SkimmerQualityConfigSerde, _> = toml::from_str(toml);
+        assert!(res.is_err(), "typo'd field should fail to deserialize");
+    }
 }

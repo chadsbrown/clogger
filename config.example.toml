@@ -181,6 +181,30 @@
 #host = "dxc.k3lr.com"
 #port = 7300
 #callsign = "N9UNX"
+#
+# Optional path to a JSON FilterConfigSerde (band/callsign/spotter rules,
+# geo filters, etc.). Missing or invalid file → fail to start (so a contest
+# doesn't begin with an unintended firehose). Omit to run without filtering.
+#[dxfeed]
+#filter_file = "/home/n9unx/clogger/dxfeed-filter.json"
+#
+# Skimmer quality engine — busted-call detection / corroboration thresholds.
+# Any field omitted uses the dxfeed default. Defaults shown after each line.
+# Only the busted/corroboration knobs you care about need to appear.
+#[dxfeed.skimmer_quality]
+#enabled = true                                # master on/off
+#valid_required_distinct_skimmers = 3          # bump to 5 to cut noisy regional clusters
+#valid_freq_window_hz = 300                    # tighten (e.g. 150) for stricter "same spot"
+#lookback_window_secs = 180                    # shorten (e.g. 90) to drop stale corroborations sooner
+#busted_freq_window_hz = 100                   # busted match must be within this of verified freq
+#similar_call_max_edit_distance = 1            # 1 = one-character typos; 2 catches more, false-positives more
+#qsy_freq_window_hz = 400                      # >= this from verified freq → tag as Qsy
+#allow_valid = true                            # let through corroborated spots
+#allow_qsy = false                             # block "same call, far freq" by default
+#allow_unknown = false                         # block single-skimmer spots that aren't yet corroborated
+#allow_busted = false                          # block typo-of-verified spots (the noise source you're chasing)
+#apply_only_to_skimmer = true                  # human spotters bypass this gating; set false to gate them too
+#max_tracked_observations = 100000
 
 # ---------------------------------------------------------------------------
 # Cabrillo header metadata (optional). These fields appear in exported

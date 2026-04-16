@@ -1,6 +1,8 @@
+use anyhow::Context;
 use dxfeed::{
     domain::DxMode,
     feed::DxFeedBuilder,
+    filter::config::FilterConfigSerde,
     model::{DxEvent, SourceId, SpotEventKind},
     skimmer::config::SkimmerQualityConfig,
     source::{cluster::ClusterSourceConfig, supervisor::SourceConfig},
@@ -31,8 +33,24 @@ pub async fn spawn_dxfeed_adapter(
         builder = builder.add_source(SourceConfig::Cluster(cluster));
     }
 
+    // Optional filter pipeline (band/callsign/spotter rules) loaded from JSON.
+    if let Some(path) = &config.filter_file {
+        let filter = load_filter_file(path)?;
+        info!("dxfeed: loaded filter from {}", path.display());
+        builder = builder.set_filter(filter);
+    }
+
+    // Skimmer quality engine: user overrides (validated) or dxfeed defaults.
+    let skimmer = match &config.skimmer_quality {
+        Some(s) => {
+            s.validate()?;
+            s.to_dxfeed()
+        }
+        None => SkimmerQualityConfig::default(),
+    };
+
     let mut feed = builder
-        .set_skimmer_quality(SkimmerQualityConfig::default())
+        .set_skimmer_quality(skimmer)
         .build()
         .map_err(|e| anyhow::anyhow!("dxfeed build: {e:?}"))?;
 
@@ -74,6 +92,13 @@ pub async fn spawn_dxfeed_adapter(
     Ok(())
 }
 
+pub(crate) fn load_filter_file(path: &std::path::Path) -> anyhow::Result<FilterConfigSerde> {
+    let raw = std::fs::read_to_string(path)
+        .with_context(|| format!("reading dxfeed filter_file {}", path.display()))?;
+    serde_json::from_str(&raw)
+        .with_context(|| format!("parsing dxfeed filter_file {}", path.display()))
+}
+
 fn dxmode_to_str(mode: DxMode) -> String {
     match mode {
         DxMode::CW => "CW",
@@ -84,4 +109,36 @@ fn dxmode_to_str(mode: DxMode) -> String {
         DxMode::Unknown => "CW",
     }
     .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::load_filter_file;
+
+    #[test]
+    fn filter_file_missing_returns_error() {
+        let err = load_filter_file(std::path::Path::new("/nonexistent/dxfeed-filter.json"))
+            .unwrap_err();
+        assert!(err.to_string().contains("reading dxfeed filter_file"));
+    }
+
+    #[test]
+    fn filter_file_invalid_json_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bad.json");
+        std::fs::write(&path, "{ this is not json").unwrap();
+        let err = load_filter_file(&path).unwrap_err();
+        assert!(err.to_string().contains("parsing dxfeed filter_file"));
+    }
+
+    #[test]
+    fn filter_file_minimal_valid_json_loads() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("filter.json");
+        // Smallest valid FilterConfigSerde — just the required defaults.
+        let cfg = dxfeed::filter::config::FilterConfigSerde::default();
+        std::fs::write(&path, serde_json::to_string(&cfg).unwrap()).unwrap();
+        let loaded = load_filter_file(&path).expect("should load");
+        assert_eq!(loaded.max_age_secs, cfg.max_age_secs);
+    }
 }
