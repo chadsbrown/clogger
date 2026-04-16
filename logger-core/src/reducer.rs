@@ -753,7 +753,7 @@ mod tests {
         reducer::{
             DupeChecker, MultChecker, NoCallHistory, NoDupeChecker, NoMultChecker, NoScp,
         },
-        state::{AppState, EsmPolicy, Macros, Spot},
+        state::{AppState, Macros, Spot},
     };
 
     fn reduce(
@@ -807,7 +807,6 @@ mod tests {
             my_zone: 4,
             rst_sent: "599".to_string(),
             my_exchange: HashMap::new(),
-            esm_policy: EsmPolicy::default(),
             bandmap_cursors: HashMap::new(),
             default_cw_speed: 28,
             serial_counter: None,

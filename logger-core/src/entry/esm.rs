@@ -33,7 +33,10 @@ fn handle_run(st: &mut AppState, contest: &dyn ContestEntry, macros: &Macros) ->
         }];
     }
 
-    if st.focused_entry().esm_step == EsmStep::Idle && st.esm_policy.run_two_step {
+    // Run is always two-step: Enter 1 sends call+exchange (so the operator can
+    // copy the runner's reply); Enter 2 logs and sends TU. Collapsing these
+    // into one would require logging before the received exchange is typed.
+    if st.focused_entry().esm_step == EsmStep::Idle {
         st.focused_entry_mut().esm_step = EsmStep::ExchSent;
         claim_serial(st, contest);
         let mut effects = vec![Effect::CwSend {
@@ -54,7 +57,7 @@ fn handle_run(st: &mut AppState, contest: &dyn ContestEntry, macros: &Macros) ->
         return invalid_focus_effects(st);
     }
 
-    log_and_clear(st, contest, macros, true, !st.esm_policy.run_two_step)
+    log_and_clear(st, contest, macros, true, false)
 }
 
 fn handle_sp(st: &mut AppState, contest: &dyn ContestEntry, macros: &Macros) -> Vec<Effect> {

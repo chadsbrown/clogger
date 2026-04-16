@@ -6,8 +6,6 @@ use std::collections::BTreeMap;
 pub struct Script {
     pub contest: Option<String>,
     #[serde(default)]
-    pub esm_policy: EsmPolicyConfig,
-    #[serde(default)]
     pub uses_serial: bool,
     #[serde(default)]
     pub macro_overrides: MacroOverrides,
@@ -144,11 +142,6 @@ pub struct ExpectedQso {
 
 fn default_mode() -> String {
     "CW".to_string()
-}
-
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
-pub struct EsmPolicyConfig {
-    pub run_two_step: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]

@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use contest_engine::spec::Value as ConfigValue;
 use logger_core::{
-    AppEvent, AppState, CallHistoryLookup, ContestEntry, EntryState, EsmPolicy, Macros,
-    NoCallHistory, NoScp, ScpLookup, contest_from_id,
+    AppEvent, AppState, CallHistoryLookup, ContestEntry, EntryState, Macros, NoCallHistory, NoScp,
+    ScpLookup, contest_from_id,
 };
 use serde::Deserialize;
 use tokio::sync::mpsc;
@@ -162,7 +162,6 @@ pub fn bootstrap(config: SessionConfig) -> Result<Session> {
         my_zone: config.my_zone,
         rst_sent: config.rst_sent,
         my_exchange,
-        esm_policy: EsmPolicy::default(),
         bandmap_cursors: HashMap::new(),
         default_cw_speed: config.default_cw_speed,
         serial_counter: None,

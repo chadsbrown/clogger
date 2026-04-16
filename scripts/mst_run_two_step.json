@@ -3,7 +3,6 @@
   "my_exchange": {
     "NAME": "CHAD"
   },
-  "esm_policy": { "run_two_step": true },
   "call_history": [
     { "call": "W2XYZ", "fields": { "Name": "BOB" } }
   ],

@@ -6,19 +6,6 @@ pub type RadioId = u8;
 pub type OperatorId = u16;
 pub type QsoRef = u64;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct EsmPolicy {
-    pub run_two_step: bool,
-}
-
-impl Default for EsmPolicy {
-    fn default() -> Self {
-        Self {
-            run_two_step: true,
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RadioState {
     pub freq_hz: u64,
@@ -132,7 +119,6 @@ pub struct AppState {
     pub my_zone: u8,
     pub rst_sent: String,
     pub my_exchange: HashMap<String, String>,
-    pub esm_policy: EsmPolicy,
     pub bandmap_cursors: HashMap<RadioId, BandmapCursor>,
     pub default_cw_speed: u8,
     pub serial_counter: Option<u32>,

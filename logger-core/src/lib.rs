@@ -17,6 +17,5 @@ pub use reducer::{
     NoScp, ScpLookup, reduce,
 };
 pub use state::{
-    AppState, BandmapCursor, EsmPolicy, Macros, OperatorId, QsoDraft, QsoRef, RadioId, RadioState,
-    Spot,
+    AppState, BandmapCursor, Macros, OperatorId, QsoDraft, QsoRef, RadioId, RadioState, Spot,
 };

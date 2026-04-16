@@ -113,7 +113,7 @@ mod tests {
         contest::contest_from_id,
         contest::traits::ContestEntry,
         entry::state::EntryState,
-        state::{AppState, EsmPolicy},
+        state::AppState,
     };
 
     use super::expand_macro;
@@ -135,7 +135,6 @@ mod tests {
             my_zone: 4,
             rst_sent: "599".to_string(),
             my_exchange: HashMap::new(),
-            esm_policy: EsmPolicy::default(),
             bandmap_cursors: HashMap::new(),
             default_cw_speed: 28,
             serial_counter: None,
@@ -182,7 +181,6 @@ mod tests {
             my_zone: 4,
             rst_sent: "599".to_string(),
             my_exchange: HashMap::new(),
-            esm_policy: EsmPolicy::default(),
             bandmap_cursors: HashMap::new(),
             default_cw_speed: 28,
             serial_counter: None,
@@ -209,7 +207,6 @@ mod tests {
             my_zone: 4,
             rst_sent: "599".to_string(),
             my_exchange: HashMap::new(),
-            esm_policy: EsmPolicy::default(),
             bandmap_cursors: HashMap::new(),
             default_cw_speed: 1,
             serial_counter: None,
@@ -236,7 +233,6 @@ mod tests {
             my_zone: 4,
             rst_sent: "599".to_string(),
             my_exchange: HashMap::new(),
-            esm_policy: EsmPolicy::default(),
             bandmap_cursors: HashMap::new(),
             default_cw_speed: 28,
             serial_counter: None,

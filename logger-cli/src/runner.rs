@@ -5,8 +5,8 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 use logger_core::{
-    AppEvent, AppState, BeepKind, CallHistoryLookup, ContestEntry, Effect, EntryState, EsmPolicy,
-    Key, Macros, NoCallHistory, NoScp, OpMode, ScpLookup, Spot, contest_from_id, reduce,
+    AppEvent, AppState, BeepKind, CallHistoryLookup, ContestEntry, Effect, EntryState, Key, Macros,
+    NoCallHistory, NoScp, OpMode, ScpLookup, Spot, contest_from_id, reduce,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -284,16 +284,12 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
         my_zone: 4,
         rst_sent: "599".to_string(),
         my_exchange: script.my_exchange.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
-        esm_policy: EsmPolicy::default(),
         bandmap_cursors: HashMap::new(),
         default_cw_speed: 28,
         serial_counter: None,
         show_passband_qrm: script.show_passband_qrm,
         bandmap_version: 0,
     };
-    if let Some(v) = script.esm_policy.run_two_step {
-        st.esm_policy.run_two_step = v;
-    }
     if contest.uses_serial() {
         st.serial_counter = Some(1);
     }
