@@ -230,6 +230,8 @@ impl ContestEntry for SerialContest {
     fn history_field_mapping(&self) -> Vec<(&str, u16)> { self.0.history_field_mapping() }
     fn uses_serial(&self) -> bool { true }
     fn auto_toggle_mode(&self) -> bool { self.0.auto_toggle_mode() }
+    fn rst_field_id(&self) -> Option<u16> { self.0.rst_field_id() }
+    fn default_rst(&self, mode: &str) -> Option<String> { self.0.default_rst(mode) }
 }
 
 fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
@@ -270,8 +272,14 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
     if let Some(ref v) = ov.ctrl_alt_f12 { macros.ctrl_alt_f12 = v.clone(); }
 
     let mut entries = HashMap::new();
-    entries.insert(1, EntryState::from_spec(&contest.form_spec()));
-    entries.insert(2, EntryState::from_spec(&contest.form_spec()));
+    let mut entry1 = EntryState::from_spec(&contest.form_spec());
+    let mut entry2 = EntryState::from_spec(&contest.form_spec());
+    entry1.block_dupes = script.block_dupes;
+    entry2.block_dupes = script.block_dupes;
+    logger_core::apply_default_rst(&mut entry1, contest.as_ref(), "CW");
+    logger_core::apply_default_rst(&mut entry2, contest.as_ref(), "CW");
+    entries.insert(1, entry1);
+    entries.insert(2, entry2);
     let mut st = AppState {
         now_ms: 0,
         focused_radio: 1,
@@ -802,9 +810,11 @@ mod tests {
         let scripts = [
             "cqww_run_two_step.json",
             "cqww_run_invalid.json",
+            "cqww_rst_autopop.json",
             "cqww_sp_one_step.json",
             "cqww_sp_send_tu.json",
             "cqww_dupe_indicator.json",
+            "cqww_block_dupes.json",
             "cqww_new_mult_indicator.json",
             "cqww_run_exch_sent_edit_resets.json",
             "sweeps_run_two_step.json",

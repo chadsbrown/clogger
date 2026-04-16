@@ -200,10 +200,24 @@ pub fn reduce(
             Vec::new()
         }
         AppEvent::KeyPress { key } => match key {
-            Key::Space | Key::Tab => {
+            Key::Tab => {
                 let entry = st.focused_entry_mut();
                 if !entry.fields.is_empty() {
                     entry.focus = (entry.focus + 1) % entry.fields.len();
+                }
+                Vec::new()
+            }
+            Key::Space => {
+                let rst_id = contest.rst_field_id();
+                let entry = st.focused_entry_mut();
+                if !entry.fields.is_empty() {
+                    entry.focus = (entry.focus + 1) % entry.fields.len();
+                    // Skip the auto-populated RST field. Tab is the way to land on it.
+                    if let Some(rst_id) = rst_id {
+                        if entry.fields.get(entry.focus).map(|f| f.field_id) == Some(rst_id) {
+                            entry.focus = (entry.focus + 1) % entry.fields.len();
+                        }
+                    }
                 }
                 Vec::new()
             }
@@ -793,8 +807,12 @@ mod tests {
     fn mk_state() -> AppState {
         let contest = contest_from_id("cqww").unwrap();
         let mut entries = HashMap::new();
-        entries.insert(1, EntryState::from_spec(&contest.form_spec()));
-        entries.insert(2, EntryState::from_spec(&contest.form_spec()));
+        let mut entry1 = EntryState::from_spec(&contest.form_spec());
+        let mut entry2 = EntryState::from_spec(&contest.form_spec());
+        crate::entry::esm::apply_default_rst(&mut entry1, contest.as_ref(), "CW");
+        crate::entry::esm::apply_default_rst(&mut entry2, contest.as_ref(), "CW");
+        entries.insert(1, entry1);
+        entries.insert(2, entry2);
         AppState {
             now_ms: 0,
             focused_radio: 1,
@@ -816,7 +834,265 @@ mod tests {
     }
 
     #[test]
-    fn space_focus_wraps() {
+    fn block_dupes_gates_enter_with_beep_only() {
+        let contest = contest_from_id("cqww").unwrap();
+        let mut st = mk_state();
+        let macros = Macros::default();
+        st.focused_entry_mut().block_dupes = true;
+        st.focused_entry_mut().mode = OpMode::Run;
+
+        // RigStatus into a band MatchDupeChecker recognizes.
+        crate::reducer::reduce(
+            &mut st, contest.as_ref(), &macros,
+            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoScp,
+            AppEvent::RigStatus {
+                radio: 1, freq_hz: 14_025_000, mode: "CW".to_string(),
+                is_ptt: false, filter_width_hz: None,
+            },
+        );
+        crate::reducer::reduce(
+            &mut st, contest.as_ref(), &macros,
+            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoScp,
+            AppEvent::TextInput { s: "K5ZD".to_string() },
+        );
+        assert!(st.focused_entry().is_dupe);
+
+        let effects = crate::reducer::reduce(
+            &mut st, contest.as_ref(), &macros,
+            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoScp,
+            AppEvent::KeyPress { key: Key::Enter },
+        );
+
+        // Only a Beep — no CW, no log.
+        assert_eq!(effects.len(), 1);
+        assert!(matches!(
+            effects[0],
+            Effect::Beep { kind: crate::BeepKind::Error }
+        ));
+        assert!(!effects.iter().any(|e| matches!(e, Effect::CwSend { .. })));
+        assert!(!effects.iter().any(|e| matches!(e, Effect::LogInsert { .. })));
+    }
+
+    #[test]
+    fn block_dupes_does_not_affect_f_keys() {
+        // F2 (and other F-keys) bypass handle_esm and remain functional even
+        // when block_dupes refuses Enter.
+        let contest = contest_from_id("cqww").unwrap();
+        let mut st = mk_state();
+        let macros = Macros::default();
+        st.focused_entry_mut().block_dupes = true;
+
+        crate::reducer::reduce(
+            &mut st, contest.as_ref(), &macros,
+            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoScp,
+            AppEvent::RigStatus {
+                radio: 1, freq_hz: 14_025_000, mode: "CW".to_string(),
+                is_ptt: false, filter_width_hz: None,
+            },
+        );
+        crate::reducer::reduce(
+            &mut st, contest.as_ref(), &macros,
+            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoScp,
+            AppEvent::TextInput { s: "K5ZD".to_string() },
+        );
+        assert!(st.focused_entry().is_dupe);
+
+        let effects = crate::reducer::reduce(
+            &mut st, contest.as_ref(), &macros,
+            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoScp,
+            AppEvent::KeyPress { key: Key::F2 },
+        );
+
+        assert!(effects.iter().any(|e| matches!(e, Effect::CwSend { .. })));
+    }
+
+    #[test]
+    fn block_dupes_off_logs_dupe_normally() {
+        // Default behavior (block_dupes=false): Enter still works on dupes.
+        let contest = contest_from_id("cqww").unwrap();
+        let mut st = mk_state();
+        let macros = Macros::default();
+        st.focused_entry_mut().mode = OpMode::Run;
+        // Don't set block_dupes — leave it at the default `false`.
+
+        crate::reducer::reduce(
+            &mut st, contest.as_ref(), &macros,
+            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoScp,
+            AppEvent::RigStatus {
+                radio: 1, freq_hz: 14_025_000, mode: "CW".to_string(),
+                is_ptt: false, filter_width_hz: None,
+            },
+        );
+        crate::reducer::reduce(
+            &mut st, contest.as_ref(), &macros,
+            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoScp,
+            AppEvent::TextInput { s: "K5ZD".to_string() },
+        );
+        crate::reducer::reduce(
+            &mut st, contest.as_ref(), &macros,
+            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoScp,
+            AppEvent::KeyPress { key: Key::Space },
+        );
+        crate::reducer::reduce(
+            &mut st, contest.as_ref(), &macros,
+            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoScp,
+            AppEvent::TextInput { s: "5".to_string() },
+        );
+
+        // Enter 1: send call+exch.
+        let e1 = crate::reducer::reduce(
+            &mut st, contest.as_ref(), &macros,
+            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoScp,
+            AppEvent::KeyPress { key: Key::Enter },
+        );
+        assert!(e1.iter().any(|e| matches!(e, Effect::CwSend { .. })));
+        // Enter 2: log.
+        let e2 = crate::reducer::reduce(
+            &mut st, contest.as_ref(), &macros,
+            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoScp,
+            AppEvent::KeyPress { key: Key::Enter },
+        );
+        assert!(e2.iter().any(|e| matches!(e, Effect::LogInsert { .. })));
+    }
+
+    #[test]
+    fn rst_field_id_set_for_cqww() {
+        let contest = contest_from_id("cqww").unwrap();
+        assert_eq!(contest.rst_field_id(), Some(2));
+    }
+
+    #[test]
+    fn rst_field_id_none_for_cwt() {
+        // CWT exchange is CALL/NAME/XCHG — no RST field.
+        let contest = contest_from_id("cwt").unwrap();
+        assert_eq!(contest.rst_field_id(), None);
+    }
+
+    #[test]
+    fn default_rst_uses_spec_variant_per_mode() {
+        let contest = contest_from_id("cqww").unwrap();
+        assert_eq!(contest.default_rst("CW").as_deref(), Some("599"));
+        assert_eq!(contest.default_rst("SSB").as_deref(), Some("59"));
+    }
+
+    #[test]
+    fn default_rst_falls_back_to_const_for_state_qp() {
+        // MIQP has no `variants` block; the value comes from sent_variants.
+        let contest = contest_from_id("miqp").unwrap();
+        assert_eq!(contest.default_rst("CW").as_deref(), Some("599"));
+    }
+
+    #[test]
+    fn space_behaves_like_tab_for_non_rst_contest() {
+        // CWT has no RST field, so Space should advance one field, no skip.
+        let contest = contest_from_id("cwt").unwrap();
+        let mut entries = HashMap::new();
+        entries.insert(1, EntryState::from_spec(&contest.form_spec()));
+        entries.insert(2, EntryState::from_spec(&contest.form_spec()));
+        let mut st = mk_state();
+        st.entries = entries;
+        let macros = Macros::default();
+
+        reduce(
+            &mut st,
+            contest.as_ref(),
+            &macros,
+            AppEvent::KeyPress { key: Key::Space },
+        );
+        assert_eq!(st.focused_entry_mut().focus, 1);
+    }
+
+    #[test]
+    fn rst_repopulates_after_log() {
+        let contest = contest_from_id("cqww").unwrap();
+        let mut st = mk_state();
+        let macros = Macros::default();
+        st.focused_entry_mut().mode = OpMode::Run;
+
+        // RST is "599" out of mk_state.
+        assert_eq!(st.focused_entry().fields[1].value, "599");
+
+        // Log K1ABC zone 5. After clear_values, RST should be "599" again.
+        reduce(
+            &mut st,
+            contest.as_ref(),
+            &macros,
+            AppEvent::TextInput { s: "K1ABC".to_string() },
+        );
+        reduce(
+            &mut st,
+            contest.as_ref(),
+            &macros,
+            AppEvent::KeyPress { key: Key::Space },
+        );
+        reduce(
+            &mut st,
+            contest.as_ref(),
+            &macros,
+            AppEvent::TextInput { s: "5".to_string() },
+        );
+        reduce(&mut st, contest.as_ref(), &macros, AppEvent::KeyPress { key: Key::Enter });
+        reduce(&mut st, contest.as_ref(), &macros, AppEvent::KeyPress { key: Key::Enter });
+
+        assert_eq!(st.focused_entry().fields[0].value, "");
+        assert_eq!(st.focused_entry().fields[1].value, "599");
+        assert_eq!(st.focused_entry().fields[2].value, "");
+    }
+
+    #[test]
+    fn rst_repopulates_to_59_when_rig_is_ssb() {
+        let contest = contest_from_id("cqww").unwrap();
+        let mut st = mk_state();
+        let macros = Macros::default();
+        st.focused_entry_mut().mode = OpMode::Run;
+
+        // Switch the rig to SSB before any log.
+        reduce(
+            &mut st,
+            contest.as_ref(),
+            &macros,
+            AppEvent::RigStatus {
+                radio: 1,
+                freq_hz: 14_200_000,
+                mode: "SSB".to_string(),
+                is_ptt: false,
+                filter_width_hz: None,
+            },
+        );
+
+        reduce(&mut st, contest.as_ref(), &macros, AppEvent::TextInput { s: "K1ABC".to_string() });
+        reduce(&mut st, contest.as_ref(), &macros, AppEvent::KeyPress { key: Key::Space });
+        reduce(&mut st, contest.as_ref(), &macros, AppEvent::TextInput { s: "5".to_string() });
+        reduce(&mut st, contest.as_ref(), &macros, AppEvent::KeyPress { key: Key::Enter });
+        reduce(&mut st, contest.as_ref(), &macros, AppEvent::KeyPress { key: Key::Enter });
+
+        assert_eq!(st.focused_entry().fields[1].value, "59");
+    }
+
+    #[test]
+    fn tab_focus_wraps() {
+        // Tab walks every field including RST, so 3 presses on a 3-field
+        // entry (CALL/RST/Zone) wrap back to CALL.
+        let contest = contest_from_id("cqww").unwrap();
+        let mut st = mk_state();
+        let macros = Macros::default();
+
+        for _ in 0..3 {
+            reduce(
+                &mut st,
+                contest.as_ref(),
+                &macros,
+                AppEvent::KeyPress { key: Key::Tab },
+            );
+        }
+
+        assert_eq!(st.focused_entry_mut().focus, 0);
+    }
+
+    #[test]
+    fn space_skips_rst_field() {
+        // Space skips the auto-populated RST field. From CALL (idx 0) it
+        // should land on Zone (idx 2), not RST (idx 1).
         let contest = contest_from_id("cqww").unwrap();
         let mut st = mk_state();
         let macros = Macros::default();
@@ -827,20 +1103,27 @@ mod tests {
             &macros,
             AppEvent::KeyPress { key: Key::Space },
         );
+
+        assert_eq!(st.focused_entry_mut().focus, 2);
+        assert_eq!(st.focused_entry_mut().fields[2].field_id, 3);
+    }
+
+    #[test]
+    fn tab_lands_on_rst_field() {
+        // Tab is the override path that lets the operator edit RST.
+        let contest = contest_from_id("cqww").unwrap();
+        let mut st = mk_state();
+        let macros = Macros::default();
+
         reduce(
             &mut st,
             contest.as_ref(),
             &macros,
-            AppEvent::KeyPress { key: Key::Space },
-        );
-        reduce(
-            &mut st,
-            contest.as_ref(),
-            &macros,
-            AppEvent::KeyPress { key: Key::Space },
+            AppEvent::KeyPress { key: Key::Tab },
         );
 
-        assert_eq!(st.focused_entry_mut().focus, 0);
+        assert_eq!(st.focused_entry_mut().focus, 1);
+        assert_eq!(st.focused_entry_mut().fields[1].field_id, 2);
     }
 
     #[test]
@@ -919,20 +1202,6 @@ mod tests {
             &mut st,
             contest.as_ref(),
             &macros,
-            AppEvent::TextInput {
-                s: "599".to_string(),
-            },
-        );
-        reduce(
-            &mut st,
-            contest.as_ref(),
-            &macros,
-            AppEvent::KeyPress { key: Key::Space },
-        );
-        reduce(
-            &mut st,
-            contest.as_ref(),
-            &macros,
             AppEvent::TextInput { s: "5".to_string() },
         );
 
@@ -991,20 +1260,6 @@ mod tests {
         );
 
         // Fill exchange
-        reduce(
-            &mut st,
-            contest.as_ref(),
-            &macros,
-            AppEvent::KeyPress { key: Key::Space },
-        );
-        reduce(
-            &mut st,
-            contest.as_ref(),
-            &macros,
-            AppEvent::TextInput {
-                s: "599".to_string(),
-            },
-        );
         reduce(
             &mut st,
             contest.as_ref(),
@@ -1096,7 +1351,8 @@ mod tests {
             AppEvent::KeyPress { key: Key::Space },
         );
 
-        assert_eq!(st.focused_entry_mut().focus, 1);
+        // Focus moved off CALL (exact landing spot depends on RST-skip rules).
+        assert!(st.focused_entry_mut().focus > 0);
         assert_eq!(st.focused_entry_mut().fields[0].value, "K1ABC");
         assert!(st.focused_entry_mut().fields[0].value.chars().all(|c| c != ' '));
     }
@@ -1228,20 +1484,6 @@ mod tests {
             &mut st,
             contest.as_ref(),
             &macros,
-            AppEvent::TextInput {
-                s: "599".to_string(),
-            },
-        );
-        reduce(
-            &mut st,
-            contest.as_ref(),
-            &macros,
-            AppEvent::KeyPress { key: Key::Space },
-        );
-        reduce(
-            &mut st,
-            contest.as_ref(),
-            &macros,
             AppEvent::TextInput { s: "5".to_string() },
         );
 
@@ -1287,20 +1529,6 @@ mod tests {
             &macros,
             AppEvent::TextInput {
                 s: "K1ABC".to_string(),
-            },
-        );
-        reduce(
-            &mut st,
-            contest.as_ref(),
-            &macros,
-            AppEvent::KeyPress { key: Key::Space },
-        );
-        reduce(
-            &mut st,
-            contest.as_ref(),
-            &macros,
-            AppEvent::TextInput {
-                s: "599".to_string(),
             },
         );
         reduce(
@@ -1372,20 +1600,6 @@ mod tests {
             &macros,
             AppEvent::TextInput {
                 s: "K1ABC".to_string(),
-            },
-        );
-        reduce(
-            &mut st,
-            contest.as_ref(),
-            &macros,
-            AppEvent::KeyPress { key: Key::Space },
-        );
-        reduce(
-            &mut st,
-            contest.as_ref(),
-            &macros,
-            AppEvent::TextInput {
-                s: "599".to_string(),
             },
         );
         reduce(

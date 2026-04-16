@@ -1,4 +1,4 @@
-use contest_engine::spec::{ContestSpec, DomainRef, ExchangeField, FieldType, embedded};
+use contest_engine::spec::{ContestSpec, DomainRef, ExchangeField, FieldType, Mode, SentValue, embedded};
 
 use crate::{
     entry::{
@@ -242,6 +242,57 @@ impl ContestEntry for SpecDrivenContest {
 
     fn auto_toggle_mode(&self) -> bool {
         self.meta.auto_toggle_mode
+    }
+
+    fn rst_field_id(&self) -> Option<u16> {
+        match self.received_fields().first()?.field_type {
+            FieldType::Rst => Some(2),
+            _ => None,
+        }
+    }
+
+    fn default_rst(&self, mode: &str) -> Option<String> {
+        // Only RST contests get an auto-populate value.
+        self.rst_field_id()?;
+
+        // Mode-specific override declared in `variants` (e.g. CQWW: cw → 599, ssb → 59).
+        if let Some(target) = normalized_mode_to_engine(mode) {
+            for variant in self.spec.variants.values() {
+                let Some(allowed) = variant.allowed_modes.as_ref() else { continue };
+                if !allowed.contains(&target) {
+                    continue;
+                }
+                if let Some(rst) = variant.exchange.as_ref().and_then(|e| e.sent_rst_value.clone()) {
+                    return Some(rst);
+                }
+            }
+        }
+
+        // Const value pulled from `sent_variants` (state QPs hardcode "599").
+        for sent_variant in &self.spec.exchange.sent_variants {
+            for field in &sent_variant.fields {
+                if field.id == "rst" {
+                    if let SentValue::Const(value) = &field.value {
+                        return Some(value.clone());
+                    }
+                }
+            }
+        }
+
+        // Universal fallback when the spec doesn't say.
+        match mode {
+            "SSB" => Some("59".to_string()),
+            _ => Some("599".to_string()),
+        }
+    }
+}
+
+fn normalized_mode_to_engine(mode: &str) -> Option<Mode> {
+    match mode {
+        "CW" => Some(Mode::CW),
+        "SSB" => Some(Mode::SSB),
+        "DIGITAL" => Some(Mode::DIGITAL),
+        _ => None,
     }
 }
 

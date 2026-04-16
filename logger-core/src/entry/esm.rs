@@ -1,10 +1,31 @@
 use crate::{
-    contest::traits::{ContestEntry, EntryContext},
+    contest::{normalize_mode, traits::{ContestEntry, EntryContext}},
     effects::{BeepKind, Effect},
-    entry::state::{EsmStep, OpMode},
+    entry::state::{EntryState, EsmStep, OpMode},
     macro_expand::expand_macro,
     state::{AppState, LastLoggedContext, Macros},
 };
+
+/// Pre-fill the RST field with the contest's mode-appropriate default
+/// (typically "599" on CW, "59" on SSB), but only if the field is currently
+/// empty. Safe to call on contests without an RST field.
+pub fn apply_default_rst(entry: &mut EntryState, contest: &dyn ContestEntry, mode: &str) {
+    let Some(field_id) = contest.rst_field_id() else { return };
+    let Some(value) = contest.default_rst(mode) else { return };
+    if let Some(field) = entry.fields.iter_mut().find(|f| f.field_id == field_id) {
+        if field.value.is_empty() {
+            field.cursor = value.len();
+            field.value = value;
+        }
+    }
+}
+
+fn focused_radio_mode(st: &AppState) -> &'static str {
+    st.radios
+        .get(&st.focused_radio)
+        .map(|r| normalize_mode(&r.mode))
+        .unwrap_or("CW")
+}
 
 pub fn quick_log(st: &mut AppState, contest: &dyn ContestEntry, macros: &Macros) -> Vec<Effect> {
     if st.focused_entry().overall.is_invalid() {
@@ -16,6 +37,13 @@ pub fn quick_log(st: &mut AppState, contest: &dyn ContestEntry, macros: &Macros)
 pub fn handle_esm(st: &mut AppState, contest: &dyn ContestEntry, macros: &Macros) -> Vec<Effect> {
     if !st.focused_entry().esm_enabled {
         return Vec::new();
+    }
+
+    // Block dupes from being worked accidentally via Enter. F-key macros
+    // remain available as the explicit override path. Empty calls are safe:
+    // recompute_feedback forces is_dupe=false when the call field is empty.
+    if st.focused_entry().block_dupes && st.focused_entry().is_dupe {
+        return vec![Effect::Beep { kind: BeepKind::Error }];
     }
 
     if st.focused_entry().mode == OpMode::Run {
@@ -127,8 +155,10 @@ fn log_and_clear(
                 serial: st.focused_entry().assigned_serial,
             };
 
+            let mode = focused_radio_mode(st);
             let entry = st.focused_entry_mut();
             entry.clear_values();
+            apply_default_rst(entry, contest, mode);
             entry.esm_step = EsmStep::Idle;
             entry.last_logged_context = Some(last_ctx);
             if contest.auto_toggle_mode() {

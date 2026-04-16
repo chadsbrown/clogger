@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 use contest_engine::spec::Value as ConfigValue;
 use logger_core::{
     AppEvent, AppState, CallHistoryLookup, ContestEntry, EntryState, Macros, NoCallHistory, NoScp,
-    ScpLookup, contest_from_id,
+    ScpLookup, apply_default_rst, contest_from_id,
 };
 use serde::Deserialize;
 use tokio::sync::mpsc;
@@ -61,6 +61,11 @@ pub struct SessionConfig {
     /// CW is sent automatically); operators send CW via the F-key macros.
     /// Default: true.
     pub esm_enabled: bool,
+    /// When true, ESM (Enter) refuses to send or log if the call in the
+    /// entry box is a known dupe for the current band/mode. Operators can
+    /// still send CW manually with F-keys to confirm the dupe out loud.
+    /// Default: false.
+    pub block_dupes: bool,
     /// Channel for hardware-task error events (persist, keyer, rig, so2r).
     /// Required: the TUI must pass its `app_tx` so per-device tasks can
     /// surface errors back to the main event loop.
@@ -141,12 +146,19 @@ pub fn bootstrap(config: SessionConfig) -> Result<Session> {
             )
         })?;
 
-    // Initialize entries for both radios so SO2R works out of the box
+    // Initialize entries for both radios so SO2R works out of the box.
+    // RST defaults to the CW value at bootstrap; once a rig reports its mode
+    // and the operator logs a QSO, subsequent entries are populated from the
+    // current rig mode (see `apply_default_rst` calls in `log_and_clear`).
     let mut entries = HashMap::new();
     let mut entry1 = EntryState::from_spec(&contest.form_spec());
     let mut entry2 = EntryState::from_spec(&contest.form_spec());
     entry1.esm_enabled = config.esm_enabled;
     entry2.esm_enabled = config.esm_enabled;
+    entry1.block_dupes = config.block_dupes;
+    entry2.block_dupes = config.block_dupes;
+    apply_default_rst(&mut entry1, contest.as_ref(), "CW");
+    apply_default_rst(&mut entry2, contest.as_ref(), "CW");
     entries.insert(1, entry1);
     entries.insert(2, entry2);
 

@@ -9,8 +9,6 @@
     { "type": "SetMode", "mode": "Run" },
     { "type": "Text", "s": "K8ZT" },
     { "type": "Key", "key": "Space" },
-    { "type": "Text", "s": "599" },
-    { "type": "Key", "key": "Space" },
     { "type": "Text", "s": "ALCO" },
     { "type": "Key", "key": "Enter" },
     { "type": "Key", "key": "Enter" }

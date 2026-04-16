@@ -53,6 +53,12 @@
 # exclusively via the F-key macros.
 #esm_enabled = false
 
+# Block dupes from being worked accidentally via Enter (default: false)
+# When true, pressing Enter while the entry-box callsign is a known dupe
+# beeps and refuses to send CW or log. F-key macros (F1..F5, etc.) still
+# work normally — useful for confirming the dupe over the air ("QSO B4").
+#block_dupes = true
+
 # Passband QRM warning (default: disabled)
 # When enabled, a yellow QRM badge appears in the status bar while you're in
 # RUN mode if any bandmap spot (matching the focused radio's mode, not your

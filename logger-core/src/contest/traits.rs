@@ -75,4 +75,17 @@ pub trait ContestEntry {
     fn auto_toggle_mode(&self) -> bool {
         false
     }
+
+    /// `field_id` of the RST field if this contest has one. Used to skip the
+    /// field on Space and to auto-populate it after each log.
+    fn rst_field_id(&self) -> Option<u16> {
+        None
+    }
+
+    /// Default RST string for the given normalized mode (`"CW"`, `"SSB"`,
+    /// `"DIGITAL"`, `"OTHER"`). For spec-driven contests this comes from the
+    /// matching variant's `sent_rst_value`.
+    fn default_rst(&self, _mode: &str) -> Option<String> {
+        None
+    }
 }

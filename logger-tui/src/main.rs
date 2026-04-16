@@ -171,6 +171,7 @@ async fn main() -> Result<()> {
         start_serial: None,
         show_passband_qrm: config.show_passband_qrm,
         esm_enabled: config.esm_enabled,
+        block_dupes: config.block_dupes,
         app_tx: app_tx.clone(),
     })?;
 

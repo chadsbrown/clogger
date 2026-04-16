@@ -72,6 +72,11 @@ pub struct StableConfig {
     /// prefer to send CW only via F-key macros and have Enter just log.
     #[serde(default = "default_esm_enabled")]
     pub esm_enabled: bool,
+    /// Refuse to send or log via Enter when the call in the entry box is a
+    /// known dupe for the current band/mode. Default: false. F-key macros
+    /// remain unaffected and can be used to confirm the dupe over the air.
+    #[serde(default)]
+    pub block_dupes: bool,
 }
 
 /// Per-contest configuration. Lives in `contest.toml` and changes when you
@@ -121,6 +126,7 @@ pub struct Config {
     pub bandmap: BandmapMode,
     pub show_passband_qrm: bool,
     pub esm_enabled: bool,
+    pub block_dupes: bool,
 }
 
 impl Config {
@@ -148,6 +154,7 @@ impl Config {
             bandmap: stable.bandmap,
             show_passband_qrm: stable.show_passband_qrm,
             esm_enabled: stable.esm_enabled,
+            block_dupes: stable.block_dupes,
         }
     }
 }

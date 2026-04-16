@@ -24,6 +24,10 @@ pub struct Script {
     /// Enable the passband QRM warning (width comes from the rig filter).
     #[serde(default)]
     pub show_passband_qrm: bool,
+    /// When true, ESM (Enter) refuses to send or log on a known dupe.
+    /// Defaults to false to match production behavior.
+    #[serde(default)]
+    pub block_dupes: bool,
     pub events: Vec<ScriptEvent>,
     #[serde(default)]
     pub expectations: Expectations,

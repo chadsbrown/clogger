@@ -4,8 +4,6 @@
     { "type": "Text", "s": "K1ABC" },
     { "type": "Key", "key": "Enter" },
     { "type": "Key", "key": "Space" },
-    { "type": "Text", "s": "599" },
-    { "type": "Key", "key": "Space" },
     { "type": "Text", "s": "5" },
     { "type": "Key", "key": "Enter" }
   ],

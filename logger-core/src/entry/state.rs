@@ -53,6 +53,9 @@ pub struct EntryState {
     pub is_passband_qrm: bool,
     pub mode: OpMode,
     pub esm_enabled: bool,
+    /// When true, ESM (Enter) refuses to send or log if the current call is a
+    /// known dupe. F-key macros remain available as override.
+    pub block_dupes: bool,
     pub esm_step: EsmStep,
     pub scp_matches: Vec<String>,
     pub scp_n1_matches: Vec<String>,
@@ -87,6 +90,7 @@ impl EntryState {
             is_passband_qrm: false,
             mode: OpMode::Run,
             esm_enabled: true,
+            block_dupes: false,
             esm_step: EsmStep::Idle,
             scp_matches: Vec::new(),
             scp_n1_matches: Vec::new(),

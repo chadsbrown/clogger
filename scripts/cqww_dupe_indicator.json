@@ -4,8 +4,6 @@
     { "type": "SetMode", "mode": "Run" },
     { "type": "Text", "s": "K5ZD" },
     { "type": "Key", "key": "Space" },
-    { "type": "Text", "s": "599" },
-    { "type": "Key", "key": "Space" },
     { "type": "Text", "s": "5" },
     { "type": "Key", "key": "Enter" },
     { "type": "Key", "key": "Enter" },

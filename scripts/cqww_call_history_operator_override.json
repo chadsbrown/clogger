@@ -8,7 +8,6 @@
     { "type": "RigStatus", "radio": 1, "freq_hz": 14025000, "mode": "CW", "is_ptt": false },
     { "type": "Text", "s": "K1ABC" },
     { "type": "Key", "key": "Space" },
-    { "type": "Key", "key": "Space" },
     { "type": "Key", "key": "Backspace" },
     { "type": "Text", "s": "9" }
   ],

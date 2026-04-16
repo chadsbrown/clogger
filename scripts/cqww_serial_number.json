@@ -9,23 +9,17 @@
 
     { "type": "Text", "s": "K1ABC" },
     { "type": "Key", "key": "Space" },
-    { "type": "Text", "s": "599" },
-    { "type": "Key", "key": "Space" },
     { "type": "Text", "s": "5" },
     { "type": "Key", "key": "Enter" },
     { "type": "Key", "key": "Enter" },
 
     { "type": "Text", "s": "W2XYZ" },
     { "type": "Key", "key": "Space" },
-    { "type": "Text", "s": "599" },
-    { "type": "Key", "key": "Space" },
     { "type": "Text", "s": "3" },
     { "type": "Key", "key": "Enter" },
     { "type": "Key", "key": "Enter" },
 
     { "type": "Text", "s": "N3ABC" },
-    { "type": "Key", "key": "Space" },
-    { "type": "Text", "s": "599" },
     { "type": "Key", "key": "Space" },
     { "type": "Text", "s": "5" },
     { "type": "Key", "key": "Enter" },
