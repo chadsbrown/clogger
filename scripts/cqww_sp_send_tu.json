@@ -7,7 +7,6 @@
     { "type": "Text", "s": "599" },
     { "type": "Key", "key": "Space" },
     { "type": "Text", "s": "14" },
-    { "type": "Key", "key": "Enter" },
     { "type": "Key", "key": "Enter" }
   ],
   "expectations": {

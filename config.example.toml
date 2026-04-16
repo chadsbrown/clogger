@@ -44,6 +44,15 @@
 #          blinking_bar, steady_bar
 #cursor_style = "steady_underline"
 
+# Enter Sends Message (ESM) (default: true)
+# When true, the Enter key drives the CW send/log cycle:
+#   Run mode: Enter 1 sends call+exchange, Enter 2 logs (and sends TU)
+#   S&P mode: Enter 1 (cursor in CALL) sends MYCALL; Enter 2 (cursor past CALL)
+#            sends your exchange and logs the QSO
+# When false, Enter only logs (no CW is sent automatically) and you send CW
+# exclusively via the F-key macros.
+#esm_enabled = false
+
 # Passband QRM warning (default: disabled)
 # When enabled, a yellow QRM badge appears in the status bar while you're in
 # RUN mode if any bandmap spot (matching the focused radio's mode, not your

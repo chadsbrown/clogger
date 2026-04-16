@@ -25,7 +25,6 @@
     { "type": "Text", "s": "RICK" },
     { "type": "Key", "key": "Space" },
     { "type": "Text", "s": "NC" },
-    { "type": "Key", "key": "Enter" },
     { "type": "Key", "key": "Enter" }
   ],
   "expectations": {

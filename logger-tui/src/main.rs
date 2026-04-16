@@ -170,6 +170,7 @@ async fn main() -> Result<()> {
         scp_path: cli.scp.as_ref().or(config.scp_file.as_ref()).cloned(),
         start_serial: None,
         show_passband_qrm: config.show_passband_qrm,
+        esm_enabled: config.esm_enabled,
         app_tx: app_tx.clone(),
     })?;
 

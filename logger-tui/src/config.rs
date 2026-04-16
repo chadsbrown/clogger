@@ -68,6 +68,10 @@ pub struct StableConfig {
     /// reported filter width — set this flag and let the radio tell us.
     #[serde(default)]
     pub show_passband_qrm: bool,
+    /// Enable Enter Sends Message (ESM). Default: true. Set to false if you
+    /// prefer to send CW only via F-key macros and have Enter just log.
+    #[serde(default = "default_esm_enabled")]
+    pub esm_enabled: bool,
 }
 
 /// Per-contest configuration. Lives in `contest.toml` and changes when you
@@ -116,6 +120,7 @@ pub struct Config {
     pub scoreboard: ScoreboardSection,
     pub bandmap: BandmapMode,
     pub show_passband_qrm: bool,
+    pub esm_enabled: bool,
 }
 
 impl Config {
@@ -142,8 +147,13 @@ impl Config {
             scoreboard: stable.scoreboard,
             bandmap: stable.bandmap,
             show_passband_qrm: stable.show_passband_qrm,
+            esm_enabled: stable.esm_enabled,
         }
     }
+}
+
+fn default_esm_enabled() -> bool {
+    true
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize)]

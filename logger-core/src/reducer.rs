@@ -961,7 +961,7 @@ mod tests {
     }
 
     #[test]
-    fn sp_three_step_esm() {
+    fn sp_two_step_esm() {
         let contest = contest_from_id("cqww").unwrap();
         let mut st = mk_state();
         let macros = Macros::default();
@@ -1019,27 +1019,8 @@ mod tests {
             AppEvent::TextInput { s: "5".to_string() },
         );
 
-        // Enter 2: send exchange (sp_exch, no callsign), step → ExchSent
+        // Enter 2: send exchange (sp_exch, no callsign) AND log atomically
         let effects2 = reduce(
-            &mut st,
-            contest.as_ref(),
-            &macros,
-            AppEvent::KeyPress { key: Key::Enter },
-        );
-        assert_eq!(st.focused_entry_mut().esm_step, EsmStep::ExchSent);
-        assert!(
-            effects2
-                .iter()
-                .any(|e| matches!(e, Effect::CwSend { text, .. } if text == "599 4"))
-        );
-        assert!(
-            !effects2
-                .iter()
-                .any(|e| matches!(e, Effect::LogInsert { .. }))
-        );
-
-        // Enter 3: log silently, no CW
-        let effects3 = reduce(
             &mut st,
             contest.as_ref(),
             &macros,
@@ -1047,15 +1028,25 @@ mod tests {
         );
         assert_eq!(st.focused_entry_mut().esm_step, EsmStep::Idle);
         assert!(
-            effects3
+            effects2
+                .iter()
+                .any(|e| matches!(e, Effect::CwSend { text, .. } if text == "599 4"))
+        );
+        assert!(
+            effects2
                 .iter()
                 .any(|e| matches!(e, Effect::LogInsert { .. }))
         );
-        assert!(
-            !effects3
-                .iter()
-                .any(|e| matches!(e, Effect::CwSend { .. }))
-        );
+        // Exchange CW must precede the log insert in the effects vector
+        let exch_idx = effects2
+            .iter()
+            .position(|e| matches!(e, Effect::CwSend { .. }))
+            .unwrap();
+        let log_idx = effects2
+            .iter()
+            .position(|e| matches!(e, Effect::LogInsert { .. }))
+            .unwrap();
+        assert!(exch_idx < log_idx);
     }
 
     #[test]

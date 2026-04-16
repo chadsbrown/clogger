@@ -57,6 +57,10 @@ pub struct SessionConfig {
     /// reported receive filter (or a mode-default fallback); this flag just
     /// toggles the feature on/off.
     pub show_passband_qrm: bool,
+    /// Enable Enter Sends Message (ESM). When false, Enter only logs (no
+    /// CW is sent automatically); operators send CW via the F-key macros.
+    /// Default: true.
+    pub esm_enabled: bool,
     /// Channel for hardware-task error events (persist, keyer, rig, so2r).
     /// Required: the TUI must pass its `app_tx` so per-device tasks can
     /// surface errors back to the main event loop.
@@ -139,8 +143,12 @@ pub fn bootstrap(config: SessionConfig) -> Result<Session> {
 
     // Initialize entries for both radios so SO2R works out of the box
     let mut entries = HashMap::new();
-    entries.insert(1, EntryState::from_spec(&contest.form_spec()));
-    entries.insert(2, EntryState::from_spec(&contest.form_spec()));
+    let mut entry1 = EntryState::from_spec(&contest.form_spec());
+    let mut entry2 = EntryState::from_spec(&contest.form_spec());
+    entry1.esm_enabled = config.esm_enabled;
+    entry2.esm_enabled = config.esm_enabled;
+    entries.insert(1, entry1);
+    entries.insert(2, entry2);
 
     let mut state = AppState {
         now_ms: chrono::Utc::now().timestamp_millis(),

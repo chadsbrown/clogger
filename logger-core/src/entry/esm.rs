@@ -70,22 +70,19 @@ fn handle_sp(st: &mut AppState, contest: &dyn ContestEntry, macros: &Macros) -> 
         }];
     }
 
-    // Cursor past CALL field: exchange or log based on EsmStep
-    match st.focused_entry().esm_step {
-        EsmStep::Idle | EsmStep::CallSent => {
-            if st.focused_entry().overall.is_invalid() {
-                return invalid_focus_effects(st);
-            }
-            st.focused_entry_mut().esm_step = EsmStep::ExchSent;
-            claim_serial(st, contest);
-            let template = macros.sp_f2.as_deref().unwrap_or(&macros.f2);
-            vec![Effect::CwSend {
-                radio: st.focused_radio,
-                text: expand_macro(template, st),
-            }]
-        }
-        EsmStep::ExchSent => log_and_clear(st, contest, macros, false, false),
+    // Cursor past CALL field: send my exchange and log atomically.
+    // S&P doesn't send TU, so there's nothing to do after sending the exchange.
+    if st.focused_entry().overall.is_invalid() {
+        return invalid_focus_effects(st);
     }
+    claim_serial(st, contest);
+    let template = macros.sp_f2.as_deref().unwrap_or(&macros.f2);
+    let mut effects = vec![Effect::CwSend {
+        radio: st.focused_radio,
+        text: expand_macro(template, st),
+    }];
+    effects.extend(log_and_clear(st, contest, macros, false, false));
+    effects
 }
 
 fn log_and_clear(
