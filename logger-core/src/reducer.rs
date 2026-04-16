@@ -50,10 +50,16 @@ impl CallHistoryLookup for NoCallHistory {
     }
 }
 
-pub trait ScpLookup {
+pub trait ScpLookup: Send + Sync {
     fn partial_matches(&self, prefix: &str, limit: usize) -> Vec<String>;
     fn n_plus_one_matches(&self, _call: &str, _limit: usize) -> Vec<String> {
         Vec::new()
+    }
+    /// Exact-match membership check. Used by the dxfeed enrichment resolver
+    /// to drop spots whose callsign isn't in the contest master database.
+    /// Default `false` is a safe no-op for `NoScp`.
+    fn contains(&self, _call: &str) -> bool {
+        false
     }
 }
 

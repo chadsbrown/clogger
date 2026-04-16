@@ -183,8 +183,19 @@
 #callsign = "N9UNX"
 #
 # Optional path to a JSON FilterConfigSerde (band/callsign/spotter rules,
-# geo filters, etc.). Missing or invalid file → fail to start (so a contest
-# doesn't begin with an unintended firehose). Omit to run without filtering.
+# geo filters, SNR/WPM ranges, etc.). Missing file, unreadable JSON, or
+# invalid skimmer_quality values → clogger refuses to start (so a contest
+# doesn't begin with an unintended firehose). Cluster *network* failures
+# are non-fatal and are reported in the status bar. Omit filter_file to
+# run without filtering.
+#
+# Enrichment: if scp_file is configured (see above), the dxfeed filter's
+# `enrichment.in_master_db` rule works out of the box — set it to
+# "RequireTrue" in filter.json to drop any spotted call that isn't in the
+# SCP database. That's the single highest-leverage filter against busted
+# RBN spots, since a bogus/misdecoded call almost never matches SCP.
+# Other enrichment signals (lotw, in_callbook, memberships) return "unknown"
+# and are no-ops until a resolver for them is wired up.
 #[dxfeed]
 #filter_file = "/home/n9unx/clogger/dxfeed-filter.json"
 #

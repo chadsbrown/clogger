@@ -32,7 +32,7 @@ pub async fn run(
     cw_echo_enabled: bool,
     cursor_style: crate::config::CursorStyle,
     call_history: Box<dyn CallHistoryLookup>,
-    scp: Box<dyn ScpLookup>,
+    scp: std::sync::Arc<dyn ScpLookup>,
     mut rx: mpsc::Receiver<TerminalEvent>,
     initial_log_display: Vec<LogRow>,
     conn: crate::ConnectionStatus,

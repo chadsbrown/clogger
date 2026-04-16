@@ -32,4 +32,8 @@ impl ScpLookup for ScpDb {
             .map(|s| s.call)
             .collect()
     }
+
+    fn contains(&self, call: &str) -> bool {
+        self.inner.contains(call)
+    }
 }

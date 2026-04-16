@@ -12,10 +12,14 @@ use tokio::sync::mpsc;
 use tracing::{info, warn};
 
 use crate::config::DxFeedConfig;
+use crate::dxfeed_enrichment::ScpEnrichment;
+use logger_core::ScpLookup;
+use std::sync::Arc;
 
 pub async fn spawn_dxfeed_adapter(
     config: &DxFeedConfig,
     tx: mpsc::Sender<AppEvent>,
+    scp: Option<Arc<dyn ScpLookup>>,
 ) -> anyhow::Result<()> {
     let mut builder = DxFeedBuilder::new();
 
@@ -48,9 +52,17 @@ pub async fn spawn_dxfeed_adapter(
         }
         None => SkimmerQualityConfig::default(),
     };
+    builder = builder.set_skimmer_quality(skimmer);
+
+    // Enrichment: when an SCP database is available, wire it through so
+    // filter.json's `enrichment.in_master_db` rule has real data to match
+    // against. Calls not in SCP are almost always busted RBN copies.
+    if let Some(scp) = scp {
+        info!("dxfeed: installing SCP-backed enrichment resolver");
+        builder = builder.enrichment_resolver(Box::new(ScpEnrichment::new(scp)));
+    }
 
     let mut feed = builder
-        .set_skimmer_quality(skimmer)
         .build()
         .map_err(|e| anyhow::anyhow!("dxfeed build: {e:?}"))?;
 

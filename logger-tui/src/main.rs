@@ -239,9 +239,13 @@ async fn main() -> Result<()> {
     let dxfeed_configured = config.dxfeed.is_some();
     let mut dxfeed_connected = false;
     if let Some(dxfeed_config) = &config.dxfeed {
-        logger_runtime::spawn_dxfeed_adapter(dxfeed_config, app_tx.clone())
-            .await
-            .context("dxfeed config invalid — refusing to start")?;
+        logger_runtime::spawn_dxfeed_adapter(
+            dxfeed_config,
+            app_tx.clone(),
+            Some(session.scp.clone()),
+        )
+        .await
+        .context("dxfeed config invalid — refusing to start")?;
         dxfeed_connected = true;
     }
 

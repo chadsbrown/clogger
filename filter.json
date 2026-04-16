@@ -2,5 +2,8 @@
     "skimmer": {
       "snr_db": [10, 80],
       "wpm": [25, 50]
+    },
+    "enrichment": {
+      "in_master_db": "RequireTrue"
     }
   }

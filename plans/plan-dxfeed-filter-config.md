@@ -60,6 +60,12 @@ Implementation:
 - `spawn_dxfeed_adapter` signature is unchanged — still returns
   `Result<()>`. The `DxFeed` handle is consumed inside the spawned task
   (no hot-reload surface — see Deferred).
+- `logger-tui/src/main.rs` treats any `Err` from `spawn_dxfeed_adapter`
+  as fatal (process exits with the error printed). Config problems —
+  bad filter_file path/JSON, invalid skimmer values, builder validation
+  — are the only things that surface here; network/cluster reachability
+  failures come through the runtime event stream instead and keep the
+  TUI running.
 
 ### 3. Tests (`logger-runtime/src/{config,dxfeed_adapter}.rs`)
 
@@ -78,6 +84,28 @@ Eight unit tests cover:
 Both `filter_file` and the full `[dxfeed.skimmer_quality]` section are
 shown commented-out with dxfeed's defaults inline and per-knob hints on
 which direction to push for noisy environments.
+
+### 5. SCP-backed enrichment resolver
+
+`logger-runtime/src/dxfeed_enrichment.rs` defines `ScpEnrichment`, an
+`EnrichmentResolver` whose `in_master_db()` delegates to
+`station_data::SuperCheck::contains` via clogger's existing `ScpLookup`
+trait. When `scp_file` is configured, `spawn_dxfeed_adapter` installs
+this resolver on the builder, so filter.json's
+`enrichment.in_master_db = "RequireTrue"` rule gains real data to match
+against — a call not in SCP is almost always a busted RBN copy and gets
+dropped before reaching clogger.
+
+The SCP database is shared between the reducer (call completion) and the
+enrichment resolver via `Arc<dyn ScpLookup>` — one file load, two
+consumers. `ScpLookup::contains()` was added as a default-`false`
+method so existing callers need no changes and `NoScp` behaves safely.
+
+`lotw_user()`, `in_callbook()`, and `memberships()` return `None`
+(the trait-object default). Combined with `unknown_policy: Neutral`
+(dxfeed default), those filter rules pass every spot through — they
+become real filters only when a resolver for each is wired up. That
+follow-up work is tracked under Deferred.
 
 ---
 
@@ -170,6 +198,13 @@ Out of scope, mentioned by user as a long-horizon possibility.
 | File | Change |
 |------|--------|
 | `logger-runtime/src/config.rs` | `filter_file` + `skimmer_quality` on `DxFeedConfig`; `SkimmerQualityConfigSerde`; tests |
-| `logger-runtime/src/dxfeed_adapter.rs` | Load filter, convert/validate skimmer config, pass to builder; `load_filter_file` helper + tests |
+| `logger-runtime/src/dxfeed_adapter.rs` | Load filter, convert/validate skimmer config, pass to builder; `load_filter_file` helper + tests; accept optional `Arc<dyn ScpLookup>` and install `ScpEnrichment` when present |
+| `logger-runtime/src/dxfeed_enrichment.rs` | **New.** `ScpEnrichment` adapter for dxfeed's `EnrichmentResolver` trait. `in_master_db` backed by clogger's SCP; other signals return None. |
+| `logger-runtime/src/lib.rs` | `pub mod dxfeed_enrichment` |
+| `logger-runtime/src/bootstrap.rs` | `Session.scp`: `Box<dyn ScpLookup>` → `Arc<dyn ScpLookup>` for sharing |
+| `logger-runtime/src/scp.rs` | `ScpLookup::contains` impl delegates to `station_data::SuperCheck::contains` |
 | `logger-runtime/Cargo.toml` | `toml = "0.8"` dev-dep for round-trip tests |
-| `config.example.toml` | Document both new sections with annotated defaults |
+| `logger-core/src/reducer.rs` | `ScpLookup::contains(&str) -> bool` with default-`false` impl; `+ Send + Sync` bound |
+| `logger-tui/src/main.rs` | Fail-fast on dxfeed config errors; pass `Some(session.scp.clone())` into `spawn_dxfeed_adapter` |
+| `logger-tui/src/event_loop.rs` | `scp` param: `Box<dyn ScpLookup>` → `Arc<dyn ScpLookup>` |
+| `config.example.toml` | Document both new sections with annotated defaults; note SCP-backed `in_master_db` enrichment |

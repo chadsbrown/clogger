@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use contest_engine::spec::Value as ConfigValue;
@@ -78,7 +79,10 @@ pub struct Session {
     pub macros: Macros,
     pub log_adapter: LogAdapter,
     pub call_history: Box<dyn CallHistoryLookup>,
-    pub scp: Box<dyn ScpLookup>,
+    /// Arc so the dxfeed enrichment resolver can share the same SCP DB
+    /// that feeds call-completion in the reducer — one file load, two
+    /// consumers.
+    pub scp: Arc<dyn ScpLookup>,
 }
 
 pub fn bootstrap(config: SessionConfig) -> Result<Session> {
@@ -224,15 +228,15 @@ fn load_call_history(path: Option<&Path>) -> Box<dyn CallHistoryLookup> {
     }
 }
 
-fn load_scp(path: Option<&Path>) -> Box<dyn ScpLookup> {
+fn load_scp(path: Option<&Path>) -> Arc<dyn ScpLookup> {
     let Some(path) = path else {
-        return Box::new(NoScp);
+        return Arc::new(NoScp);
     };
     match crate::ScpDb::load(path) {
-        Ok(db) => Box::new(db),
+        Ok(db) => Arc::new(db),
         Err(e) => {
             warn!("SCP file load failed, continuing without: {e}");
-            Box::new(NoScp)
+            Arc::new(NoScp)
         }
     }
 }

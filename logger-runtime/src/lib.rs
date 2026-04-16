@@ -4,6 +4,7 @@ pub mod bootstrap;
 pub mod call_history;
 pub mod config;
 pub mod dxfeed_adapter;
+pub mod dxfeed_enrichment;
 pub mod keyer_adapter;
 pub mod keyer_task;
 pub mod log_adapter;
