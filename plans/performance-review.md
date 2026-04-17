@@ -425,6 +425,17 @@ triggers analytics.
 
 ### 2.5 `is_dupe` classification cache in `SpecScorer` — hot path
 
+**Status:** Landed alongside the bandmap call-history mult downgrade.
+`SpecScorer::classify_cache: Mutex<HashMap<(call, band, mode),
+ClassifyVerdict>>` memoizes the combined `(is_dupe, is_new_mult)`
+verdict. Both `is_dupe` and `would_be_new_mult` go through the cache;
+`on_inserted` and `rebuild` call `clear_classify_cache()`. Loose-dupe
+short-circuit in `is_dupe` is still outside the cache (it's a
+constant-time set lookup on `loose_dupes`). Unit test:
+`classify_cache_invalidates_on_insert` in `log_adapter.rs`.
+
+*Historical — original plan:*
+
 **Location:** `logger-runtime/src/scoring/spec_scorer.rs:289-333`
 
 **Problem:** Every keystroke in the call field, the reducer asks
@@ -435,16 +446,16 @@ every bandmap spot when computing `worked_calls` and `mult_calls`. For
 If classify is a few hundred microseconds each, we've just burned
 20+ ms on a single keystroke.
 
+The bandmap call-history plan added a *second* classify call on the
+same hot path (hypothetical-exchange eval for every unknown spot),
+which raised the cache's expected payoff enough to justify landing it
+now rather than waiting for measurement.
+
 **Fix:** Memoize `classify_call_lite_with_mode` results by
 `(call, band, mode)` inside `SpecScorer`. Invalidate on `on_inserted`
 (clear the cache; the new QSO may have changed dupe status of that
 call on other bands). A simple
 `HashMap<(String, String, String), ClassifyResult>` is fine.
-
-**Caveat:** This is the single biggest bet in the plan. Classify may
-be fast and the worry may be overblown — but only timing data from
-Rule 0 can confirm. **Don't build this cache until measurement shows
-it's needed.**
 
 **Tier 2 total effort:** ~2 days. Highest payoff tier.
 **Risk:** Cache invalidation bugs. Mitigate with version counters and

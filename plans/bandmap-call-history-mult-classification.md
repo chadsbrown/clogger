@@ -1,8 +1,19 @@
 # Bandmap mult classification using call history
 
-**Status:** Planned. No urgency. Not a bug — an accuracy improvement for
-contests where the mult is tied to a known exchange field (state QPs,
-sections-based contests, zone-based contests on well-known DX).
+**Status:** Landed 2026-04-17. Contest-engine exposes
+`classify_hypothetical_with_mode` / `classify_hypothetical_at_with_mode`
+on `SpecEngine` + `SpecSession`; clogger's `SpecScorer::would_be_new_mult`
+unknown-call branch consults the `.ch` row and downgrades to non-mult
+when the hypothetical exchange would grant no new mult. White-vs-green
+for unknowns is what the TUI shows today (no fourth color added). The
+co-landed per-spot classify cache (§2.5 of `performance-review.md`)
+covers both the original and the new classify path. Tests:
+`bandmap_mult_downgrade_uses_call_history` and
+`classify_cache_invalidates_on_insert` in
+`logger-runtime/src/log_adapter.rs`, plus
+`classify_hypothetical_*` in `contest-engine/src/spec.rs`.
+
+*Historical plan below.*
 
 ## The gap
 
