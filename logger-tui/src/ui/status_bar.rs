@@ -81,18 +81,30 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState, tui: &TuiState) {
         right_spans.push(Span::styled("SCRBD", Style::default().fg(color)));
     }
 
-    if right_spans.is_empty() {
-        frame.render_widget(Paragraph::new(Line::from(left_spans)), area);
-    } else {
-        let left_width: usize = left_spans.iter().map(|s| s.width()).sum();
-        let right_width: usize = right_spans.iter().map(|s| s.width()).sum();
-        let total = area.width as usize;
-        let pad = total.saturating_sub(left_width + right_width + 1);
-        left_spans.push(Span::raw(" ".repeat(pad)));
-        left_spans.push(Span::raw(" "));
-        left_spans.extend(right_spans);
-        frame.render_widget(Paragraph::new(Line::from(left_spans)), area);
-    }
+    // UTC clock in the center of the status bar
+    let total_secs = (st.now_ms / 1000) as u64;
+    let h = (total_secs / 3600) % 24;
+    let m = (total_secs / 60) % 60;
+    let s = total_secs % 60;
+    let clock_text = format!("{h:02}:{m:02}:{s:02}z");
+    let clock_span = Span::styled(clock_text, Style::default().fg(Color::Cyan));
+    let clock_width = clock_span.width();
+
+    let left_width: usize = left_spans.iter().map(|s| s.width()).sum();
+    let right_width: usize = right_spans.iter().map(|s| s.width()).sum();
+    let total = area.width as usize;
+
+    let center_start = total / 2 - clock_width / 2;
+    let pad1 = center_start.saturating_sub(left_width);
+    let pad2 = total
+        .saturating_sub(center_start + clock_width)
+        .saturating_sub(right_width);
+
+    left_spans.push(Span::raw(" ".repeat(pad1)));
+    left_spans.push(clock_span);
+    left_spans.push(Span::raw(" ".repeat(pad2)));
+    left_spans.extend(right_spans);
+    frame.render_widget(Paragraph::new(Line::from(left_spans)), area);
 }
 
 pub fn render_scp(frame: &mut Frame, area: Rect, st: &AppState) {

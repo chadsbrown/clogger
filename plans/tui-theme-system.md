@@ -57,6 +57,7 @@ pub struct Theme {
     pub status_callsign_badge: ThemeStyle,
     pub status_mult_badge: ThemeStyle,
     pub status_qrm_badge: ThemeStyle,
+    pub status_clock: ThemeStyle,
     pub status_connected: ThemeStyle,
     pub status_disconnected: ThemeStyle,
     pub status_idle: ThemeStyle,
@@ -127,6 +128,7 @@ highlight = { modifiers = ["reversed"] }
 callsign_badge   = { fg = "#fdf6e3", bg = "#268bd2" }
 mult_badge       = { fg = "#002b36", bg = "#859900" }
 qrm_badge        = { fg = "#002b36", bg = "#b58900" }
+clock            = { fg = "#2aa198" }
 connected        = { fg = "#859900" }
 disconnected     = { fg = "#dc322f" }
 idle             = { fg = "#b58900" }
@@ -216,8 +218,8 @@ inline `Style::default().fg(Color::X)`. Concrete sites to migrate:
 - `logger-tui/src/ui/entry_line.rs` — lines 34, 42, 50, 55, 75, 80-82,
   100, 120, 133, 142
 - `logger-tui/src/ui/bandmap.rs` — lines 43, 62, 64, 66, 68, 105
-- `logger-tui/src/ui/status_bar.rs` — lines 18, 26, 35, 53, 77-79, 105,
-  106
+- `logger-tui/src/ui/status_bar.rs` — lines 18, 26, 35, 53-54, 77-81,
+  90 (clock color)
 - `logger-tui/src/ui/log_tail.rs` — lines 38-39, 57
 - `logger-tui/src/ui/score_box.rs` — lines 14, 26, 48, 58
 - `logger-tui/src/ui/avail_box.rs` — lines 15, 36, 47
