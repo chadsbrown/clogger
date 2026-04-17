@@ -37,7 +37,7 @@ impl MultChecker for NoMultChecker {
     }
 }
 
-pub trait CallHistoryLookup {
+pub trait CallHistoryLookup: Send + Sync {
     /// Exact match. Returns .ch column-name/value pairs, e.g. [("CqZone", "5")].
     fn lookup(&self, call_norm: &str) -> Option<Vec<(String, String)>>;
 }

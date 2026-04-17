@@ -1,10 +1,12 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex};
 
 use contest_engine::spec::{
     InMemoryDomainProvider, InMemoryResolver, Mode as CeMode, ResolvedStation, SpecSession, Value,
     embedded,
 };
 use contest_engine::types::{Band as CeBand, Callsign, Continent};
+use logger_core::CallHistoryLookup;
 use qsolog::qso::QsoRecord;
 use qsolog::types::{Band, Mode};
 
@@ -44,6 +46,31 @@ pub struct SpecScorer {
     /// has moved counties. The real dupe decision still fires at log time
     /// via `apply_qso_with_mode` with the full exchange.
     loose_dupes: HashSet<(String, String, String)>,
+    /// Call-history DB handle. Shared with the event-loop reducer; used
+    /// here only by `would_be_new_mult` to downgrade bandmap spots whose
+    /// `.ch` row implies a mult that's already been worked.
+    call_history: Arc<dyn CallHistoryLookup>,
+    /// Pre-translated `(.ch column, contest-engine field-id)` pairs —
+    /// derived from the contest's `history_field_mapping()` at scorer
+    /// construction. Used to synthesize hypothetical received-exchange
+    /// maps from `.ch` rows.
+    history_mapping: Vec<(String, String)>,
+    /// Memoization of `(call_upper, band_lower, mode_upper) → verdict`
+    /// for the hot bandmap analytics path. `compute_worked_calls` /
+    /// `compute_avail` call `is_dupe` and `would_be_new_mult` for every
+    /// filtered spot on each analytics recompute; without this, a busy
+    /// bandmap re-runs contest-engine's classify (and the new .ch-driven
+    /// hypothetical classify) per spot per recompute. Cleared in
+    /// `on_inserted`/`rebuild` because the logged mult + dupe set changes
+    /// shift verdicts. `Mutex` so the scorer stays `Sync`; contention is
+    /// effectively zero since everything runs on one tokio task.
+    classify_cache: Mutex<HashMap<(String, String, String), ClassifyVerdict>>,
+}
+
+#[derive(Clone, Copy)]
+struct ClassifyVerdict {
+    is_dupe: bool,
+    is_new_mult: bool,
 }
 
 impl SpecScorer {
@@ -51,6 +78,8 @@ impl SpecScorer {
         spec_id: impl Into<String>,
         contest_instance_id: u64,
         config: HashMap<String, Value>,
+        call_history: Arc<dyn CallHistoryLookup>,
+        history_mapping: Vec<(String, String)>,
     ) -> anyhow::Result<Self> {
         let mut scorer = Self {
             spec_id: spec_id.into(),
@@ -65,9 +94,36 @@ impl SpecScorer {
             mult_type_ids: Vec::new(),
             cached_summary: ScoreSummary::default(),
             loose_dupes: HashSet::new(),
+            call_history,
+            history_mapping,
+            classify_cache: Mutex::new(HashMap::new()),
         };
         scorer.init_session()?;
         Ok(scorer)
+    }
+
+    fn cache_key(call_norm: &str, band: &str, mode: &str) -> (String, String, String) {
+        (
+            call_norm.trim().to_ascii_uppercase(),
+            band.trim().to_ascii_lowercase(),
+            mode.trim().to_ascii_uppercase(),
+        )
+    }
+
+    fn cache_get(&self, key: &(String, String, String)) -> Option<ClassifyVerdict> {
+        self.classify_cache.lock().ok().and_then(|g| g.get(key).copied())
+    }
+
+    fn cache_put(&self, key: (String, String, String), verdict: ClassifyVerdict) {
+        if let Ok(mut g) = self.classify_cache.lock() {
+            g.insert(key, verdict);
+        }
+    }
+
+    fn clear_classify_cache(&mut self) {
+        if let Ok(mut g) = self.classify_cache.lock() {
+            g.clear();
+        }
     }
 
     /// Build a fresh empty session. Called at construction and by rebuild.
@@ -216,6 +272,7 @@ impl ContestScorer for SpecScorer {
         }
         self.apply_one(record);
         self.rebuild_summary_from_session();
+        self.clear_classify_cache();
     }
 
     fn rebuild(&mut self, records: &[QsoRecord]) {
@@ -240,6 +297,7 @@ impl ContestScorer for SpecScorer {
         }
 
         self.rebuild_summary_from_session();
+        self.clear_classify_cache();
     }
 
     fn score_summary(&self) -> ScoreSummary {
@@ -327,7 +385,7 @@ impl ContestScorer for SpecScorer {
     }
 
     fn is_dupe(&self, call_norm: &str, band: &str, mode: &str) -> bool {
-        let call_upper = call_norm.trim().to_ascii_uppercase();
+        let key = Self::cache_key(call_norm, band, mode);
 
         // Loose check first: for any contest, (call, band, mode) previously
         // logged → dupe. This is the only working signal for state QPs and
@@ -336,57 +394,119 @@ impl ContestScorer for SpecScorer {
         // key needs the candidate exchange. For contests without extra
         // fields, this agrees with contest-engine's answer, so checking both
         // is redundant but harmless.
-        let band_lower = band.trim().to_ascii_lowercase();
-        let mode_upper = mode.trim().to_ascii_uppercase();
-        if self
-            .loose_dupes
-            .contains(&(call_upper.clone(), band_lower, mode_upper))
-        {
+        if self.loose_dupes.contains(&key) {
             return true;
         }
-
-        let session = match &self.session {
-            Some(s) => s,
-            None => return false,
-        };
-
-        if !self.resolved_calls.contains(&call_upper) {
-            // Unknown call — never logged, so not a dupe.
-            return false;
-        }
-
-        session
-            .classify_call_lite_with_mode(
-                to_ce_band(band),
-                to_ce_mode(mode),
-                Callsign::new(call_norm),
-            )
-            .map(|c| c.is_dupe)
-            .unwrap_or(false)
+        self.classify(&key, call_norm, band, mode).is_dupe
     }
 
     fn would_be_new_mult(&self, call_norm: &str, band: &str, mode: &str) -> bool {
-        let session = match &self.session {
-            Some(s) => s,
-            None => return false,
-        };
+        let key = Self::cache_key(call_norm, band, mode);
+        self.classify(&key, call_norm, band, mode).is_new_mult
+    }
+}
 
-        let call_upper = call_norm.trim().to_ascii_uppercase();
-        if !self.resolved_calls.contains(&call_upper) {
-            // Unknown call — can't resolve without mutation. Since we haven't
-            // seen it in the log, it's definitionally not a dupe and very
-            // likely a new mult. Return true so the UI highlights it.
-            return true;
+impl SpecScorer {
+    /// Memoized classify lookup. Cache is invalidated on any log mutation
+    /// (QSO insert, undo, redo, rebuild) by clearing `classify_cache` in
+    /// `on_inserted`/`rebuild`. A single lookup populates both dupe and
+    /// new-mult verdicts so `is_dupe` and `would_be_new_mult` don't pay
+    /// twice for back-to-back calls on the same (call, band, mode).
+    fn classify(
+        &self,
+        key: &(String, String, String),
+        call_norm: &str,
+        band: &str,
+        mode: &str,
+    ) -> ClassifyVerdict {
+        if let Some(v) = self.cache_get(key) {
+            return v;
         }
 
-        session
-            .classify_call_lite_with_mode(
+        let verdict = self.compute_classify(&key.0, call_norm, band, mode);
+        self.cache_put(key.clone(), verdict);
+        verdict
+    }
+
+    fn compute_classify(
+        &self,
+        call_upper: &str,
+        call_norm: &str,
+        band: &str,
+        mode: &str,
+    ) -> ClassifyVerdict {
+        let session = match &self.session {
+            Some(s) => s,
+            None => return ClassifyVerdict { is_dupe: false, is_new_mult: false },
+        };
+
+        if self.resolved_calls.contains(call_upper) {
+            return match session.classify_call_lite_with_mode(
                 to_ce_band(band),
                 to_ce_mode(mode),
                 Callsign::new(call_norm),
-            )
-            .map(|c| !c.new_mults.is_empty())
-            .unwrap_or(false)
+            ) {
+                Ok(c) => ClassifyVerdict {
+                    is_dupe: c.is_dupe,
+                    is_new_mult: !c.new_mults.is_empty(),
+                },
+                Err(_) => ClassifyVerdict { is_dupe: false, is_new_mult: false },
+            };
+        }
+
+        // Unknown call — never logged, so not a dupe. Mult is optimistic by
+        // default; call-history data may *downgrade* to false when the .ch
+        // row implies the mult has already been worked. We never upgrade
+        // on .ch — the default already covers "we don't know, assume
+        // valuable", and .ch is stale/partial often enough that treating
+        // it as authoritative both ways would mis-classify rovers and
+        // operators who moved.
+        let is_new_mult = self.hypothetical_is_new_mult(call_upper, band, mode).unwrap_or(true);
+        ClassifyVerdict { is_dupe: false, is_new_mult }
+    }
+
+    /// Returns `Some(answer)` when call-history evidence lets us answer
+    /// authoritatively, `None` to fall back to the optimistic default.
+    /// See the `compute_classify` comment for the upgrade/downgrade policy.
+    fn hypothetical_is_new_mult(
+        &self,
+        call_upper: &str,
+        band: &str,
+        mode: &str,
+    ) -> Option<bool> {
+        if self.history_mapping.is_empty() {
+            return None;
+        }
+        let pairs = self.call_history.lookup(call_upper)?;
+
+        let ch_row: HashMap<&str, &str> = pairs
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_str()))
+            .collect();
+        let mut hypothetical_rcvd: HashMap<String, String> = HashMap::new();
+        for (ch_col, engine_field_id) in &self.history_mapping {
+            if let Some(v) = ch_row.get(ch_col.as_str()) {
+                if !v.trim().is_empty() {
+                    hypothetical_rcvd.insert(engine_field_id.clone(), v.to_string());
+                }
+            }
+        }
+        if hypothetical_rcvd.is_empty() {
+            return None;
+        }
+
+        let session = self.session.as_ref()?;
+        let dest = resolved_station_for_call(call_upper);
+        match session.classify_hypothetical_with_mode(
+            to_ce_band(band),
+            to_ce_mode(mode),
+            Callsign::new(call_upper),
+            &dest,
+            &hypothetical_rcvd,
+        ) {
+            Ok(summary) => Some(!summary.would_be_new_mults.is_empty()),
+            Err(_) => None,
+        }
     }
 }
 

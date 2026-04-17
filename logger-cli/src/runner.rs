@@ -324,17 +324,21 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
         scorer_config.insert(k.clone(), cv);
     }
 
-    let scorer = logger_runtime::scorer_for_contest(contest.as_ref(), scorer_config)?;
+    let call_history: std::sync::Arc<dyn CallHistoryLookup> = if script.call_history.is_empty() {
+        std::sync::Arc::new(NoCallHistory)
+    } else {
+        std::sync::Arc::new(ScriptCallHistory::from_entries(&script.call_history))
+    };
+
+    let scorer = logger_runtime::scorer_for_contest(
+        contest.as_ref(),
+        scorer_config,
+        std::sync::Arc::clone(&call_history),
+    )?;
     let mut log = LogAdapter::new(scorer, contest.contest_instance_id());
     let mut rig = FakeRig::default();
     let mut beep_error_count = 0usize;
     let mut trace = Vec::new();
-
-    let call_history: Box<dyn CallHistoryLookup> = if script.call_history.is_empty() {
-        Box::new(NoCallHistory)
-    } else {
-        Box::new(ScriptCallHistory::from_entries(&script.call_history))
-    };
 
     let scp: Box<dyn ScpLookup> = if script.scp_calls.is_empty() {
         Box::new(NoScp)

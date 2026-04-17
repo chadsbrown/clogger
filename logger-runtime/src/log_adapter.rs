@@ -300,8 +300,9 @@ mod tests {
     use super::LogAdapter;
     use crate::scoring::scorer_for_contest;
     use contest_engine::spec::Value;
-    use logger_core::contest_from_id;
+    use logger_core::{NoCallHistory, contest_from_id};
     use std::collections::HashMap;
+    use std::sync::Arc;
 
     /// Build a cqww config that satisfies the spec's required config_fields.
     /// cqww requires `my_cq_zone`; without it, `scorer_for_contest` now errors
@@ -335,7 +336,7 @@ mod tests {
     #[test]
     fn state_qp_missing_required_config_errors_at_init() {
         let contest = contest_from_id("moqp").expect("moqp contest");
-        let result = scorer_for_contest(contest.as_ref(), HashMap::new());
+        let result = scorer_for_contest(contest.as_ref(), HashMap::new(), Arc::new(NoCallHistory));
         let err = match result {
             Ok(_) => panic!("empty moqp config must error, not succeed"),
             Err(e) => e,
@@ -354,7 +355,7 @@ mod tests {
     #[test]
     fn undo_redo_placeholder_roundtrip() {
         let contest = contest_from_id("cqww").expect("cqww contest");
-        let scorer = scorer_for_contest(contest.as_ref(), cqww_test_config()).expect("scorer init");
+        let scorer = scorer_for_contest(contest.as_ref(), cqww_test_config(), Arc::new(NoCallHistory)).expect("scorer init");
         let mut adapter = LogAdapter::new(scorer, 1);
 
         adapter.insert(sample_draft(), 1, 1, 1).expect("insert");
@@ -375,7 +376,7 @@ mod tests {
 
         {
             let scorer =
-                scorer_for_contest(contest.as_ref(), cqww_test_config()).expect("scorer init");
+                scorer_for_contest(contest.as_ref(), cqww_test_config(), Arc::new(NoCallHistory)).expect("scorer init");
             let mut adapter = LogAdapter::open_db(scorer, 1, &db_path).expect("open_db");
             adapter.insert(sample_draft(), 1, 1, 1).expect("insert");
             adapter.undo().expect("undo");
@@ -384,7 +385,7 @@ mod tests {
 
         {
             let scorer =
-                scorer_for_contest(contest.as_ref(), cqww_test_config()).expect("scorer init");
+                scorer_for_contest(contest.as_ref(), cqww_test_config(), Arc::new(NoCallHistory)).expect("scorer init");
             let adapter = LogAdapter::open_db(scorer, 1, &db_path).expect("reopen_db");
             let records = adapter.ordered_records();
             assert_eq!(records.len(), 1, "record should still exist after reload");
@@ -404,7 +405,7 @@ mod tests {
 
         {
             let scorer =
-                scorer_for_contest(contest.as_ref(), cqww_test_config()).expect("scorer init");
+                scorer_for_contest(contest.as_ref(), cqww_test_config(), Arc::new(NoCallHistory)).expect("scorer init");
             let mut adapter = LogAdapter::open_db(scorer, 1, &db_path).expect("open_db");
             adapter.insert(sample_draft(), 1, 1, 1).expect("insert");
             adapter.undo().expect("undo");
@@ -414,7 +415,7 @@ mod tests {
 
         {
             let scorer =
-                scorer_for_contest(contest.as_ref(), cqww_test_config()).expect("scorer init");
+                scorer_for_contest(contest.as_ref(), cqww_test_config(), Arc::new(NoCallHistory)).expect("scorer init");
             let adapter = LogAdapter::open_db(scorer, 1, &db_path).expect("reopen_db");
             let records = adapter.ordered_records();
             assert_eq!(records.len(), 1);
@@ -423,5 +424,148 @@ mod tests {
                 "redo should have persisted across reload"
             );
         }
+    }
+
+    /// Minimal in-test call-history stub. Lookup returns pre-wired rows.
+    struct TestCallHistory {
+        rows: HashMap<String, Vec<(String, String)>>,
+    }
+
+    impl TestCallHistory {
+        fn new(rows: &[(&str, &[(&str, &str)])]) -> Self {
+            let rows = rows
+                .iter()
+                .map(|(call, pairs)| {
+                    (
+                        call.to_ascii_uppercase(),
+                        pairs
+                            .iter()
+                            .map(|(k, v)| (k.to_string(), v.to_string()))
+                            .collect(),
+                    )
+                })
+                .collect();
+            Self { rows }
+        }
+    }
+
+    impl logger_core::CallHistoryLookup for TestCallHistory {
+        fn lookup(&self, call_norm: &str) -> Option<Vec<(String, String)>> {
+            self.rows.get(call_norm).cloned()
+        }
+    }
+
+    fn ns_sprint_draft(call: &str, nr: &str, name: &str, loc: &str) -> logger_core::QsoDraft {
+        logger_core::QsoDraft {
+            contest_id: "ns_sprint".to_string(),
+            callsign: call.to_string(),
+            band: "20m".to_string(),
+            mode: "CW".to_string(),
+            freq_hz: 14_025_000,
+            exchange_schema_id: 7,
+            exchange_pairs: vec![
+                ("nr".to_string(), nr.to_string()),
+                ("name".to_string(), name.to_string()),
+                ("loc".to_string(), loc.to_string()),
+            ],
+        }
+    }
+
+    fn ns_sprint_test_config() -> HashMap<String, Value> {
+        let mut cfg = HashMap::new();
+        cfg.insert("my_name".to_string(), Value::Text("CHRIS".to_string()));
+        cfg.insert("my_loc".to_string(), Value::Text("MA".to_string()));
+        cfg
+    }
+
+    /// The core regression: after one NH QSO is logged on 20m, an unknown
+    /// call whose `.ch` row declares State=NH should NOT be flagged as a
+    /// new mult on 20m (already worked). An unknown call with State=ON
+    /// still is. An unknown call with no `.ch` row keeps the optimistic
+    /// default. Exercises ns_sprint because its history_mapping maps
+    /// State→loc (the mult-driving field).
+    #[test]
+    fn bandmap_mult_downgrade_uses_call_history() {
+        use logger_core::MultChecker;
+
+        let contest = contest_from_id("ns_sprint").expect("ns_sprint contest");
+        let history = Arc::new(TestCallHistory::new(&[
+            ("N2BB", &[("Name", "BOB"), ("State", "NH")]),
+            ("N3CC", &[("Name", "SAM"), ("State", "ON")]),
+        ]));
+        let scorer = scorer_for_contest(
+            contest.as_ref(),
+            ns_sprint_test_config(),
+            history,
+        )
+        .expect("scorer init");
+        let mut adapter = LogAdapter::new(scorer, contest.contest_instance_id());
+
+        // Baseline: no QSOs logged — every unknown call (with or without
+        // .ch hit) reads as a potential new mult.
+        assert!(adapter.is_new_mult("N2BB", "20m", "CW"));
+        assert!(adapter.is_new_mult("N3CC", "20m", "CW"));
+        assert!(adapter.is_new_mult("N4DD", "20m", "CW"));
+
+        // Log one NH station. NH is now in the worked-mult set for 20m.
+        adapter
+            .insert(ns_sprint_draft("N1AA", "1", "JOE", "NH"), 1_000, 1, 1)
+            .expect("insert");
+
+        // N2BB's .ch row says NH — downgraded to not-a-new-mult.
+        assert!(
+            !adapter.is_new_mult("N2BB", "20m", "CW"),
+            "NH already worked on 20m; N2BB's .ch=NH should downgrade"
+        );
+        // Other band: NH isn't logged on 40m — still a mult.
+        assert!(
+            adapter.is_new_mult("N2BB", "40m", "CW"),
+            "NH worked only on 20m; 40m lookup should stay optimistic"
+        );
+        // N3CC's .ch row says ON — still a new mult.
+        assert!(
+            adapter.is_new_mult("N3CC", "20m", "CW"),
+            "ON not worked on 20m; N3CC should stay as a new-mult candidate"
+        );
+        // Unknown call with no .ch hit — falls back to optimistic default.
+        assert!(
+            adapter.is_new_mult("N4DD", "20m", "CW"),
+            "N4DD has no .ch row; falls back to optimistic default"
+        );
+    }
+
+    /// The classify cache must invalidate on log mutation: a verdict
+    /// cached before the new QSO is inserted cannot outlive the QSO that
+    /// changed the mult set.
+    #[test]
+    fn classify_cache_invalidates_on_insert() {
+        use logger_core::MultChecker;
+
+        let contest = contest_from_id("ns_sprint").expect("ns_sprint contest");
+        let history = Arc::new(TestCallHistory::new(&[(
+            "N2BB",
+            &[("Name", "BOB"), ("State", "NH")],
+        )]));
+        let scorer = scorer_for_contest(
+            contest.as_ref(),
+            ns_sprint_test_config(),
+            history,
+        )
+        .expect("scorer init");
+        let mut adapter = LogAdapter::new(scorer, contest.contest_instance_id());
+
+        // Pre-insert: N2BB.ch=NH reads as a mult (nothing worked yet).
+        // This populates the cache with is_new_mult=true.
+        assert!(adapter.is_new_mult("N2BB", "20m", "CW"));
+
+        // Logging an NH QSO must invalidate the cached "true" above.
+        adapter
+            .insert(ns_sprint_draft("N1AA", "1", "JOE", "NH"), 1_000, 1, 1)
+            .expect("insert");
+
+        assert!(
+            !adapter.is_new_mult("N2BB", "20m", "CW"),
+            "cache should be invalidated on insert; N2BB must now read as non-mult"
+        );
     }
 }

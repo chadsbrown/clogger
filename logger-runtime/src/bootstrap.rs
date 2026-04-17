@@ -78,7 +78,10 @@ pub struct Session {
     pub contest: Box<dyn ContestEntry>,
     pub macros: Macros,
     pub log_adapter: LogAdapter,
-    pub call_history: Box<dyn CallHistoryLookup>,
+    /// Arc so the scorer (for bandmap mult downgrade via call history) and
+    /// the event-loop reducer can share one loaded .ch DB without double-
+    /// loading or double-parsing.
+    pub call_history: Arc<dyn CallHistoryLookup>,
     /// Arc so the dxfeed enrichment resolver can share the same SCP DB
     /// that feeds call-completion in the reducer — one file load, two
     /// consumers.
@@ -142,13 +145,19 @@ pub fn bootstrap(config: SessionConfig) -> Result<Session> {
         scorer_config.insert(key.clone(), value.clone());
     }
 
-    let scorer = crate::scoring::scorer_for_contest(contest.as_ref(), scorer_config)
-        .with_context(|| {
-            format!(
-                "contest scorer init failed for `{}` — fix your contest.toml [station] section",
-                config.contest_id
-            )
-        })?;
+    let call_history = load_call_history(config.call_history_path.as_deref());
+
+    let scorer = crate::scoring::scorer_for_contest(
+        contest.as_ref(),
+        scorer_config,
+        Arc::clone(&call_history),
+    )
+    .with_context(|| {
+        format!(
+            "contest scorer init failed for `{}` — fix your contest.toml [station] section",
+            config.contest_id
+        )
+    })?;
 
     // Initialize entries for both radios so SO2R works out of the box.
     // RST defaults to the CW value at bootstrap; once a rig reports its mode
@@ -202,7 +211,6 @@ pub fn bootstrap(config: SessionConfig) -> Result<Session> {
         state.serial_counter = Some(start);
     }
 
-    let call_history = load_call_history(config.call_history_path.as_deref());
     let scp = load_scp(config.scp_path.as_deref());
 
     Ok(Session {
@@ -215,15 +223,15 @@ pub fn bootstrap(config: SessionConfig) -> Result<Session> {
     })
 }
 
-fn load_call_history(path: Option<&Path>) -> Box<dyn CallHistoryLookup> {
+fn load_call_history(path: Option<&Path>) -> Arc<dyn CallHistoryLookup> {
     let Some(path) = path else {
-        return Box::new(NoCallHistory);
+        return Arc::new(NoCallHistory);
     };
     match crate::CallHistoryDb::load(path) {
-        Ok(db) => Box::new(db),
+        Ok(db) => Arc::new(db),
         Err(e) => {
             warn!("call history load failed, continuing without: {e}");
-            Box::new(NoCallHistory)
+            Arc::new(NoCallHistory)
         }
     }
 }

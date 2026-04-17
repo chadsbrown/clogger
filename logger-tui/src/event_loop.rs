@@ -31,7 +31,7 @@ pub async fn run(
     mut keyer_rx: Option<broadcast::Receiver<KeyerEvent>>,
     cw_echo_enabled: bool,
     cursor_style: crate::config::CursorStyle,
-    call_history: Box<dyn CallHistoryLookup>,
+    call_history: std::sync::Arc<dyn CallHistoryLookup>,
     scp: std::sync::Arc<dyn ScpLookup>,
     mut rx: mpsc::Receiver<TerminalEvent>,
     initial_log_display: Vec<LogRow>,
