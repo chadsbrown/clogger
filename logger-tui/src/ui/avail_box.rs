@@ -2,17 +2,19 @@ use logger_runtime::AvailSummary;
 use ratatui::{
     Frame,
     layout::{Constraint, Rect},
-    style::{Color, Style},
+    style::Style,
     widgets::{Block, Borders, Cell, Row, Table},
 };
 
-pub fn render(frame: &mut Frame, area: Rect, avail: &AvailSummary) {
+use crate::theme::Theme;
+
+pub fn render(frame: &mut Frame, area: Rect, avail: &AvailSummary, theme: &Theme) {
     let header = Row::new(vec![
         Cell::from(" Band"),
         Cell::from("  Q"),
         Cell::from("  M"),
     ])
-    .style(Style::default().fg(Color::Yellow));
+    .style(Style::from(theme.box_header));
 
     let mut rows: Vec<Row> = avail
         .by_band
@@ -33,7 +35,7 @@ pub fn render(frame: &mut Frame, area: Rect, avail: &AvailSummary) {
             Cell::from(format!("{:>3}", avail.total_qsos)),
             Cell::from(format!("{:>3}", avail.total_mults)),
         ])
-        .style(Style::default().fg(Color::White)),
+        .style(Style::from(theme.box_total)),
     );
 
     let table = Table::new(
@@ -44,7 +46,7 @@ pub fn render(frame: &mut Frame, area: Rect, avail: &AvailSummary) {
         Block::default()
             .borders(Borders::ALL)
             .title(" Available ")
-            .style(Style::default().fg(Color::DarkGray)),
+            .style(Style::from(theme.box_border)),
     );
 
     frame.render_widget(table, area);

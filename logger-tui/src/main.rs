@@ -2,6 +2,7 @@ mod adapters;
 mod config;
 mod event_loop;
 mod perf;
+pub mod theme;
 mod ui;
 
 use std::cell::RefCell;
@@ -71,6 +72,7 @@ pub struct TuiState {
     /// by `AppState.bandmap_version`. `RefCell` allows rendering (which
     /// only has `&TuiState`) to populate cache misses lazily.
     pub bandmap_cache: RefCell<BandmapCache>,
+    pub theme: theme::Theme,
 }
 
 impl Default for TuiState {
@@ -99,6 +101,7 @@ impl Default for TuiState {
             export_modal: None,
             bandmap_mode: config::BandmapMode::Dual,
             bandmap_cache: RefCell::new(BandmapCache::new()),
+            theme: theme::default_theme(),
         }
     }
 }
@@ -120,6 +123,13 @@ async fn main() -> Result<()> {
         .init();
 
     let config = load_config(&cli)?;
+
+    // Load theme early — bad theme_file or unknown name → fail before any
+    // hardware adapters spawn, so the operator gets a clean startup error.
+    let loaded_theme = theme::load(
+        config.theme.as_deref(),
+        config.theme_file.as_deref(),
+    )?;
 
     // Two-channel bridge: hardware adapters send AppEvent, terminal sends TerminalEvent.
     // Created before bootstrap() so the persist task (spawned inside bootstrap when
@@ -385,6 +395,7 @@ async fn main() -> Result<()> {
         so2r_tx,
         so2r_default_rx_mode,
         scoreboard_handle,
+        loaded_theme,
     )
     .await
 }

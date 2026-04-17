@@ -32,6 +32,18 @@
 # (can also be set via --scp CLI flag)
 #scp_file = "master.scp"
 
+# Color theme (default: "default" — matches the original hardcoded colors)
+# Built-in themes: default, dracula, one-dark-pro, nord, catppuccin-mocha,
+# catppuccin-latte, gruvbox-dark, gruvbox-light, tokyo-night, solarized-dark,
+# solarized-light, monokai-pro, rose-pine, kanagawa, everforest, cyberpunk.
+# Each theme sets the terminal background and ~30 semantic color roles.
+#theme = "dracula"
+
+# Optional path to a custom theme TOML file. Overrides individual roles on
+# top of the selected base theme. Missing/invalid → fail to start.
+# See docs/dxfeed-tuning.md or plans/tui-theme-system.md for role names.
+#theme_file = "/path/to/my-theme.toml"
+
 # Bandmap display mode (default: dual)
 #   dual — R1 and R2 bandmaps stacked; Ctrl+↑↓ = R1, Ctrl+Alt+↑↓ = R2
 #   r1   — single bandmap for Radio 1

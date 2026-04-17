@@ -5,13 +5,14 @@ use logger_core::{
 use ratatui::{
     Frame,
     layout::{Constraint, Rect},
-    style::{Color, Modifier, Style},
+    style::Style,
     widgets::{Block, Borders, Cell, Row, Table},
 };
 
 use crate::TuiState;
 
 pub fn render(frame: &mut Frame, area: Rect, app: &AppState, tui: &TuiState, radio_id: RadioId) {
+    let theme = &tui.theme;
     let radio = app
         .radios
         .get(&radio_id)
@@ -40,7 +41,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &AppState, tui: &TuiState, rad
 
     // Build all rows (including divider if the rig is parked between
     // spots). Indexing below is over the final post-insertion vec.
-    let divider_style = Style::default().fg(Color::DarkGray);
+    let divider_style = Style::from(theme.bandmap_divider);
     let divider_row = || {
         Row::new(vec![
             Cell::from("───────"),
@@ -59,13 +60,13 @@ pub fn render(frame: &mut Frame, area: Rect, app: &AppState, tui: &TuiState, rad
             Cell::from(s.call.as_str()),
         ]);
         let styled = if highlight_idx == Some(i) {
-            row.style(Style::default().add_modifier(Modifier::REVERSED))
+            row.style(Style::from(theme.bandmap_highlight))
         } else if tui.worked_calls.contains(&s.call) {
-            row.style(Style::default().fg(Color::DarkGray))
+            row.style(Style::from(theme.bandmap_worked))
         } else if tui.mult_calls.contains(&s.call) {
-            row.style(Style::default().fg(Color::Green))
+            row.style(Style::from(theme.bandmap_mult))
         } else {
-            row.style(Style::default().fg(Color::White))
+            row.style(Style::from(theme.bandmap_unworked))
         };
         all_rows.push(styled);
     }
@@ -102,7 +103,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &AppState, tui: &TuiState, rad
         Block::default()
             .borders(Borders::ALL)
             .title(label)
-            .style(Style::default().fg(Color::DarkGray)),
+            .style(Style::from(theme.bandmap_border)),
     );
 
     frame.render_widget(table, area);

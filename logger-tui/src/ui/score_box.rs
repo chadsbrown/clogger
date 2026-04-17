@@ -2,20 +2,20 @@ use logger_runtime::ScoreSummary;
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
-    style::{Color, Style},
+    style::Style,
     widgets::{Block, Borders, Cell, Paragraph, Row, Table},
 };
 
-pub fn render(frame: &mut Frame, area: Rect, score: &ScoreSummary) {
-    // Outer block with borders
+use crate::theme::Theme;
+
+pub fn render(frame: &mut Frame, area: Rect, score: &ScoreSummary, theme: &Theme) {
     let block = Block::default()
         .borders(Borders::ALL)
         .title(" Score ")
-        .style(Style::default().fg(Color::DarkGray));
+        .style(Style::from(theme.box_border));
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    // Split inner: table at top, score line at bottom
     let chunks = Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).split(inner);
 
     let header = Row::new(vec![
@@ -23,7 +23,7 @@ pub fn render(frame: &mut Frame, area: Rect, score: &ScoreSummary) {
         Cell::from("  Q"),
         Cell::from("  M"),
     ])
-    .style(Style::default().fg(Color::Yellow));
+    .style(Style::from(theme.box_header));
 
     let mut rows: Vec<Row> = score
         .by_band
@@ -38,14 +38,13 @@ pub fn render(frame: &mut Frame, area: Rect, score: &ScoreSummary) {
         })
         .collect();
 
-    // Totals row
     rows.push(
         Row::new(vec![
             Cell::from("  Tot"),
             Cell::from(format!("{:>3}", score.total_qsos)),
             Cell::from(format!("{:>3}", score.total_mults)),
         ])
-        .style(Style::default().fg(Color::White)),
+        .style(Style::from(theme.box_total)),
     );
 
     let table = Table::new(
@@ -55,6 +54,6 @@ pub fn render(frame: &mut Frame, area: Rect, score: &ScoreSummary) {
     frame.render_widget(table, chunks[0]);
 
     let score_line = Paragraph::new(format!(" Score: {}", score.claimed_score))
-        .style(Style::default().fg(Color::Cyan));
+        .style(Style::from(theme.box_value));
     frame.render_widget(score_line, chunks[1]);
 }

@@ -1,39 +1,36 @@
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::Style,
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
 use crate::ExportModal;
+use crate::theme::Theme;
 
-pub fn render(frame: &mut Frame, modal: &ExportModal) {
+pub fn render(frame: &mut Frame, modal: &ExportModal, theme: &Theme) {
     let area = centered_rect(50, 12, frame.area());
 
-    // Clear the background behind the modal
     frame.render_widget(Clear, area);
 
     let block = Block::default()
         .title(" Export ")
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan));
+        .border_style(Style::from(theme.modal_border));
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
     match &modal.step {
-        ExportStep::SelectFormat => render_format_select(frame, inner),
-        ExportStep::InputPath { path, cursor } => render_path_input(frame, inner, path, *cursor),
+        ExportStep::SelectFormat => render_format_select(frame, inner, theme),
+        ExportStep::InputPath { path, cursor } => render_path_input(frame, inner, path, *cursor, theme),
         ExportStep::Result { message, is_error } => {
-            render_result(frame, inner, message, *is_error)
+            render_result(frame, inner, message, *is_error, theme)
         }
     }
 }
 
-/// Handle a key event while the export modal is open.
-/// Returns true if the modal consumed the event (caller should not pass to reduce).
-/// Sets `modal` to None when the modal should close.
 pub fn handle_key(
     modal: &mut Option<ExportModal>,
     key_code: crossterm::event::KeyCode,
@@ -107,7 +104,6 @@ pub fn handle_key(
             _ => {}
         },
         ExportStep::Result { .. } => {
-            // Any key closes the result screen
             *modal = None;
         }
     }
@@ -122,7 +118,7 @@ pub enum ExportStep {
     Result { message: String, is_error: bool },
 }
 
-fn render_format_select(frame: &mut Frame, area: Rect) {
+fn render_format_select(frame: &mut Frame, area: Rect, theme: &Theme) {
     let chunks = Layout::vertical([
         Constraint::Length(1),
         Constraint::Length(1),
@@ -133,21 +129,12 @@ fn render_format_select(frame: &mut Frame, area: Rect) {
     ])
     .split(area);
 
-    frame.render_widget(
-        Paragraph::new("Select export format:"),
-        chunks[0],
-    );
-
+    frame.render_widget(Paragraph::new("Select export format:"), chunks[0]);
     frame.render_widget(Paragraph::new(""), chunks[1]);
 
     frame.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::styled(
-                "  [A] ",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            ),
+            Span::styled("  [A] ", Style::from(theme.modal_active_option)),
             Span::raw("ADIF (.adi)"),
         ])),
         chunks[2],
@@ -155,22 +142,22 @@ fn render_format_select(frame: &mut Frame, area: Rect) {
 
     frame.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::styled("  [C] ", Style::default().fg(Color::DarkGray)),
-            Span::styled("Cabrillo (not yet implemented)", Style::default().fg(Color::DarkGray)),
+            Span::styled("  [C] ", Style::from(theme.modal_disabled_option)),
+            Span::styled("Cabrillo (not yet implemented)", Style::from(theme.modal_disabled_option)),
         ])),
         chunks[3],
     );
 
     frame.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::styled("  Esc ", Style::default().fg(Color::DarkGray)),
+            Span::styled("  Esc ", Style::from(theme.modal_help_text)),
             Span::raw("Cancel"),
         ])),
         chunks[4],
     );
 }
 
-fn render_path_input(frame: &mut Frame, area: Rect, path: &str, cursor: usize) {
+fn render_path_input(frame: &mut Frame, area: Rect, path: &str, cursor: usize, theme: &Theme) {
     let chunks = Layout::vertical([
         Constraint::Length(1),
         Constraint::Length(1),
@@ -180,40 +167,30 @@ fn render_path_input(frame: &mut Frame, area: Rect, path: &str, cursor: usize) {
     ])
     .split(area);
 
-    frame.render_widget(
-        Paragraph::new("Export ADIF to:"),
-        chunks[0],
-    );
-
+    frame.render_widget(Paragraph::new("Export ADIF to:"), chunks[0]);
     frame.render_widget(Paragraph::new(""), chunks[1]);
 
-    // Path input with cursor
     let display_path = if path.is_empty() { " " } else { path };
     frame.render_widget(
-        Paragraph::new(display_path).style(
-            Style::default()
-                .fg(Color::White)
-                .bg(Color::DarkGray),
-        ),
+        Paragraph::new(display_path).style(Style::from(theme.modal_input)),
         chunks[2],
     );
 
-    // Position cursor
     let cursor_x = area.x + (cursor as u16).min(area.width.saturating_sub(1));
     frame.set_cursor_position((cursor_x, chunks[2].y));
 
     frame.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::styled("Enter ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Enter ", Style::from(theme.modal_help_text)),
             Span::raw("Export  "),
-            Span::styled("Esc ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Esc ", Style::from(theme.modal_help_text)),
             Span::raw("Cancel"),
         ])),
         chunks[3],
     );
 }
 
-fn render_result(frame: &mut Frame, area: Rect, message: &str, is_error: bool) {
+fn render_result(frame: &mut Frame, area: Rect, message: &str, is_error: bool, theme: &Theme) {
     let chunks = Layout::vertical([
         Constraint::Length(1),
         Constraint::Length(1),
@@ -223,15 +200,16 @@ fn render_result(frame: &mut Frame, area: Rect, message: &str, is_error: bool) {
     ])
     .split(area);
 
-    let color = if is_error { Color::Red } else { Color::Green };
-    frame.render_widget(
-        Paragraph::new(message).style(Style::default().fg(color)),
-        chunks[1],
-    );
+    let style: Style = if is_error {
+        theme.modal_error.into()
+    } else {
+        theme.modal_success.into()
+    };
+    frame.render_widget(Paragraph::new(message).style(style), chunks[1]);
 
     frame.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::styled("  Press any key ", Style::default().fg(Color::DarkGray)),
+            Span::styled("  Press any key ", Style::from(theme.modal_help_text)),
             Span::raw("to close"),
         ])),
         chunks[3],

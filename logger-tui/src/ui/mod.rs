@@ -11,6 +11,8 @@ use logger_core::AppState;
 use ratatui::{
     Frame,
     layout::{Constraint, Layout},
+    style::{Color, Style},
+    widgets::Block,
 };
 
 use crate::config::BandmapMode;
@@ -18,6 +20,16 @@ use crate::config::BandmapMode;
 use crate::TuiState;
 
 pub fn render(frame: &mut Frame, app: &AppState, tui: &TuiState) {
+    // Fill the entire terminal with the theme background before rendering
+    // widgets. Color::Reset means "use the terminal's native background"
+    // (backward compat for the default theme).
+    if tui.theme.background != Color::Reset {
+        frame.render_widget(
+            Block::default().style(Style::default().bg(tui.theme.background)),
+            frame.area(),
+        );
+    }
+
     let half_width = frame.area().width / 2;
     let left_width = (frame.area().width - half_width) / 2;
     let right_width = frame.area().width - half_width - left_width;
@@ -72,17 +84,19 @@ pub fn render(frame: &mut Frame, app: &AppState, tui: &TuiState) {
     ])
     .split(cols[0]);
 
-    score_box::render(frame, left[0], &tui.score);
-    avail_box::render(frame, left[1], &tui.avail);
-    rate_box::render(frame, left[2], &tui.rate);
+    let theme = &tui.theme;
+
+    score_box::render(frame, left[0], &tui.score, theme);
+    avail_box::render(frame, left[1], &tui.avail, theme);
+    rate_box::render(frame, left[2], &tui.rate, theme);
 
     // Center: error (top of filler) + log + entry R1 + [entry R2] + scp
     if let Some(ref msg) = tui.error_message {
         let error = ratatui::widgets::Paragraph::new(format!(" {msg}"))
-            .style(ratatui::style::Style::default().fg(ratatui::style::Color::Red));
+            .style(ratatui::style::Style::from(theme.error_banner));
         frame.render_widget(error, center[0]);
     }
-    log_tail::render(frame, center[1], &tui.log_display);
+    log_tail::render(frame, center[1], &tui.log_display, &tui.theme);
     let r1_echo = tui.echo_per_radio.get(&1).map(|s| s.as_str());
     entry_line::render(
         frame,
@@ -93,6 +107,7 @@ pub fn render(frame: &mut Frame, app: &AppState, tui: &TuiState) {
         tui.tx_radio,
         r1_echo,
         tui.cw_transmitting,
+        theme,
     );
     if show_r2 {
         let r2_echo = tui.echo_per_radio.get(&2).map(|s| s.as_str());
@@ -105,10 +120,11 @@ pub fn render(frame: &mut Frame, app: &AppState, tui: &TuiState) {
             tui.tx_radio,
             r2_echo,
             tui.cw_transmitting,
+            theme,
         );
-        status_bar::render_scp(frame, center[4], app);
+        status_bar::render_scp(frame, center[4], app, tui);
     } else {
-        status_bar::render_scp(frame, center[3], app);
+        status_bar::render_scp(frame, center[3], app, tui);
     }
 
     // Right: bandmap(s)
@@ -133,11 +149,11 @@ pub fn render(frame: &mut Frame, app: &AppState, tui: &TuiState) {
     let footer = ratatui::widgets::Paragraph::new(
         " F1:CQ  F2:Exch  F3:TU  F5:Call  Esc:Stop  F12:Wipe  Enter:ESM  Ins:Run/S&P  \u{2191}\u{2193}:R1/R2  C-\u{2191}\u{2193}:BM R1  CA-\u{2191}\u{2193}:BM R2  `:RX  C-E:Export  Ctrl-C:Quit",
     )
-    .style(ratatui::style::Style::default().fg(ratatui::style::Color::DarkGray));
+    .style(ratatui::style::Style::from(theme.footer));
     frame.render_widget(footer, rows[2]);
 
     // Modal overlay (if open)
     if let Some(ref modal) = tui.export_modal {
-        export_modal::render(frame, modal);
+        export_modal::render(frame, modal, theme);
     }
 }

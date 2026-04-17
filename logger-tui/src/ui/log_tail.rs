@@ -1,11 +1,12 @@
 use ratatui::{
     Frame,
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::Style,
     widgets::{Block, Borders, Cell, Row, Table},
 };
 
-/// Each entry in the log display is a pre-formatted row.
+use crate::theme::Theme;
+
 #[derive(Debug, Clone)]
 pub struct LogRow {
     pub nr: u64,
@@ -15,8 +16,8 @@ pub struct LogRow {
     pub exchange: String,
 }
 
-pub fn render(frame: &mut Frame, area: Rect, rows: &[LogRow]) {
-    let visible = area.height.saturating_sub(3) as usize; // borders + header
+pub fn render(frame: &mut Frame, area: Rect, rows: &[LogRow], theme: &Theme) {
+    let visible = area.height.saturating_sub(3) as usize;
     let skip = rows.len().saturating_sub(visible);
 
     let table_rows: Vec<Row> = rows
@@ -33,11 +34,8 @@ pub fn render(frame: &mut Frame, area: Rect, rows: &[LogRow]) {
         })
         .collect();
 
-    let header = Row::new(vec!["#", "Call", "Band", "Mode", "Exchange"]).style(
-        Style::default()
-            .fg(Color::Yellow)
-            .add_modifier(Modifier::BOLD),
-    );
+    let header = Row::new(vec!["#", "Call", "Band", "Mode", "Exchange"])
+        .style(Style::from(theme.box_header));
 
     let table = Table::new(
         table_rows,
@@ -54,7 +52,7 @@ pub fn render(frame: &mut Frame, area: Rect, rows: &[LogRow]) {
         Block::default()
             .borders(Borders::TOP)
             .title(" Log ")
-            .style(Style::default().fg(Color::DarkGray)),
+            .style(Style::from(theme.box_border)),
     );
 
     frame.render_widget(table, area);

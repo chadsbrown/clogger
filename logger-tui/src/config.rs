@@ -77,6 +77,14 @@ pub struct StableConfig {
     /// remain unaffected and can be used to confirm the dupe over the air.
     #[serde(default)]
     pub block_dupes: bool,
+    /// Built-in theme name. Valid: default, dracula, one-dark-pro, nord,
+    /// catppuccin-mocha, catppuccin-latte, gruvbox-dark, gruvbox-light,
+    /// tokyo-night, solarized-dark, solarized-light, monokai-pro,
+    /// rose-pine, kanagawa, everforest, cyberpunk.
+    pub theme: Option<String>,
+    /// Path to a custom theme TOML file. Overrides individual roles on
+    /// top of the selected base theme.
+    pub theme_file: Option<PathBuf>,
 }
 
 /// Per-contest configuration. Lives in `contest.toml` and changes when you
@@ -127,6 +135,8 @@ pub struct Config {
     pub show_passband_qrm: bool,
     pub esm_enabled: bool,
     pub block_dupes: bool,
+    pub theme: Option<String>,
+    pub theme_file: Option<PathBuf>,
 }
 
 impl Config {
@@ -155,6 +165,8 @@ impl Config {
             show_passband_qrm: stable.show_passband_qrm,
             esm_enabled: stable.esm_enabled,
             block_dupes: stable.block_dupes,
+            theme: stable.theme,
+            theme_file: stable.theme_file,
         }
     }
 }

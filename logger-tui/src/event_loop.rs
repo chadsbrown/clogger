@@ -39,6 +39,7 @@ pub async fn run(
     so2r_tx: Option<mpsc::Sender<logger_runtime::So2rCmd>>,
     so2r_default_rx_mode: logger_core::So2rRxMode,
     scoreboard: Option<(ScoreboardHandle, &'static str, String, CategoryConfig)>,
+    theme: crate::theme::Theme,
 ) -> Result<()> {
     // RX mode is a runtime knob — the config provides an initial value, and
     // the operator can toggle it mid-session via the backtick keybinding.
@@ -84,6 +85,7 @@ pub async fn run(
         bandmap_mode: conn.bandmap_mode,
         cw_echo_enabled,
         tx_radio: state.focused_radio,
+        theme,
         ..Default::default()
     };
 

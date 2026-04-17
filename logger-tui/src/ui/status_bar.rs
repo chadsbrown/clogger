@@ -10,12 +10,13 @@ use ratatui::{
 use crate::TuiState;
 
 pub fn render(frame: &mut Frame, area: Rect, st: &AppState, tui: &TuiState) {
+    let theme = &tui.theme;
     let mut left_spans = Vec::new();
 
     // My callsign
     left_spans.push(Span::styled(
         format!(" {} ", st.my_call),
-        Style::default().fg(Color::White).bg(Color::Blue),
+        Style::from(theme.status_callsign_badge),
     ));
     left_spans.push(Span::raw(" "));
 
@@ -23,7 +24,7 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState, tui: &TuiState) {
     if st.focused_entry().is_new_mult {
         left_spans.push(Span::styled(
             " MULT ",
-            Style::default().fg(Color::Black).bg(Color::Green),
+            Style::from(theme.status_mult_badge),
         ));
         left_spans.push(Span::raw(" "));
     }
@@ -32,7 +33,7 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState, tui: &TuiState) {
     if st.focused_entry().is_passband_qrm {
         left_spans.push(Span::styled(
             " QRM ",
-            Style::default().fg(Color::Black).bg(Color::Yellow),
+            Style::from(theme.status_qrm_badge),
         ));
         left_spans.push(Span::raw(" "));
     }
@@ -50,7 +51,7 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState, tui: &TuiState) {
             if !spans.is_empty() {
                 spans.push(Span::raw(" "));
             }
-            let color = if connected { Color::Green } else { Color::Red };
+            let color = if connected { theme.status_connected.fg.unwrap_or(Color::Green) } else { theme.status_disconnected.fg.unwrap_or(Color::Red) };
             spans.push(Span::styled(label, Style::default().fg(color)));
         };
     // Rig indicators: "RIG" for a single configured rig, "RIG1"/"RIG2"/... for
@@ -74,9 +75,9 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState, tui: &TuiState) {
             right_spans.push(Span::raw(" "));
         }
         let color = match tui.scoreboard_status {
-            logger_runtime::ScoreboardStatus::Idle => Color::Yellow,
-            logger_runtime::ScoreboardStatus::Ok => Color::Green,
-            logger_runtime::ScoreboardStatus::Failing => Color::Red,
+            logger_runtime::ScoreboardStatus::Idle => theme.status_idle.fg.unwrap_or(Color::Yellow),
+            logger_runtime::ScoreboardStatus::Ok => theme.status_connected.fg.unwrap_or(Color::Green),
+            logger_runtime::ScoreboardStatus::Failing => theme.status_disconnected.fg.unwrap_or(Color::Red),
         };
         right_spans.push(Span::styled("SCRBD", Style::default().fg(color)));
     }
@@ -87,7 +88,7 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState, tui: &TuiState) {
     let m = (total_secs / 60) % 60;
     let s = total_secs % 60;
     let clock_text = format!("{h:02}:{m:02}:{s:02}z");
-    let clock_span = Span::styled(clock_text, Style::default().fg(Color::Cyan));
+    let clock_span = Span::styled(clock_text, Style::from(theme.status_clock));
     let clock_width = clock_span.width();
 
     let left_width: usize = left_spans.iter().map(|s| s.width()).sum();
@@ -107,15 +108,16 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState, tui: &TuiState) {
     frame.render_widget(Paragraph::new(Line::from(left_spans)), area);
 }
 
-pub fn render_scp(frame: &mut Frame, area: Rect, st: &AppState) {
+pub fn render_scp(frame: &mut Frame, area: Rect, st: &AppState, tui: &TuiState) {
+    let theme = &tui.theme;
     let mut lines = Vec::new();
 
     // SCP prefix matches
     if !st.focused_entry().scp_matches.is_empty() {
         let scp_text = st.focused_entry().scp_matches.iter().take(10).cloned().collect::<Vec<_>>().join(" ");
         lines.push(Line::from(vec![
-            Span::styled("SCP: ", Style::default().fg(Color::Cyan)),
-            Span::styled(scp_text, Style::default().fg(Color::DarkGray)),
+            Span::styled("SCP: ", Style::from(theme.scp_label)),
+            Span::styled(scp_text, Style::from(theme.scp_dim)),
         ]));
     }
 
@@ -123,8 +125,8 @@ pub fn render_scp(frame: &mut Frame, area: Rect, st: &AppState) {
     if !st.focused_entry().scp_n1_matches.is_empty() {
         let n1_text = st.focused_entry().scp_n1_matches.iter().take(10).cloned().collect::<Vec<_>>().join(" ");
         lines.push(Line::from(vec![
-            Span::styled("N+1: ", Style::default().fg(Color::Cyan)),
-            Span::styled(n1_text, Style::default().fg(Color::DarkGray)),
+            Span::styled("N+1: ", Style::from(theme.scp_label)),
+            Span::styled(n1_text, Style::from(theme.scp_dim)),
         ]));
     }
 
