@@ -213,6 +213,7 @@ pub async fn run(
                             &log_adapter,
                             &log_adapter,
                             call_history.as_ref(),
+                            &log_adapter,
                             scp.as_ref(),
                             app_event,
                         );
@@ -314,6 +315,7 @@ pub async fn run(
                     &log_adapter,
                     &log_adapter,
                     call_history.as_ref(),
+                    &log_adapter,
                     scp.as_ref(),
                     logger_core::AppEvent::TimerTick { now_ms },
                 );

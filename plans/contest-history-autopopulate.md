@@ -2,103 +2,225 @@
 
 ## Context
 
-When a callsign is typed, clogger auto-populates exchange fields from a `.ch` call history file. But the `.ch` file contains pre-contest data. If the operator already worked a station in the current contest and that station sent a different exchange (or isn't in the `.ch` file at all), the logged contest data should take priority. Two scenarios:
+When a callsign is typed, clogger auto-populates exchange fields from a
+`.ch` call history file. But `.ch` data is pre-contest and stale.
+If the operator already worked a station in the current contest and the
+station sent a different exchange (or isn't in the `.ch` file at all),
+the logged contest data should take priority. Two scenarios:
 
-1. N3QE is in `.ch` with name "TINA", but sent "TIM" in this contest. On re-work, "TIM" should populate.
-2. KB9RPG isn't in `.ch` at all. He sent "STEVE" earlier. On re-work, "STEVE" should populate.
+1. N3QE is in `.ch` with name "TINA", but sent "TIM" in this contest.
+   On re-work, "TIM" should populate.
+2. KB9RPG isn't in `.ch` at all. He sent "STEVE" earlier.
+   On re-work, "STEVE" should populate.
 
-## Current Call History Flow
+## Current call-history flow (for reference)
 
-- `reduce()` in `logger-core/src/reducer.rs:68` receives `call_history: &dyn CallHistoryLookup`
-- `CallHistoryLookup` trait (reducer.rs:40): `fn lookup(&self, call_norm: &str) -> Option<Vec<(String, String)>>` — returns .ch column-name/value pairs like `[("Name", "TINA"), ("CqZone", "5")]`
-- When the call field changes, `apply_call_history()` (reducer.rs:636) calls `apply_history_lookup()` (reducer.rs:681)
-- `apply_history_lookup()` calls `call_history.lookup(callsign)`, then uses `contest.history_field_mapping()` to map .ch column names to form field_ids, and populates matching fields
-- `history_field_mapping()` is per-contest, e.g. CWT: `[("Name", 2), ("Exch1", 3)]`, CQWW: `[("CqZone", 3)]`
-- Fields auto-populated from history are tagged with `from_history = true` on `EntryFieldState` — only empty or already-from-history fields are overwritten
+- `reduce()` in `logger-core/src/reducer.rs:68` receives
+  `call_history: &dyn CallHistoryLookup`.
+- `CallHistoryLookup::lookup(call_norm) -> Option<Vec<(String, String)>>`
+  returns `.ch` column-name/value pairs.
+- On call-field change, `apply_call_history()` calls
+  `apply_history_lookup()` (reducer.rs:681), which:
+  1. Calls `call_history.lookup(call)`
+  2. Pulls `contest.history_field_mapping() -> Vec<(&str, u16)>` —
+     pairs like `("Name", 2)` mapping `.ch` column name to form
+     field_id
+  3. For each `(col, field_id)` in the mapping, if the `.ch` row has
+     a value for `col` and the target form field is empty or already
+     tagged `from_history`, fills the field and tags it
+- Fields tagged `from_history = true` on `EntryFieldState` are
+  clobberable by later lookups; manually typed fields are not.
 
-## Exchange Data in Logged QSOs
+## Exchange data in logged QSOs
 
-- `QsoDraft.exchange_pairs: Vec<(String, String)>` uses contest-engine spec field IDs as keys (e.g. "name", "zone")
-- For spec-driven contests, keys come from `spec_field.id` (logger-core/src/contest/spec_driven.rs:162)
-- Form field_ids are positional: first received field → field_id 2, second → field_id 3, etc.
-- Exchange pairs are encoded as JSON blobs in `ExchangeBlob`, decoded via `decode_exchange_pairs()` (logger-runtime/src/log_adapter.rs:269)
-- `LogAdapter` exposes `ordered_records() -> Vec<QsoRecord>` — `QsoRecord` has `callsign_norm`, `exchange: ExchangeBlob`, `flags.is_void`
-- No existing method to look up exchange by callsign — only `is_dupe(call, band, mode) -> bool`
+- `QsoDraft.exchange_pairs: Vec<(String, String)>` uses contest-engine
+  spec field ids as keys (e.g. `"name"`, `"loc"`).
+- Spec-driven contests populate these keys from `spec_field.id`
+  (`logger-core/src/contest/spec_driven.rs:162`).
+- Form field_ids are positional: first received field → `field_id 2`,
+  second → `field_id 3`, etc. (CALL is always `field_id 1`.)
+- `QsoRecord` exposes `callsign_norm`, `exchange: ExchangeBlob`, and
+  `flags.is_void`.
+- `decode_exchange_pairs()` (logger-runtime) materializes the blob back
+  into `Vec<(String, String)>`.
 
 ## Design
 
-### New trait: `ContestHistoryLookup` (in logger-core)
+### Key decisions baked into this plan
 
-Follows the same pattern as `CallHistoryLookup` but returns field_id → value pairs directly (no column-name indirection needed since the data comes from our own logged QSOs):
+- **The index lives inside `LogAdapter`.** Contest-history data is
+  strictly derived state from the log — same as the scorer. LogAdapter
+  already owns the `insert`/`undo`/`redo` mutation points and rebuilds
+  the scorer there. Putting the index next to the scorer means one
+  mutation signal feeds both. No new state to thread through
+  `bootstrap.rs` / event loop / runner.
+- **Mirror `CallHistoryLookup`'s return shape.** The new trait returns
+  `Vec<(String, String)>` keyed by **spec field id** (matches
+  `QsoDraft.exchange_pairs`). The reducer side then reuses a
+  `contest.history_field_mapping()`-style translation. One abstraction
+  for "auto-populate from a source of (field, value) pairs", two
+  sources.
+- **No new `exchange_field_id_mapping()` trait method.** With the spec-
+  id-keyed return shape, the reducer's existing machinery for mapping
+  source keys → form field_ids is enough. The contest's
+  `history_field_mapping()` names `.ch` columns; we need an analogous
+  identity mapping for spec ids, but that's derivable per-contest from
+  the spec (`received_fields().map(|f| (f.id.clone(), (idx+2) as u16))`).
+  Cache it as an internal helper or compute on the fly per lookup (it's
+  tiny).
+- **Field blocklist: `nr` + `rst`.** `nr` is the received sequence
+  number from the other station (NS Sprint, Sweeps); his NR advances
+  every QSO he makes, so replaying an old one is always wrong. `rst`
+  is usually the mode default anyway but can carry a wrong value
+  across a mode change (worked him on CW=599, re-work on SSB should
+  be 59). Everything else populates. Note: the operator's own *sent*
+  serial (`serial` key in stored pairs) is not a received-exchange
+  field and has no form slot to populate into, so it's not on the
+  blocklist.
+
+### New trait: `ContestHistoryLookup` (in `logger-core`)
+
+Same shape as `CallHistoryLookup`:
 
 ```rust
-pub trait ContestHistoryLookup {
-    fn lookup(&self, call_norm: &str) -> Option<Vec<(u16, String)>>;
+pub trait ContestHistoryLookup: Send + Sync {
+    /// Returns exchange pairs keyed by spec field id, e.g.
+    /// `[("name", "TIM"), ("loc", "NH")]`. Fields `nr` and `rst`
+    /// are not returned (filtered at index-build time).
+    fn lookup(&self, call_norm: &str) -> Option<Vec<(String, String)>>;
 }
+
+pub struct NoContestHistory;
+impl ContestHistoryLookup for NoContestHistory { ... }
 ```
 
-Plus a `NoContestHistory` stub (like `NoCallHistory`).
+### New index on `LogAdapter`
 
-### New struct: `ContestHistoryIndex` (in logger-runtime)
+`LogAdapter` gains a field:
 
-An in-memory `HashMap<String, Vec<(u16, String)>>` keyed by normalized callsign. Maps each call to its most recently logged exchange fields as (field_id, value) pairs.
+```rust
+contest_history: ContestHistoryIndex,
+```
 
-- Built from `LogAdapter::ordered_records()` at bootstrap via `rebuild()`
-- Updated incrementally via `on_inserted()` after each `Effect::LogInsert`
-- Rebuilt from scratch on undo/redo (matches existing scorer rebuild pattern)
-- Implements the `ContestHistoryLookup` trait
+where `ContestHistoryIndex` owns a
+`HashMap<String, Vec<(String, String)>>` keyed by normalized callsign
+and storing spec-id pairs with `nr`/`rst` filtered out.
 
-Needs a mapping from exchange_pair keys (spec field IDs like "name") to form field_ids (2, 3...). This is positional — first received field → field_id 2, second → 3, etc. Add a `exchange_field_id_mapping()` method to `ContestEntry` trait that returns `Vec<(String, u16)>`. Spec-driven contests derive it from `received_fields()`. The index stores this mapping at construction time.
+- Populated on open (`open_db`, `open_db_async`) via `rebuild()` over
+  the loaded records.
+- Updated on each `insert()` (after the scorer's `on_inserted`).
+- Rebuilt on `undo()` / `redo()` (same place the scorer rebuilds).
+- Exposed via `impl ContestHistoryLookup for LogAdapter` — mirrors
+  the existing `impl DupeChecker` / `impl MultChecker`.
 
-### Priority in `apply_history_lookup()`
+The index builder consults `contest_engine::spec::embedded::spec_by_id`
+to know which field ids to filter out. Simplest: a single
+`const BLOCKED_FIELDS: &[&str] = &["nr", "rst"]`.
 
-Contest history checked first. For any field populated by contest history, skip call history. Call history fills remaining gaps. The `from_history` flag is set either way — the field tracks "auto-populated" regardless of source.
+### Reducer: new `contest_history` parameter + merged lookup
+
+`reduce()` gains `contest_history: &dyn ContestHistoryLookup`. Pass it
+through to `apply_call_history()` → `apply_history_lookup()`.
+
+`apply_history_lookup()` runs in two passes:
+
+1. **Contest history first.** `contest_history.lookup(call)` returns
+   spec-id pairs. For each pair, translate the spec id to a form
+   field_id via the spec-driven mapping (or, for non-spec contests
+   without exchange, an empty mapping that no-ops). Fill matching
+   empty / `from_history` fields. Tag `from_history = true`.
+2. **Call history fills gaps.** Run today's call-history path
+   unchanged, but an already-populated-from-contest-history field
+   is treated like any other `from_history` field — clobberable by
+   call-history only if the current value is still `from_history`.
+
+Clobber semantics (to make explicit):
+- Manually typed (`from_history = false`) → never overwritten.
+- `from_history = true` field → overwritten by either source if the
+  source provides a value. Order within one `apply_history_lookup`
+  call: contest history wins. Sequential call-field edits each rerun
+  the full pass, so the freshest data always wins.
+
+### LogAdapter-as-trait-object plumbing
+
+Today, `reduce()` takes `&dyn DupeChecker` and `&dyn MultChecker`
+separately, both satisfied by the same `LogAdapter`. We'd add
+`&dyn ContestHistoryLookup` the same way. Callers already pass
+`&log_adapter` for dupe/mult; they pass it again for contest history.
+No new wiring in `bootstrap`, the event loop, or the CLI runner —
+just threading one more reference through `reduce()`.
 
 ## Files to modify
 
-### 1. `logger-core/src/reducer.rs` — trait + reduce() signature + lookup logic
-- Add `ContestHistoryLookup` trait and `NoContestHistory` stub (next to `CallHistoryLookup`)
-- Add `contest_history: &dyn ContestHistoryLookup` parameter to `reduce()`
-- Pass it through to `apply_call_history()` → `apply_history_lookup()`
-- In `apply_history_lookup()`: check contest history first, then call history for remaining empty fields
-- Update the test helper `reduce()` wrapper (around line 759) to pass `&NoContestHistory`
+1. **`logger-core/src/reducer.rs`**
+   - Add `ContestHistoryLookup` trait and `NoContestHistory` stub.
+   - Add `contest_history: &dyn ContestHistoryLookup` parameter to
+     `reduce()`.
+   - Extend `apply_history_lookup()` with the two-pass merge.
+   - Update the test-helper `reduce()` wrapper to pass
+     `&NoContestHistory`.
+2. **`logger-core/src/lib.rs`** — re-export the new trait + stub.
+3. **`logger-runtime/src/contest_history.rs`** — new file.
+   - `ContestHistoryIndex`: `HashMap<String, Vec<(String, String)>>`,
+     `rebuild(records)`, `on_inserted(call_norm, exchange_pairs)`,
+     `lookup(call)`.
+   - Blocklist: skip `nr`, `rst`.
+4. **`logger-runtime/src/log_adapter.rs`**
+   - Own a `ContestHistoryIndex`.
+   - Call `rebuild` on `open_db`/`open_db_async` load and on
+     `undo`/`redo`.
+   - Call `on_inserted` after `scorer.on_inserted` in `insert`.
+   - `impl ContestHistoryLookup for LogAdapter`.
+5. **`logger-runtime/src/lib.rs`** — expose module if any types leak
+   (probably not; `ContestHistoryIndex` stays module-private).
+6. **`logger-tui/src/event_loop.rs`** — pass `&log_adapter` as the
+   `ContestHistoryLookup` when calling `reduce()`. Same pattern as
+   the existing dupe/mult wiring.
+7. **`logger-cli/src/runner.rs`** — same threading. The existing
+   `SerialContest` wrapper doesn't need updates under this design
+   (no new `ContestEntry` methods).
 
-### 2. `logger-core/src/contest/traits.rs` — new trait method
-- Add `fn exchange_field_id_mapping(&self) -> Vec<(String, u16)> { vec![] }` to `ContestEntry`
+Compared to the original plan, this drops: `ContestEntry::exchange_field_id_mapping`,
+a top-level `Session::contest_history`, and the event-loop / runner
+dispatch patches for `on_inserted` / `rebuild`.
 
-### 3. `logger-core/src/contest/spec_driven.rs` — implement mapping
-- Override `exchange_field_id_mapping()` on `SpecDrivenContest`: iterate `received_fields()`, return `(spec_field.id.clone(), (idx as u16) + 2)` pairs
+## Decisions
 
-### 4. `logger-runtime/src/contest_history.rs` — new file
-- `ContestHistoryIndex` struct with `HashMap<String, Vec<(u16, String)>>` and the field mapping
-- `new(mapping: Vec<(String, u16)>)` constructor
-- `rebuild(&mut self, records: &[QsoRecord])` — scans all non-voided records, decodes exchange pairs, maps to field_ids, last one wins per callsign
-- `on_inserted(&mut self, call_norm: &str, exchange_pairs: &[(String, String)])` — upserts a single entry
-- `impl ContestHistoryLookup for ContestHistoryIndex`
-
-### 5. `logger-runtime/src/lib.rs` — expose new module
-
-### 6. `logger-runtime/src/bootstrap.rs` — construct and seed index
-- Create `ContestHistoryIndex` from `contest.exchange_field_id_mapping()`
-- Seed it via `rebuild()` from `log_adapter.ordered_records()` (so restart picks up prior session data)
-- Add to `Session` struct
-
-### 7. `logger-tui/src/event_loop.rs` — wire into event loop
-- Add `contest_history` to `run()` parameters
-- Pass `&contest_history` to both `reduce()` calls
-- In `dispatch_effects()`, after `Effect::LogInsert` insert succeeds, call `contest_history.on_inserted()`
-- On undo/redo (if/when wired), call `contest_history.rebuild()`
-
-### 8. `logger-cli/src/runner.rs` — wire into CLI runner
-- Create `ContestHistoryIndex`, pass to `reduce()` calls
-- Update after `Effect::LogInsert` in the effect dispatch
-- Update `SerialContest` wrapper to delegate `exchange_field_id_mapping()`
-
-### 9. `logger-tui/src/main.rs` — pass contest_history from Session to run()
+- **Keying:** call-only, last non-voided QSO wins. State-QP rovers
+  whose LOC changes between bands mis-populate on re-work (operator
+  corrects manually) — acceptable v1 tradeoff; revisit if common.
+- **Field blocklist:** `nr`, `rst`. `nr` replays a stale NR (the
+  other station's counter has advanced). `rst` may carry a wrong
+  mode's value (CW 599 into SSB field). Every other received field
+  populates.
+- **`from_history` tagging:** single flag shared by both sources.
+  Contest-history runs first in the merge; call-history fills
+  remaining gaps. Manually typed fields (`from_history = false`)
+  are never overwritten.
+- **Multi-op:** index is global. Any op's log entry populates for
+  any op. Matches the dupe/score/log-view sharing model.
+- **`block_dupes` interaction:** autopopulate fires regardless of
+  dupe status. It's a display convenience; the block happens at
+  ESM time, not at field-fill time. No code change required — the
+  reducer already applies history unconditionally.
+- **Void handling:** falls out for free. `rebuild` filters on
+  `!flags.is_void`, so undo/void removes a call from the index
+  and re-insert restores it. No special path needed.
 
 ## Verification
 
-- `cargo test` — all existing tests pass (NoContestHistory stub means no behavioral change)
-- Add golden test script: CWT contest, log N3QE with name "TIM", clear, re-enter "N3QE" — verify NAME field auto-populates with "TIM" (with call_history entry having "TINA")
-- Add golden test script: CWT contest, log KB9RPG with name "STEVE" (no call_history entry), clear, re-enter "KB9RPG" — verify NAME field auto-populates with "STEVE"
-- Both scripts verify `from_history` behavior: manually typed values are not overwritten
+- `cargo test` — all existing tests pass (`NoContestHistory` means
+  no behavioral change when not wired).
+- Unit test on `LogAdapter`: insert two QSOs for same call with
+  different names, assert `lookup(call)` returns the second name.
+- Unit test on `LogAdapter`: insert + undo, assert `lookup(call)`
+  returns `None` (or the prior QSO's data if any).
+- Unit test: insert QSO with `nr` + `rst` fields, assert those
+  keys don't appear in `lookup`.
+- Golden script (CWT): log N3QE with name "TIM", clear entry,
+  re-enter "N3QE", assert NAME field is "TIM" when `.ch` has "TINA".
+- Golden script (CWT): log KB9RPG with name "STEVE" (no `.ch`
+  entry), clear, re-enter, assert NAME is "STEVE".
+- Golden script: after autopopulate, manually edit the name field,
+  assert subsequent lookups do not overwrite it (`from_history`
+  gate still holds).

@@ -50,6 +50,34 @@ impl CallHistoryLookup for NoCallHistory {
     }
 }
 
+/// Auto-populate source for exchange fields from *this* contest's
+/// previously-logged QSOs. Complements `CallHistoryLookup` (which pulls
+/// pre-contest `.ch` data) by preferring live contest data when
+/// available — e.g. the station sent a different name than the `.ch`
+/// file has, or isn't in the `.ch` file at all.
+///
+/// Returns exchange pairs keyed by **contest-engine spec field id**
+/// (e.g. `"name"`, `"loc"`). The reducer maps spec ids to form field
+/// ids by matching on the uppercased label (`SpecDrivenContest` sets
+/// `label = spec_id.to_ascii_uppercase()`).
+///
+/// No `Send + Sync` bound: the concrete implementor in production is
+/// `LogAdapter`, which transitively owns a SQLite connection and thus
+/// isn't `Sync`. The reducer only holds a `&dyn ContestHistoryLookup`
+/// for the duration of one synchronous `reduce()` call — no
+/// cross-thread sharing of the reference.
+pub trait ContestHistoryLookup {
+    fn lookup(&self, call_norm: &str) -> Option<Vec<(String, String)>>;
+}
+
+pub struct NoContestHistory;
+
+impl ContestHistoryLookup for NoContestHistory {
+    fn lookup(&self, _: &str) -> Option<Vec<(String, String)>> {
+        None
+    }
+}
+
 pub trait ScpLookup: Send + Sync {
     fn partial_matches(&self, prefix: &str, limit: usize) -> Vec<String>;
     fn n_plus_one_matches(&self, _call: &str, _limit: usize) -> Vec<String> {
@@ -78,6 +106,7 @@ pub fn reduce(
     dupe_checker: &dyn DupeChecker,
     mult_checker: &dyn MultChecker,
     call_history: &dyn CallHistoryLookup,
+    contest_history: &dyn ContestHistoryLookup,
     scp: &dyn ScpLookup,
     ev: AppEvent,
 ) -> Vec<Effect> {
@@ -185,6 +214,16 @@ pub fn reduce(
             let mut touched_call = false;
             if let Some(field) = st.focused_entry_mut().focused_mut() {
                 touched_call = field.field_id == 1;
+                if !touched_call && field.from_history {
+                    // First real keystroke into an auto-populated field: drop
+                    // the autopop value so operator's typing replaces it
+                    // cleanly. Without this, typing "14" on top of an
+                    // autopop'd "14" would yield "1414". Applies to both
+                    // call-history and contest-history fills (both use the
+                    // same `from_history` flag).
+                    field.value.clear();
+                    field.cursor = 0;
+                }
                 if !touched_call {
                     field.from_history = false;
                 }
@@ -200,7 +239,7 @@ pub fn reduce(
                 }
                 entry.scp_cycle_index = None;
                 recompute_feedback(st, dupe_checker, mult_checker);
-                apply_call_history(st, contest, call_history, scp);
+                apply_call_history(st, contest, call_history, contest_history, scp);
                 revalidate_after_edit(st, contest);
             }
             Vec::new()
@@ -248,7 +287,7 @@ pub fn reduce(
                     }
                     entry.scp_cycle_index = None;
                     recompute_feedback(st, dupe_checker, mult_checker);
-                    apply_call_history(st, contest, call_history, scp);
+                    apply_call_history(st, contest, call_history, contest_history, scp);
                     revalidate_after_edit(st, contest);
                 }
                 Vec::new()
@@ -371,7 +410,7 @@ pub fn reduce(
                 // Skip SCP (we're cycling through existing SCP results)
                 // and skip redundant first revalidation.
                 recompute_feedback(st, dupe_checker, mult_checker);
-                apply_history_only(st, contest, call_history);
+                apply_history_only(st, contest, call_history, contest_history);
                 revalidate_after_edit(st, contest);
                 let entry = st.focused_entry_mut();
                 entry.scp_matches = saved_matches;
@@ -451,7 +490,7 @@ pub fn reduce(
             }
 
             recompute_feedback(st, dupe_checker, mult_checker);
-            apply_history_only(st, contest, call_history);
+            apply_history_only(st, contest, call_history, contest_history);
             revalidate_after_edit(st, contest);
             st.focused_radio = original_focus;
 
@@ -657,6 +696,7 @@ fn apply_call_history(
     st: &mut AppState,
     contest: &dyn ContestEntry,
     call_history: &dyn CallHistoryLookup,
+    contest_history: &dyn ContestHistoryLookup,
     scp: &dyn ScpLookup,
 ) {
     // Capture `current_call` into scp lookups while the borrow is alive,
@@ -680,34 +720,40 @@ fn apply_call_history(
         entry.scp_n1_matches = n_plus_one;
     }
 
-    apply_history_lookup(st, contest, call_history);
+    apply_history_lookup(st, contest, call_history, contest_history);
 }
 
-/// Call history lookup only — no SCP search. Used by bandmap navigation
+/// History lookup only — no SCP search. Used by bandmap navigation
 /// and SCP cycle where the callsign is already known/complete.
 fn apply_history_only(
     st: &mut AppState,
     contest: &dyn ContestEntry,
     call_history: &dyn CallHistoryLookup,
+    contest_history: &dyn ContestHistoryLookup,
 ) {
     if st.current_call().is_empty() {
         clear_history_fields(st);
         return;
     }
 
-    apply_history_lookup(st, contest, call_history);
+    apply_history_lookup(st, contest, call_history, contest_history);
 }
 
 fn apply_history_lookup(
     st: &mut AppState,
     contest: &dyn ContestEntry,
     call_history: &dyn CallHistoryLookup,
+    contest_history: &dyn ContestHistoryLookup,
 ) {
-    // Perform the lookup while the borrow from `current_call` is alive;
-    // the `Option<Vec<..>>` return is fully owned so the borrow can be
-    // dropped before any mutation below.
-    let maybe_pairs = call_history.lookup(st.current_call());
-    let Some(pairs) = maybe_pairs else {
+    // Own the callsign — the lookup returns owned data, so we don't need
+    // the borrow past these two calls and can mutate entry fields below.
+    let current_call = st.current_call().to_string();
+    let contest_pairs = contest_history.lookup(&current_call);
+    let call_pairs = call_history.lookup(&current_call);
+
+    // Neither source has anything for this call — clear any fields still
+    // tagged `from_history` from a prior lookup.
+    if contest_pairs.is_none() && call_pairs.is_none() {
         for field in &mut st.focused_entry_mut().fields {
             if field.from_history {
                 field.value.clear();
@@ -716,33 +762,71 @@ fn apply_history_lookup(
             }
         }
         return;
-    };
+    }
 
-    let mapping = contest.history_field_mapping();
-    let pairs_map: std::collections::HashMap<&str, &str> = pairs
-        .iter()
-        .map(|(k, v)| (k.as_str(), v.as_str()))
-        .collect();
-
-    for (col_name, field_id) in &mapping {
-        if let Some(value) = pairs_map.get(col_name) {
+    // Contest-history pass first. Keys are contest-engine spec field ids
+    // (e.g. `"name"`, `"loc"`); form fields carry the uppercased spec id
+    // as their `label` (see `SpecDrivenContest::form_spec`), so we match
+    // there. Track which field_ids this pass filled so the call-history
+    // pass below doesn't clobber them.
+    let mut filled_by_contest: std::collections::HashSet<u16> = std::collections::HashSet::new();
+    if let Some(pairs) = contest_pairs {
+        for (spec_id, value) in &pairs {
+            let target = spec_id.to_ascii_uppercase();
             if let Some(field) = st
                 .focused_entry_mut()
                 .fields
                 .iter_mut()
-                .find(|f| f.field_id == *field_id)
+                .find(|f| f.label == target)
             {
                 if field.value.is_empty() || field.from_history {
-                    field.value = if value.chars().all(|c| c.is_ascii_digit()) {
-                        value.to_string()
-                    } else {
-                        value.to_ascii_uppercase()
-                    };
+                    field.value = normalize_history_value(value);
                     field.cursor = field.value.len();
                     field.from_history = true;
+                    filled_by_contest.insert(field.field_id);
                 }
             }
         }
+    }
+
+    // Call-history pass fills remaining gaps. Same field-overwrite gate
+    // as before (`is_empty || from_history`), but we also skip any field
+    // just filled by contest-history — contest-history is authoritative
+    // for the current contest.
+    if let Some(pairs) = call_pairs {
+        let mapping = contest.history_field_mapping();
+        let pairs_map: std::collections::HashMap<&str, &str> = pairs
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_str()))
+            .collect();
+
+        for (col_name, field_id) in &mapping {
+            if filled_by_contest.contains(field_id) {
+                continue;
+            }
+            if let Some(value) = pairs_map.get(col_name) {
+                if let Some(field) = st
+                    .focused_entry_mut()
+                    .fields
+                    .iter_mut()
+                    .find(|f| f.field_id == *field_id)
+                {
+                    if field.value.is_empty() || field.from_history {
+                        field.value = normalize_history_value(value);
+                        field.cursor = field.value.len();
+                        field.from_history = true;
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn normalize_history_value(v: &str) -> String {
+    if v.chars().all(|c| c.is_ascii_digit()) {
+        v.to_string()
+    } else {
+        v.to_ascii_uppercase()
     }
 }
 
@@ -771,7 +855,8 @@ mod tests {
         entry::state::{EntryState, EsmStep, OpMode, Validation},
         events::{AppEvent, Key},
         reducer::{
-            DupeChecker, MultChecker, NoCallHistory, NoDupeChecker, NoMultChecker, NoScp,
+            DupeChecker, MultChecker, NoCallHistory, NoContestHistory, NoDupeChecker,
+            NoMultChecker, NoScp,
         },
         state::{AppState, Macros, Spot},
     };
@@ -789,6 +874,7 @@ mod tests {
             &NoDupeChecker,
             &NoMultChecker,
             &NoCallHistory,
+            &NoContestHistory,
             &NoScp,
             ev,
         )
@@ -850,7 +936,7 @@ mod tests {
         // RigStatus into a band MatchDupeChecker recognizes.
         crate::reducer::reduce(
             &mut st, contest.as_ref(), &macros,
-            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoScp,
+            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoContestHistory, &NoScp,
             AppEvent::RigStatus {
                 radio: 1, freq_hz: 14_025_000, mode: "CW".to_string(),
                 is_ptt: false, filter_width_hz: None,
@@ -858,14 +944,14 @@ mod tests {
         );
         crate::reducer::reduce(
             &mut st, contest.as_ref(), &macros,
-            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoScp,
+            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoContestHistory, &NoScp,
             AppEvent::TextInput { s: "K5ZD".to_string() },
         );
         assert!(st.focused_entry().is_dupe);
 
         let effects = crate::reducer::reduce(
             &mut st, contest.as_ref(), &macros,
-            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoScp,
+            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoContestHistory, &NoScp,
             AppEvent::KeyPress { key: Key::Enter },
         );
 
@@ -890,7 +976,7 @@ mod tests {
 
         crate::reducer::reduce(
             &mut st, contest.as_ref(), &macros,
-            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoScp,
+            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoContestHistory, &NoScp,
             AppEvent::RigStatus {
                 radio: 1, freq_hz: 14_025_000, mode: "CW".to_string(),
                 is_ptt: false, filter_width_hz: None,
@@ -898,14 +984,14 @@ mod tests {
         );
         crate::reducer::reduce(
             &mut st, contest.as_ref(), &macros,
-            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoScp,
+            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoContestHistory, &NoScp,
             AppEvent::TextInput { s: "K5ZD".to_string() },
         );
         assert!(st.focused_entry().is_dupe);
 
         let effects = crate::reducer::reduce(
             &mut st, contest.as_ref(), &macros,
-            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoScp,
+            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoContestHistory, &NoScp,
             AppEvent::KeyPress { key: Key::F2 },
         );
 
@@ -923,7 +1009,7 @@ mod tests {
 
         crate::reducer::reduce(
             &mut st, contest.as_ref(), &macros,
-            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoScp,
+            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoContestHistory, &NoScp,
             AppEvent::RigStatus {
                 radio: 1, freq_hz: 14_025_000, mode: "CW".to_string(),
                 is_ptt: false, filter_width_hz: None,
@@ -931,31 +1017,31 @@ mod tests {
         );
         crate::reducer::reduce(
             &mut st, contest.as_ref(), &macros,
-            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoScp,
+            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoContestHistory, &NoScp,
             AppEvent::TextInput { s: "K5ZD".to_string() },
         );
         crate::reducer::reduce(
             &mut st, contest.as_ref(), &macros,
-            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoScp,
+            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoContestHistory, &NoScp,
             AppEvent::KeyPress { key: Key::Space },
         );
         crate::reducer::reduce(
             &mut st, contest.as_ref(), &macros,
-            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoScp,
+            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoContestHistory, &NoScp,
             AppEvent::TextInput { s: "5".to_string() },
         );
 
         // Enter 1: send call+exch.
         let e1 = crate::reducer::reduce(
             &mut st, contest.as_ref(), &macros,
-            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoScp,
+            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoContestHistory, &NoScp,
             AppEvent::KeyPress { key: Key::Enter },
         );
         assert!(e1.iter().any(|e| matches!(e, Effect::CwSend { .. })));
         // Enter 2: log.
         let e2 = crate::reducer::reduce(
             &mut st, contest.as_ref(), &macros,
-            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoScp,
+            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoContestHistory, &NoScp,
             AppEvent::KeyPress { key: Key::Enter },
         );
         assert!(e2.iter().any(|e| matches!(e, Effect::LogInsert { .. })));
@@ -1376,6 +1462,7 @@ mod tests {
             &MatchDupeChecker,
             &NoMultChecker,
             &NoCallHistory,
+            &NoContestHistory,
             &NoScp,
             AppEvent::TextInput {
                 s: "K5ZD".to_string(),
@@ -1390,6 +1477,7 @@ mod tests {
             &MatchDupeChecker,
             &NoMultChecker,
             &NoCallHistory,
+            &NoContestHistory,
             &NoScp,
             AppEvent::RigStatus {
                 radio: 1,
@@ -1408,6 +1496,7 @@ mod tests {
             &MatchDupeChecker,
             &NoMultChecker,
             &NoCallHistory,
+            &NoContestHistory,
             &NoScp,
             AppEvent::FocusRadio { radio: 2 },
         );
@@ -1427,6 +1516,7 @@ mod tests {
             &NoDupeChecker,
             &MatchMultChecker,
             &NoCallHistory,
+            &NoContestHistory,
             &NoScp,
             AppEvent::TextInput {
                 s: "DL1ABC".to_string(),
@@ -1441,6 +1531,7 @@ mod tests {
             &NoDupeChecker,
             &MatchMultChecker,
             &NoCallHistory,
+            &NoContestHistory,
             &NoScp,
             AppEvent::RigStatus {
                 radio: 1,
@@ -1459,6 +1550,7 @@ mod tests {
             &NoDupeChecker,
             &MatchMultChecker,
             &NoCallHistory,
+            &NoContestHistory,
             &NoScp,
             AppEvent::FocusRadio { radio: 2 },
         );
@@ -2038,5 +2130,290 @@ mod tests {
             st.bandmap_cursors.get(&1).copied(),
             Some(crate::state::BandmapCursor::On(0))
         );
+    }
+
+    // ---- Contest-history autopopulate tests --------------------------
+
+    /// Stubbed ContestHistoryLookup for reducer-level tests. Pre-wired
+    /// rows return spec-id keyed pairs on exact-match lookup.
+    struct StubContestHistory {
+        rows: HashMap<String, Vec<(String, String)>>,
+    }
+
+    impl StubContestHistory {
+        fn new(entries: &[(&str, &[(&str, &str)])]) -> Self {
+            let rows = entries
+                .iter()
+                .map(|(call, pairs)| {
+                    (
+                        call.to_ascii_uppercase(),
+                        pairs
+                            .iter()
+                            .map(|(k, v)| (k.to_string(), v.to_string()))
+                            .collect(),
+                    )
+                })
+                .collect();
+            Self { rows }
+        }
+    }
+
+    impl crate::reducer::ContestHistoryLookup for StubContestHistory {
+        fn lookup(&self, call_norm: &str) -> Option<Vec<(String, String)>> {
+            self.rows.get(&call_norm.to_ascii_uppercase()).cloned()
+        }
+    }
+
+    /// Stubbed CallHistoryLookup (.ch stand-in) — column names, not spec ids.
+    struct StubCallHistory {
+        rows: HashMap<String, Vec<(String, String)>>,
+    }
+
+    impl StubCallHistory {
+        fn new(entries: &[(&str, &[(&str, &str)])]) -> Self {
+            let rows = entries
+                .iter()
+                .map(|(call, pairs)| {
+                    (
+                        call.to_ascii_uppercase(),
+                        pairs
+                            .iter()
+                            .map(|(k, v)| (k.to_string(), v.to_string()))
+                            .collect(),
+                    )
+                })
+                .collect();
+            Self { rows }
+        }
+    }
+
+    impl crate::reducer::CallHistoryLookup for StubCallHistory {
+        fn lookup(&self, call_norm: &str) -> Option<Vec<(String, String)>> {
+            self.rows.get(&call_norm.to_ascii_uppercase()).cloned()
+        }
+    }
+
+    fn reduce_with_history(
+        st: &mut AppState,
+        contest: &dyn ContestEntry,
+        macros: &Macros,
+        call_history: &dyn crate::reducer::CallHistoryLookup,
+        contest_history: &dyn crate::reducer::ContestHistoryLookup,
+        ev: AppEvent,
+    ) -> Vec<Effect> {
+        crate::reducer::reduce(
+            st,
+            contest,
+            macros,
+            &NoDupeChecker,
+            &NoMultChecker,
+            call_history,
+            contest_history,
+            &NoScp,
+            ev,
+        )
+    }
+
+    /// Contest-history wins over call-history for the same field: if the
+    /// station sent a different name in this contest than `.ch` claims,
+    /// the contest value is what auto-populates.
+    #[test]
+    fn contest_history_beats_call_history() {
+        // CWT form: CALL(1), NAME(2), EXCH1(3).
+        let contest = contest_from_id("cwt").unwrap();
+        let mut st = mk_state_for(contest.as_ref());
+        let macros = Macros::default();
+
+        let ch = StubCallHistory::new(&[("N3QE", &[("Name", "TINA"), ("Exch1", "TN")])]);
+        let th = StubContestHistory::new(&[(
+            "N3QE",
+            &[("name", "TIM"), ("xchg", "TN")],
+        )]);
+
+        reduce_with_history(
+            &mut st,
+            contest.as_ref(),
+            &macros,
+            &ch,
+            &th,
+            AppEvent::TextInput { s: "N3QE".to_string() },
+        );
+
+        let name_field = st
+            .focused_entry()
+            .fields
+            .iter()
+            .find(|f| f.label == "NAME")
+            .expect("NAME field");
+        assert_eq!(name_field.value, "TIM", "contest history wins over .ch");
+        assert!(name_field.from_history);
+    }
+
+    /// When contest-history has no entry for the call, `.ch` data fills
+    /// in the form unchanged — the new code path is additive.
+    #[test]
+    fn call_history_fills_when_contest_history_empty() {
+        let contest = contest_from_id("cwt").unwrap();
+        let mut st = mk_state_for(contest.as_ref());
+        let macros = Macros::default();
+
+        let ch = StubCallHistory::new(&[("N3QE", &[("Name", "TINA"), ("Exch1", "TN")])]);
+        let th = StubContestHistory::new(&[]);
+
+        reduce_with_history(
+            &mut st,
+            contest.as_ref(),
+            &macros,
+            &ch,
+            &th,
+            AppEvent::TextInput { s: "N3QE".to_string() },
+        );
+
+        let name_field = st
+            .focused_entry()
+            .fields
+            .iter()
+            .find(|f| f.label == "NAME")
+            .expect("NAME field");
+        assert_eq!(name_field.value, "TINA");
+    }
+
+    /// Contest-history fills NAME (partial row); `.ch` still fills the
+    /// gap (EXCH1). Contest-history is authoritative where it has data;
+    /// call-history covers the rest.
+    #[test]
+    fn contest_and_call_history_merge_on_disjoint_fields() {
+        let contest = contest_from_id("cwt").unwrap();
+        let mut st = mk_state_for(contest.as_ref());
+        let macros = Macros::default();
+
+        let ch = StubCallHistory::new(&[("N3QE", &[("Name", "TINA"), ("Exch1", "TN")])]);
+        let th = StubContestHistory::new(&[("N3QE", &[("name", "TIM")])]);
+
+        reduce_with_history(
+            &mut st,
+            contest.as_ref(),
+            &macros,
+            &ch,
+            &th,
+            AppEvent::TextInput { s: "N3QE".to_string() },
+        );
+
+        let fields = &st.focused_entry().fields;
+        let name = fields.iter().find(|f| f.label == "NAME").unwrap();
+        let exch = fields.iter().find(|f| f.label == "XCHG").unwrap();
+        assert_eq!(name.value, "TIM", "contest history supplied NAME");
+        assert_eq!(exch.value, "TN", "call history filled the gap");
+    }
+
+    /// Manually typed (non-`from_history`) values are never overwritten
+    /// by a subsequent history lookup.
+    #[test]
+    fn manual_edit_survives_history_refresh() {
+        let contest = contest_from_id("cwt").unwrap();
+        let mut st = mk_state_for(contest.as_ref());
+        let macros = Macros::default();
+
+        let ch = StubCallHistory::new(&[]);
+        let th = StubContestHistory::new(&[(
+            "N3QE",
+            &[("name", "TIM"), ("xchg", "TN")],
+        )]);
+
+        // Simulate: operator types call, then tabs into NAME and types
+        // manually, then edits the call (which re-fires autopopulate).
+        reduce_with_history(
+            &mut st, contest.as_ref(), &macros, &ch, &th,
+            AppEvent::TextInput { s: "N3QE".to_string() },
+        );
+        // NAME got auto-populated to "TIM"; operator tabs to NAME and
+        // overwrites with "TOM" (first keystroke clears the autopop value).
+        reduce_with_history(
+            &mut st, contest.as_ref(), &macros, &ch, &th,
+            AppEvent::KeyPress { key: Key::Tab },
+        );
+        reduce_with_history(
+            &mut st, contest.as_ref(), &macros, &ch, &th,
+            AppEvent::TextInput { s: "TOM".to_string() },
+        );
+
+        let name_before = st
+            .focused_entry()
+            .fields
+            .iter()
+            .find(|f| f.label == "NAME")
+            .unwrap()
+            .clone();
+        assert_eq!(name_before.value, "TOM");
+        assert!(!name_before.from_history);
+
+        // Now bump the call field — this re-triggers apply_call_history
+        // with the same contest-history row. The manually-edited NAME
+        // must NOT be clobbered. Tab back to CALL, backspace off the
+        // trailing character, then retype so the TextInput handler on
+        // field_id=1 triggers a fresh history lookup.
+        while st.focused_entry().fields[st.focused_entry().focus].field_id != 1 {
+            reduce_with_history(
+                &mut st,
+                contest.as_ref(),
+                &macros,
+                &ch,
+                &th,
+                AppEvent::KeyPress { key: Key::Tab },
+            );
+        }
+        reduce_with_history(
+            &mut st,
+            contest.as_ref(),
+            &macros,
+            &ch,
+            &th,
+            AppEvent::KeyPress { key: Key::Backspace },
+        );
+        reduce_with_history(
+            &mut st,
+            contest.as_ref(),
+            &macros,
+            &ch,
+            &th,
+            AppEvent::TextInput { s: "E".to_string() },
+        );
+
+        let name_after = st
+            .focused_entry()
+            .fields
+            .iter()
+            .find(|f| f.label == "NAME")
+            .unwrap();
+        assert_eq!(name_after.value, "TOM", "manual edit must survive");
+        assert!(!name_after.from_history);
+    }
+
+    fn mk_state_for(contest: &dyn ContestEntry) -> AppState {
+        let mut entries = HashMap::new();
+        let mut entry1 = EntryState::from_spec(&contest.form_spec());
+        let mut entry2 = EntryState::from_spec(&contest.form_spec());
+        crate::entry::esm::apply_default_rst(&mut entry1, contest, "CW");
+        crate::entry::esm::apply_default_rst(&mut entry2, contest, "CW");
+        entries.insert(1, entry1);
+        entries.insert(2, entry2);
+        AppState {
+            now_ms: 0,
+            focused_radio: 1,
+            active_operator: 1,
+            radios: HashMap::new(),
+            entries,
+            bandmap: Vec::new(),
+            last_logged: None,
+            my_call: "N0CALL".to_string(),
+            my_zone: 4,
+            rst_sent: "599".to_string(),
+            my_exchange: HashMap::new(),
+            bandmap_cursors: HashMap::new(),
+            default_cw_speed: 25,
+            serial_counter: None,
+            show_passband_qrm: false,
+            bandmap_version: 0,
+        }
     }
 }

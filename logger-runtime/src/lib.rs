@@ -3,6 +3,7 @@ pub mod analytics;
 pub mod bootstrap;
 pub mod call_history;
 pub mod config;
+pub mod contest_history;
 pub mod dxfeed_adapter;
 pub mod dxfeed_enrichment;
 pub mod keyer_adapter;

@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use logger_core::{DupeChecker, MultChecker, QsoDraft};
+use logger_core::{ContestHistoryLookup, DupeChecker, MultChecker, QsoDraft};
 use qsolog::{
     core::store::QsoStore,
     op::StoredOp,
@@ -12,6 +12,7 @@ use qsolog::{
 use tokio::sync::mpsc;
 use tracing::info;
 
+use crate::contest_history::ContestHistoryIndex;
 use crate::scoring::{ContestScorer, ScoreBreakdown, ScoreSummary};
 
 /// Persistence strategy for a `LogAdapter`.
@@ -45,6 +46,11 @@ pub struct LogAdapter {
     /// (e.g. the scoreboard uploader) compare the current epoch against
     /// the last one they built from and skip work when nothing moved.
     score_epoch: u64,
+    /// Per-contest autopopulate index. Tracks the most-recently-logged
+    /// received exchange per callsign so the reducer can seed form
+    /// fields when the operator re-works a known station. Updated
+    /// alongside the scorer on insert/undo/redo.
+    contest_history: ContestHistoryIndex,
 }
 
 impl LogAdapter {
@@ -55,6 +61,7 @@ impl LogAdapter {
             scorer,
             contest_instance_id,
             score_epoch: 0,
+            contest_history: ContestHistoryIndex::new(),
         }
     }
 
@@ -79,10 +86,12 @@ impl LogAdapter {
             scorer,
             contest_instance_id,
             score_epoch: 0,
+            contest_history: ContestHistoryIndex::new(),
         };
         // Populate scorer state from the loaded log
         let records = adapter.ordered_records();
         adapter.scorer.rebuild(&records);
+        adapter.contest_history.rebuild(&records);
         adapter.score_epoch = adapter.score_epoch.wrapping_add(1);
         Ok(adapter)
     }
@@ -113,9 +122,11 @@ impl LogAdapter {
             scorer,
             contest_instance_id,
             score_epoch: 0,
+            contest_history: ContestHistoryIndex::new(),
         };
         let records = adapter.ordered_records();
         adapter.scorer.rebuild(&records);
+        adapter.contest_history.rebuild(&records);
         adapter.score_epoch = adapter.score_epoch.wrapping_add(1);
         Ok(adapter)
     }
@@ -154,6 +165,10 @@ impl LogAdapter {
 
         if let Some(rec) = self.store.get(id) {
             self.scorer.on_inserted(rec);
+            if let Ok(pairs) = decode_exchange_pairs(&rec.exchange) {
+                self.contest_history
+                    .on_inserted(&rec.callsign_norm, &pairs);
+            }
         }
         self.score_epoch = self.score_epoch.wrapping_add(1);
 
@@ -175,6 +190,7 @@ impl LogAdapter {
         self.flush_pending_ops()?;
         let records = self.ordered_records();
         self.scorer.rebuild(&records);
+        self.contest_history.rebuild(&records);
         self.score_epoch = self.score_epoch.wrapping_add(1);
         Ok(())
     }
@@ -186,6 +202,7 @@ impl LogAdapter {
         self.flush_pending_ops()?;
         let records = self.ordered_records();
         self.scorer.rebuild(&records);
+        self.contest_history.rebuild(&records);
         self.score_epoch = self.score_epoch.wrapping_add(1);
         Ok(())
     }
@@ -263,6 +280,12 @@ impl DupeChecker for LogAdapter {
 impl MultChecker for LogAdapter {
     fn is_new_mult(&self, call_norm: &str, band: &str, mode: &str) -> bool {
         self.scorer.would_be_new_mult(call_norm, band, mode)
+    }
+}
+
+impl ContestHistoryLookup for LogAdapter {
+    fn lookup(&self, call_norm: &str) -> Option<Vec<(String, String)>> {
+        self.contest_history.lookup(call_norm)
     }
 }
 
@@ -566,6 +589,97 @@ mod tests {
         assert!(
             !adapter.is_new_mult("N2BB", "20m", "CW"),
             "cache should be invalidated on insert; N2BB must now read as non-mult"
+        );
+    }
+
+    /// Two QSOs for the same call with different received exchanges:
+    /// the second one wins on lookup (last-write-wins, per the plan).
+    #[test]
+    fn contest_history_lookup_returns_latest_exchange() {
+        use logger_core::ContestHistoryLookup;
+
+        let contest = contest_from_id("ns_sprint").expect("ns_sprint");
+        let scorer = scorer_for_contest(
+            contest.as_ref(),
+            ns_sprint_test_config(),
+            Arc::new(NoCallHistory),
+        )
+        .expect("scorer init");
+        let mut adapter = LogAdapter::new(scorer, contest.contest_instance_id());
+
+        adapter
+            .insert(ns_sprint_draft("N3QE", "100", "TINA", "NH"), 1_000, 1, 1)
+            .expect("first insert");
+        adapter
+            .insert(ns_sprint_draft("N3QE", "101", "TIM", "NH"), 2_000, 1, 1)
+            .expect("second insert");
+
+        let pairs = ContestHistoryLookup::lookup(&adapter, "N3QE").expect("hit");
+        let map: HashMap<&str, &str> =
+            pairs.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+        assert_eq!(map.get("name"), Some(&"TIM"));
+        assert_eq!(map.get("loc"), Some(&"NH"));
+    }
+
+    /// Stored exchange fields `nr` and `rst` (and the operator's sent
+    /// `serial`) must not appear in the lookup output — replaying them
+    /// would auto-populate stale counter values.
+    #[test]
+    fn contest_history_filters_blocklisted_fields() {
+        use logger_core::ContestHistoryLookup;
+
+        let contest = contest_from_id("ns_sprint").expect("ns_sprint");
+        let scorer = scorer_for_contest(
+            contest.as_ref(),
+            ns_sprint_test_config(),
+            Arc::new(NoCallHistory),
+        )
+        .expect("scorer init");
+        let mut adapter = LogAdapter::new(scorer, contest.contest_instance_id());
+
+        adapter
+            .insert(ns_sprint_draft("K1ABC", "42", "CHAD", "MA"), 1_000, 1, 1)
+            .expect("insert");
+
+        let pairs = ContestHistoryLookup::lookup(&adapter, "K1ABC").expect("hit");
+        let keys: std::collections::HashSet<&str> =
+            pairs.iter().map(|(k, _)| k.as_str()).collect();
+        assert!(keys.contains("name"));
+        assert!(keys.contains("loc"));
+        assert!(!keys.contains("nr"), "nr must be blocklisted");
+        assert!(!keys.contains("rst"), "rst must be blocklisted");
+        assert!(!keys.contains("serial"));
+    }
+
+    /// Undo must remove the call from the lookup index; redo restores it.
+    #[test]
+    fn contest_history_respects_undo_redo() {
+        use logger_core::ContestHistoryLookup;
+
+        let contest = contest_from_id("ns_sprint").expect("ns_sprint");
+        let scorer = scorer_for_contest(
+            contest.as_ref(),
+            ns_sprint_test_config(),
+            Arc::new(NoCallHistory),
+        )
+        .expect("scorer init");
+        let mut adapter = LogAdapter::new(scorer, contest.contest_instance_id());
+
+        adapter
+            .insert(ns_sprint_draft("W1AW", "1", "HIRAM", "CT"), 1_000, 1, 1)
+            .expect("insert");
+        assert!(ContestHistoryLookup::lookup(&adapter, "W1AW").is_some());
+
+        adapter.undo().expect("undo");
+        assert!(
+            ContestHistoryLookup::lookup(&adapter, "W1AW").is_none(),
+            "undo must drop the call from the contest-history index"
+        );
+
+        adapter.redo().expect("redo");
+        assert!(
+            ContestHistoryLookup::lookup(&adapter, "W1AW").is_some(),
+            "redo must restore the index entry"
         );
     }
 }

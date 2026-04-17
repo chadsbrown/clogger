@@ -404,6 +404,7 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
                 &log,
                 &log,
                 call_history.as_ref(),
+                &log,
                 scp.as_ref(),
                 ev,
             );

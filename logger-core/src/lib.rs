@@ -14,8 +14,8 @@ pub use entry::esm::apply_default_rst;
 pub use entry::state::{EntryFieldState, EntryState, EsmStep, OpMode, Validation};
 pub use events::{AppEvent, Key};
 pub use reducer::{
-    CallHistoryLookup, DupeChecker, MultChecker, NoCallHistory, NoDupeChecker, NoMultChecker,
-    NoScp, ScpLookup, reduce,
+    CallHistoryLookup, ContestHistoryLookup, DupeChecker, MultChecker, NoCallHistory,
+    NoContestHistory, NoDupeChecker, NoMultChecker, NoScp, ScpLookup, reduce,
 };
 pub use state::{
     AppState, BandmapCursor, Macros, OperatorId, QsoDraft, QsoRef, RadioId, RadioState, Spot,

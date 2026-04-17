@@ -236,7 +236,7 @@
         "is_dupe": false,
         "is_new_mult": true,
         "is_passband_qrm": false,
-        "overall": "Invalid"
+        "overall": "Valid"
       }
     }
   ]
