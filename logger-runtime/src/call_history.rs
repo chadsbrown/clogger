@@ -54,7 +54,13 @@ impl CallHistoryDb {
             }
 
             if !call.is_empty() {
-                records.insert(call, record);
+                // Merge per-column so a later record doesn't wipe useful
+                // columns from an earlier one. N1MM call history files for
+                // state QSO parties commonly list an in-state station in the
+                // "counties" section (Exch1=county) and again in the
+                // "out-of-state" section (Exch1 empty or a state abbrev).
+                // Last non-empty value wins per column.
+                records.entry(call).or_default().extend(record);
             }
         }
 
@@ -149,6 +155,24 @@ K1ABC,BOB
 ";
         let db = CallHistoryDb::parse(content).unwrap();
         assert_eq!(db.records.len(), 1);
+    }
+
+    #[test]
+    fn duplicate_call_merges_columns() {
+        // N1MM QSO-party files often list a station twice: once in the
+        // in-state section with a county, once in the out-of-state section
+        // with a first name. Both pieces of data should survive.
+        let content = "\
+!!Order!!,Call,Name,Exch1,UserText,
+NA8V,,STCL,
+NA8V,GREG,,
+";
+        let db = CallHistoryDb::parse(content).unwrap();
+        let pairs = db.lookup("NA8V").unwrap();
+        let map: HashMap<&str, &str> =
+            pairs.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+        assert_eq!(map.get("Exch1"), Some(&"STCL"));
+        assert_eq!(map.get("Name"), Some(&"GREG"));
     }
 
     #[test]
