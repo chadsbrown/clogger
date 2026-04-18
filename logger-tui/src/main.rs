@@ -58,8 +58,12 @@ pub struct TuiState {
     pub condx: Option<logger_runtime::CondXSnapshot>,
     pub condx_configured: bool,
     pub log_display: Vec<LogRow>,
-    pub worked_calls: HashSet<String>,
-    pub mult_calls: HashSet<String>,
+    /// Per-radio worked/mult classification of bandmap spots. Keyed by
+    /// RadioId so each bandmap panel sees the correct classification
+    /// for its own radio's band+mode, independent of which radio is
+    /// focused.
+    pub worked_calls: HashMap<RadioId, HashSet<String>>,
+    pub mult_calls: HashMap<RadioId, HashSet<String>>,
     pub score: ScoreSummary,
     pub avail: AvailSummary,
     pub rate: RateInfo,
@@ -101,8 +105,8 @@ impl Default for TuiState {
             condx: None,
             condx_configured: false,
             log_display: Vec::new(),
-            worked_calls: HashSet::new(),
-            mult_calls: HashSet::new(),
+            worked_calls: HashMap::new(),
+            mult_calls: HashMap::new(),
             score: ScoreSummary::default(),
             avail: AvailSummary::default(),
             rate: RateInfo::default(),

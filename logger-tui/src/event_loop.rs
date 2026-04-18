@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io;
 use std::time::{Duration, Instant};
 
@@ -537,38 +537,44 @@ fn needs_analytics_recompute(event: &logger_core::AppEvent) -> bool {
 }
 
 fn recompute_analytics(state: &AppState, log_adapter: &LogAdapter, tui_state: &mut TuiState) {
-    let (freq_hz, mode) = state
+    // Each bandmap panel classifies spots against its *own* radio's
+    // band+mode. Previously we only computed the focused radio's set,
+    // which painted the unfocused radio's bandmap as if every spot
+    // were un-worked.
+    let mut cache = tui_state.bandmap_cache.borrow_mut();
+    let mut worked: HashMap<RadioId, HashSet<String>> = HashMap::new();
+    let mut mults: HashMap<RadioId, HashSet<String>> = HashMap::new();
+    for (&radio_id, radio) in &state.radios {
+        let wc = logger_runtime::compute_worked_calls(
+            &state.bandmap,
+            state.bandmap_version,
+            &mut cache,
+            radio.freq_hz,
+            radio.mode.as_str(),
+            log_adapter,
+        );
+        worked.insert(radio_id, wc.worked);
+        mults.insert(radio_id, wc.mults);
+    }
+
+    // Avail still follows the focused radio's mode — it's a single
+    // "what's unworked anywhere" panel, not per-radio.
+    let focused_mode = state
         .radios
         .get(&state.focused_radio)
-        // NOTE: see compute_* calls below — we now route through the
-        // shared BandmapCache in TuiState so analytics and rendering
-        // don't re-filter the bandmap on every call.
-        .map(|r| (r.freq_hz, r.mode.as_str()))
-        .unwrap_or((0, "CW"));
-
-    // Borrow the BandmapCache once — shared by both compute_worked_calls
-    // and compute_avail so they only hit the filter machinery on cache
-    // misses (first call per bandmap version per (band, mode) key).
-    let mut cache = tui_state.bandmap_cache.borrow_mut();
-    let wc = logger_runtime::compute_worked_calls(
-        &state.bandmap,
-        state.bandmap_version,
-        &mut cache,
-        freq_hz,
-        mode,
-        log_adapter,
-    );
+        .map(|r| r.mode.as_str())
+        .unwrap_or("CW");
     let avail = logger_runtime::compute_avail(
         &state.bandmap,
         state.bandmap_version,
         &mut cache,
-        mode,
+        focused_mode,
         log_adapter,
     );
     drop(cache);
 
-    tui_state.worked_calls = wc.worked;
-    tui_state.mult_calls = wc.mults;
+    tui_state.worked_calls = worked;
+    tui_state.mult_calls = mults;
     tui_state.avail = avail;
 
     let now_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;

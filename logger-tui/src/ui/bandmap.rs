@@ -64,11 +64,22 @@ pub fn render(frame: &mut Frame, area: Rect, app: &AppState, tui: &TuiState, rad
             Cell::from(format!("{freq_khz:.1}")),
             Cell::from(s.call.as_str()),
         ]);
+        // Classification sets are per-radio so each bandmap reflects
+        // its own radio's band+mode dupe/mult state — not the focused
+        // radio's.
+        let worked_here = tui
+            .worked_calls
+            .get(&radio_id)
+            .is_some_and(|set| set.contains(&s.call));
+        let mult_here = tui
+            .mult_calls
+            .get(&radio_id)
+            .is_some_and(|set| set.contains(&s.call));
         let styled = if highlight_idx == Some(i) {
             row.style(Style::from(theme.bandmap_highlight))
-        } else if tui.worked_calls.contains(&s.call) {
+        } else if worked_here {
             row.style(Style::from(theme.bandmap_worked))
-        } else if tui.mult_calls.contains(&s.call) {
+        } else if mult_here {
             row.style(Style::from(theme.bandmap_mult))
         } else {
             row.style(Style::from(theme.bandmap_unworked))
