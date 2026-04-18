@@ -351,6 +351,47 @@ mod tests {
         }
     }
 
+    /// Regression guard: `is_dupe` must reflect the operator's actual
+    /// work even when contest-engine rejects the stored exchange on
+    /// replay (e.g. empty pairs, or a spec-validation failure). Before
+    /// this was fixed, restarting mid-contest painted some already-
+    /// worked stations as un-worked on the bandmap because `loose_dupes`
+    /// was only populated inside the `Ok` arm of `apply_qso_with_mode`.
+    #[test]
+    fn is_dupe_flags_call_even_when_exchange_is_empty() {
+        use logger_core::DupeChecker;
+
+        let contest = contest_from_id("cqww").expect("cqww contest");
+        let scorer = scorer_for_contest(
+            contest.as_ref(),
+            cqww_test_config(),
+            Arc::new(NoCallHistory),
+            None,
+        )
+        .expect("scorer init");
+        let mut adapter = LogAdapter::new(scorer, contest.contest_instance_id());
+
+        // Empty exchange_pairs → `raw_exchange_for_record` returns None
+        // → contest-engine's apply_qso_with_mode never runs. The dupe
+        // indicator must still fire on the (call, band, mode) tuple.
+        let empty_draft = logger_core::QsoDraft {
+            contest_id: "cqww".to_string(),
+            callsign: "K1ABC".to_string(),
+            band: "20m".to_string(),
+            mode: "CW".to_string(),
+            freq_hz: 14_025_000,
+            exchange_schema_id: 1,
+            exchange_pairs: Vec::new(),
+        };
+        adapter.insert(empty_draft, 1_000, 1, 1).expect("insert");
+
+        assert!(
+            adapter.is_dupe("K1ABC", "20m", "CW"),
+            "is_dupe must fire on logged call/band/mode regardless of \
+             whether contest-engine could replay the exchange"
+        );
+    }
+
     /// Regression guard: `scorer_for_contest` must return an Err (not a
     /// silent fallback) when a state QP is given an empty config that
     /// doesn't satisfy its required `my_is_<state>` field. Prior behavior

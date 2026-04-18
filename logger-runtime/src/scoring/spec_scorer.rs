@@ -206,6 +206,21 @@ impl SpecScorer {
     /// Apply one QSO to the session and update all incremental counters.
     /// Returns true if the session accepted the QSO.
     fn apply_one(&mut self, rec: &QsoRecord) -> bool {
+        // Populate `loose_dupes` unconditionally — the record is in the
+        // log, so the operator worked this (call, band, mode) tuple.
+        // Whether contest-engine accepts the stored exchange on replay
+        // (spec drift, domain values changed, rover multi-value edge
+        // cases) is a classifier question, not a "did we work them"
+        // question. Skipping this insert on Err was the root cause of
+        // a bug where restarting mid-contest painted some already-
+        // worked stations as un-worked on the bandmap.
+        let band_label = band_label_from_qsolog(rec.band);
+        self.loose_dupes.insert((
+            rec.callsign_norm.to_ascii_uppercase(),
+            band_label.clone(),
+            mode_label_for_loose(rec.mode),
+        ));
+
         let raw_exchange = match raw_exchange_for_record(rec) {
             Some(e) => e,
             None => return false,
@@ -225,17 +240,6 @@ impl SpecScorer {
             &raw_exchange,
         ) {
             Ok(summary) => {
-                let band_label = band_label_from_qsolog(rec.band);
-                // Record (call, band, mode) for the loose dupe indicator,
-                // regardless of whether contest-engine marked this record as
-                // a dupe. A rover re-apply with a different loc still counts
-                // as "we've already contacted this call on this band+mode"
-                // for UI purposes.
-                self.loose_dupes.insert((
-                    rec.callsign_norm.to_ascii_uppercase(),
-                    band_label.clone(),
-                    mode_label_for_loose(rec.mode),
-                ));
                 if !summary.is_dupe {
                     *self.qsos_by_band.entry(band_label.clone()).or_default() += 1;
                     *self.points_by_band.entry(band_label.clone()).or_default() +=
@@ -256,7 +260,16 @@ impl SpecScorer {
                 }
                 true
             }
-            Err(_) => false,
+            Err(e) => {
+                tracing::warn!(
+                    "scorer: apply_qso_with_mode rejected {} {} {:?}: {e}; \
+                     dupe indicator still set, but score for this QSO may be off",
+                    rec.callsign_norm,
+                    raw_exchange,
+                    rec.band,
+                );
+                false
+            }
         }
     }
 
