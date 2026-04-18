@@ -14,6 +14,7 @@ use super::{
     BandScore, BreakdownRow, ContestScorer, ScoreBreakdown, ScoreSummary, BAND_LABELS,
     band_label_from_qsolog,
 };
+use crate::cty::CtyDb;
 use crate::log_adapter::decode_exchange_pairs;
 
 pub struct SpecScorer {
@@ -55,6 +56,13 @@ pub struct SpecScorer {
     /// construction. Used to synthesize hypothetical received-exchange
     /// maps from `.ch` rows.
     history_mapping: Vec<(String, String)>,
+    /// Parsed cty.dat, when the operator configured one. Used to
+    /// populate the contest-engine resolver with accurate DXCC/continent
+    /// data per call — without it, the hardcoded prefix fallback in
+    /// `resolved_station_for_call` misclassifies every non-K/W/N/A/DL/
+    /// JA/VE call as a US station, which silently skews DXCC-based
+    /// mults (CQWW country mults, ARRL DX is_wve gating, etc.).
+    cty: Option<Arc<CtyDb>>,
     /// Memoization of `(call_upper, band_lower, mode_upper) → verdict`
     /// for the hot bandmap analytics path. `compute_worked_calls` /
     /// `compute_avail` call `is_dupe` and `would_be_new_mult` for every
@@ -80,6 +88,7 @@ impl SpecScorer {
         config: HashMap<String, Value>,
         call_history: Arc<dyn CallHistoryLookup>,
         history_mapping: Vec<(String, String)>,
+        cty: Option<Arc<CtyDb>>,
     ) -> anyhow::Result<Self> {
         let mut scorer = Self {
             spec_id: spec_id.into(),
@@ -97,6 +106,7 @@ impl SpecScorer {
             call_history,
             history_mapping,
             classify_cache: Mutex::new(HashMap::new()),
+            cty,
         };
         scorer.init_session()?;
         Ok(scorer)
@@ -173,12 +183,24 @@ impl SpecScorer {
         if self.resolved_calls.contains(&call_upper) {
             return;
         }
+        let station = self.resolve_station(&call_upper);
         if let Some(session) = &mut self.session {
-            session
-                .resolver_mut()
-                .insert(&call_upper, resolved_station_for_call(&call_upper));
+            session.resolver_mut().insert(&call_upper, station);
             self.resolved_calls.insert(call_upper);
         }
+    }
+
+    /// Best-effort DXCC/continent resolution for a call. Prefers cty.dat
+    /// when loaded; falls back to the hardcoded prefix table so scoring
+    /// stays defined for operators without a cty_file configured (and
+    /// for callsigns cty.dat doesn't recognize).
+    fn resolve_station(&self, call_upper: &str) -> ResolvedStation {
+        if let Some(cty) = &self.cty {
+            if let Some(rs) = cty.resolve(call_upper) {
+                return rs;
+            }
+        }
+        resolved_station_for_call(call_upper)
     }
 
     /// Apply one QSO to the session and update all incremental counters.
@@ -495,8 +517,8 @@ impl SpecScorer {
             return None;
         }
 
+        let dest = self.resolve_station(call_upper);
         let session = self.session.as_ref()?;
-        let dest = resolved_station_for_call(call_upper);
         match session.classify_hypothetical_with_mode(
             to_ce_band(band),
             to_ce_mode(mode),

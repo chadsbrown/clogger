@@ -334,6 +334,7 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
         contest.as_ref(),
         scorer_config,
         std::sync::Arc::clone(&call_history),
+        None,
     )?;
     let mut log = LogAdapter::new(scorer, contest.contest_instance_id());
     let mut rig = FakeRig::default();

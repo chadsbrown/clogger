@@ -33,11 +33,20 @@
 #scp_file = "master.scp"
 
 # cty.dat file (DXCC/entity database from country-files.com) for resolving
-# callsigns to continent, CQ/ITU zone, and DXCC entity. Required when the
-# dxfeed filter uses any `geo.*` rule (continent_allow, cq_zone_allow,
-# entity_allow, etc.) — without this, geo fields resolve to None and an
-# allowlist silently drops every spot. Also used for future bandmap
-# entity display.
+# callsigns to continent, CQ/ITU zone, and DXCC entity.
+#
+# Two consumers:
+#   1. Contest scorer — drives DXCC/continent-based mult scoring (CQWW
+#      country mults, ARRL DX is_wve gating, etc.). Without cty.dat, an
+#      internal prefix-table fallback handles K/W/N/A/DL/JA/VE and
+#      misclassifies everything else as a US station, skewing mult totals.
+#   2. dxfeed filter — required for any `geo.*` rule (continent_allow,
+#      cq_zone_allow, entity_allow, etc.); without it, geo fields resolve
+#      to None and any allowlist silently drops every spot. clogger refuses
+#      to start in that specific case.
+#
+# Use the "Big CTY" format (cty.dat) — the "wl_cty" flavor buries regional
+# zone overrides in comment lines that the parser doesn't process.
 # (can also be set via --cty CLI flag)
 #cty_file = "cty.dat"
 

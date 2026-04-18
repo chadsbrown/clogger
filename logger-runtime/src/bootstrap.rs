@@ -153,11 +153,13 @@ pub fn bootstrap(config: SessionConfig) -> Result<Session> {
     }
 
     let call_history = load_call_history(config.call_history_path.as_deref());
+    let cty = load_cty(config.cty_path.as_deref())?;
 
     let scorer = crate::scoring::scorer_for_contest(
         contest.as_ref(),
         scorer_config,
         Arc::clone(&call_history),
+        cty.clone(),
     )
     .with_context(|| {
         format!(
@@ -219,7 +221,6 @@ pub fn bootstrap(config: SessionConfig) -> Result<Session> {
     }
 
     let scp = load_scp(config.scp_path.as_deref());
-    let cty = load_cty(config.cty_path.as_deref())?;
 
     Ok(Session {
         state,

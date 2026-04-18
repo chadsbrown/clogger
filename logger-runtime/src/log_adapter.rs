@@ -359,7 +359,7 @@ mod tests {
     #[test]
     fn state_qp_missing_required_config_errors_at_init() {
         let contest = contest_from_id("moqp").expect("moqp contest");
-        let result = scorer_for_contest(contest.as_ref(), HashMap::new(), Arc::new(NoCallHistory));
+        let result = scorer_for_contest(contest.as_ref(), HashMap::new(), Arc::new(NoCallHistory), None);
         let err = match result {
             Ok(_) => panic!("empty moqp config must error, not succeed"),
             Err(e) => e,
@@ -378,7 +378,7 @@ mod tests {
     #[test]
     fn undo_redo_placeholder_roundtrip() {
         let contest = contest_from_id("cqww").expect("cqww contest");
-        let scorer = scorer_for_contest(contest.as_ref(), cqww_test_config(), Arc::new(NoCallHistory)).expect("scorer init");
+        let scorer = scorer_for_contest(contest.as_ref(), cqww_test_config(), Arc::new(NoCallHistory), None).expect("scorer init");
         let mut adapter = LogAdapter::new(scorer, 1);
 
         adapter.insert(sample_draft(), 1, 1, 1).expect("insert");
@@ -399,7 +399,7 @@ mod tests {
 
         {
             let scorer =
-                scorer_for_contest(contest.as_ref(), cqww_test_config(), Arc::new(NoCallHistory)).expect("scorer init");
+                scorer_for_contest(contest.as_ref(), cqww_test_config(), Arc::new(NoCallHistory), None).expect("scorer init");
             let mut adapter = LogAdapter::open_db(scorer, 1, &db_path).expect("open_db");
             adapter.insert(sample_draft(), 1, 1, 1).expect("insert");
             adapter.undo().expect("undo");
@@ -408,7 +408,7 @@ mod tests {
 
         {
             let scorer =
-                scorer_for_contest(contest.as_ref(), cqww_test_config(), Arc::new(NoCallHistory)).expect("scorer init");
+                scorer_for_contest(contest.as_ref(), cqww_test_config(), Arc::new(NoCallHistory), None).expect("scorer init");
             let adapter = LogAdapter::open_db(scorer, 1, &db_path).expect("reopen_db");
             let records = adapter.ordered_records();
             assert_eq!(records.len(), 1, "record should still exist after reload");
@@ -428,7 +428,7 @@ mod tests {
 
         {
             let scorer =
-                scorer_for_contest(contest.as_ref(), cqww_test_config(), Arc::new(NoCallHistory)).expect("scorer init");
+                scorer_for_contest(contest.as_ref(), cqww_test_config(), Arc::new(NoCallHistory), None).expect("scorer init");
             let mut adapter = LogAdapter::open_db(scorer, 1, &db_path).expect("open_db");
             adapter.insert(sample_draft(), 1, 1, 1).expect("insert");
             adapter.undo().expect("undo");
@@ -438,7 +438,7 @@ mod tests {
 
         {
             let scorer =
-                scorer_for_contest(contest.as_ref(), cqww_test_config(), Arc::new(NoCallHistory)).expect("scorer init");
+                scorer_for_contest(contest.as_ref(), cqww_test_config(), Arc::new(NoCallHistory), None).expect("scorer init");
             let adapter = LogAdapter::open_db(scorer, 1, &db_path).expect("reopen_db");
             let records = adapter.ordered_records();
             assert_eq!(records.len(), 1);
@@ -520,6 +520,7 @@ mod tests {
             contest.as_ref(),
             ns_sprint_test_config(),
             history,
+            None,
         )
         .expect("scorer init");
         let mut adapter = LogAdapter::new(scorer, contest.contest_instance_id());
@@ -573,6 +574,7 @@ mod tests {
             contest.as_ref(),
             ns_sprint_test_config(),
             history,
+            None,
         )
         .expect("scorer init");
         let mut adapter = LogAdapter::new(scorer, contest.contest_instance_id());
@@ -603,6 +605,7 @@ mod tests {
             contest.as_ref(),
             ns_sprint_test_config(),
             Arc::new(NoCallHistory),
+            None,
         )
         .expect("scorer init");
         let mut adapter = LogAdapter::new(scorer, contest.contest_instance_id());
@@ -633,6 +636,7 @@ mod tests {
             contest.as_ref(),
             ns_sprint_test_config(),
             Arc::new(NoCallHistory),
+            None,
         )
         .expect("scorer init");
         let mut adapter = LogAdapter::new(scorer, contest.contest_instance_id());
@@ -661,6 +665,7 @@ mod tests {
             contest.as_ref(),
             ns_sprint_test_config(),
             Arc::new(NoCallHistory),
+            None,
         )
         .expect("scorer init");
         let mut adapter = LogAdapter::new(scorer, contest.contest_instance_id());

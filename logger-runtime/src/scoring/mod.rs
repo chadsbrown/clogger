@@ -85,6 +85,7 @@ pub fn scorer_for_contest(
     contest: &dyn ContestEntry,
     config: HashMap<String, Value>,
     call_history: Arc<dyn CallHistoryLookup>,
+    cty: Option<Arc<crate::cty::CtyDb>>,
 ) -> anyhow::Result<Box<dyn ContestScorer>> {
     let contest_id = contest.contest_id();
     let contest_instance_id = contest.contest_instance_id();
@@ -124,6 +125,7 @@ pub fn scorer_for_contest(
             config,
             call_history,
             history_mapping,
+            cty,
         )?))
     } else {
         Ok(Box::new(unique_call::UniqueCallScorer::new()))
