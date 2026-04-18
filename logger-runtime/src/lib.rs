@@ -2,6 +2,7 @@ pub mod adif_export;
 pub mod analytics;
 pub mod bootstrap;
 pub mod call_history;
+pub mod condx_adapter;
 pub mod config;
 pub mod contest_history;
 pub mod cty;
@@ -20,6 +21,7 @@ pub mod so2r_adapter;
 pub mod so2r_task;
 
 pub use call_history::CallHistoryDb;
+pub use condx_adapter::{BandCondition, CondXConfig, CondXSnapshot, spawn_condx_adapter};
 pub use cty::CtyDb;
 pub use scp::ScpDb;
 pub use config::{

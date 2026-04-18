@@ -1,5 +1,6 @@
 pub mod avail_box;
 pub mod bandmap;
+pub mod condx_box;
 pub mod entry_line;
 pub mod export_modal;
 pub mod log_tail;
@@ -76,36 +77,43 @@ pub fn render(frame: &mut Frame, app: &AppState, tui: &TuiState) {
         .split(cols[1])
     };
 
-    // Left: score + available + rate + [SO2R when configured]. The SO2R
-    // panel only appears when the operator configured an OTRSP switch —
-    // non-SO2R setups keep the classic 3-box layout with no visual cost.
+    // Left: [CondX when enabled] + score + available + rate + [SO2R when
+    // configured]. Score uses Min(4) so it absorbs spare vertical space;
+    // every other box is fixed-height. Boxes not configured are skipped
+    // entirely so non-users pay no visual cost.
     let avail_height = tui.avail.by_band.len() as u16 + 4; // header + band rows + totals + 2 borders
-    let left = if tui.so2r_configured {
-        Layout::vertical([
-            Constraint::Min(4),
-            Constraint::Length(avail_height),
-            Constraint::Length(6), // Rate: 4 rows + 2 borders
-            Constraint::Length(5), // SO2R: 3 rows + 2 borders
-        ])
-        .split(cols[0])
-    } else {
-        Layout::vertical([
-            Constraint::Min(4),
-            Constraint::Length(avail_height),
-            Constraint::Length(6),
-        ])
-        .split(cols[0])
-    };
+    let mut constraints: Vec<Constraint> = Vec::new();
+    if tui.condx_configured {
+        constraints.push(Constraint::Length(12)); // CondX: 10 rows + 2 borders
+    }
+    let score_idx = constraints.len();
+    constraints.push(Constraint::Min(4));
+    constraints.push(Constraint::Length(avail_height));
+    constraints.push(Constraint::Length(6)); // Rate: 4 rows + 2 borders
+    if tui.so2r_configured {
+        constraints.push(Constraint::Length(5)); // SO2R: 3 rows + 2 borders
+    }
+    let left = Layout::vertical(constraints).split(cols[0]);
 
     let theme = &tui.theme;
 
-    score_box::render(frame, left[0], &tui.score, theme);
-    avail_box::render(frame, left[1], &tui.avail, theme);
-    rate_box::render(frame, left[2], &tui.rate, theme);
+    // Render in layout order so slot indices stay in sync with `constraints`.
+    let mut idx = 0;
+    if tui.condx_configured {
+        condx_box::render(frame, left[idx], &tui.condx, theme);
+        idx += 1;
+    }
+    debug_assert_eq!(idx, score_idx);
+    score_box::render(frame, left[idx], &tui.score, theme);
+    idx += 1;
+    avail_box::render(frame, left[idx], &tui.avail, theme);
+    idx += 1;
+    rate_box::render(frame, left[idx], &tui.rate, theme);
+    idx += 1;
     if tui.so2r_configured {
         so2r_box::render(
             frame,
-            left[3],
+            left[idx],
             app.focused_radio,
             tui.tx_radio,
             tui.rx_mode,

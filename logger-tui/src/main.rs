@@ -52,6 +52,11 @@ pub struct TuiState {
     /// once at session start; shown next to the operator's call in the
     /// status bar so the operator always knows which contest is active.
     pub contest_name: String,
+    /// Latest CondX (solar/propagation) snapshot, `None` until the first
+    /// successful hamqsl fetch. Panel is skipped in render when
+    /// `condx_configured == false` regardless of snapshot state.
+    pub condx: Option<logger_runtime::CondXSnapshot>,
+    pub condx_configured: bool,
     pub log_display: Vec<LogRow>,
     pub worked_calls: HashSet<String>,
     pub mult_calls: HashSet<String>,
@@ -93,6 +98,8 @@ impl Default for TuiState {
             tx_radio: 1,
             rx_mode: logger_core::So2rRxMode::Mono,
             contest_name: String::new(),
+            condx: None,
+            condx_configured: false,
             log_display: Vec::new(),
             worked_calls: HashSet::new(),
             mult_calls: HashSet::new(),
@@ -258,6 +265,12 @@ async fn main() -> Result<()> {
     // events after spawn and don't come out of this Result. Fail fast
     // so the operator doesn't unknowingly run a contest without the
     // filtering they asked for.
+    // Optional CondX (solar/propagation) polling task. Spawned only
+    // when `[condx] enabled = true`; returns None otherwise so the
+    // event loop can skip the select! arm.
+    let condx_configured = config.condx.enabled;
+    let condx_rx = logger_runtime::spawn_condx_adapter(config.condx.clone());
+
     let dxfeed_configured = config.dxfeed.is_some();
     let mut dxfeed_connected = false;
     if let Some(dxfeed_config) = &config.dxfeed {
@@ -403,10 +416,12 @@ async fn main() -> Result<()> {
             so2r_configured,
             so2r_connected,
             scoreboard_configured,
+            condx_configured,
             bandmap_mode: config.bandmap,
         },
         so2r_tx,
         so2r_default_rx_mode,
+        condx_rx,
         scoreboard_handle,
         loaded_theme,
     )
@@ -424,5 +439,6 @@ pub struct ConnectionStatus {
     pub so2r_configured: bool,
     pub so2r_connected: bool,
     pub scoreboard_configured: bool,
+    pub condx_configured: bool,
     pub bandmap_mode: config::BandmapMode,
 }

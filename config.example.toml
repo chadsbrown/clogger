@@ -254,6 +254,18 @@
 #max_tracked_observations = 100000
 
 # ---------------------------------------------------------------------------
+# CondX solar/propagation panel (optional). When enabled, clogger shows
+# a panel at the top of the left column with SFI, sunspots, A/K indices,
+# X-ray, geomag field, S/N, and band conditions — pulled from N0NBH's
+# feed at hamqsl.com. Off by default so offline stations don't make
+# unexpected network requests.
+# ---------------------------------------------------------------------------
+#[condx]
+#enabled = true
+# Optional. Default 3600s (1 hour). Clamped to minimum 60s.
+#refresh_interval_secs = 3600
+
+# ---------------------------------------------------------------------------
 # Cabrillo header metadata (optional). These fields appear in exported
 # Cabrillo log files. All are optional. Personal — lives with the station
 # identity, not the contest.

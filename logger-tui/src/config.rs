@@ -65,6 +65,8 @@ pub struct StableConfig {
     pub dxfeed: Option<logger_runtime::DxFeedConfig>,
     pub so2r: Option<logger_runtime::So2rConfig>,
     #[serde(default)]
+    pub condx: logger_runtime::CondXConfig,
+    #[serde(default)]
     pub cabrillo: logger_runtime::CabrilloConfig,
     #[serde(default)]
     pub scoreboard: ScoreboardSection,
@@ -137,6 +139,7 @@ pub struct Config {
     pub keyer: Option<logger_runtime::KeyerConfig>,
     pub dxfeed: Option<logger_runtime::DxFeedConfig>,
     pub so2r: Option<logger_runtime::So2rConfig>,
+    pub condx: logger_runtime::CondXConfig,
     pub category: Option<logger_runtime::CategoryConfig>,
     pub cabrillo: logger_runtime::CabrilloConfig,
     pub scoreboard: ScoreboardSection,
@@ -168,6 +171,7 @@ impl Config {
             keyer: stable.keyer,
             dxfeed: stable.dxfeed,
             so2r: stable.so2r,
+            condx: stable.condx,
             category: contest.category,
             cabrillo: stable.cabrillo,
             scoreboard: stable.scoreboard,

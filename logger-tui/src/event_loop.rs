@@ -38,6 +38,7 @@ pub async fn run(
     conn: crate::ConnectionStatus,
     so2r_tx: Option<mpsc::Sender<logger_runtime::So2rCmd>>,
     so2r_default_rx_mode: logger_core::So2rRxMode,
+    mut condx_rx: Option<mpsc::Receiver<logger_runtime::CondXSnapshot>>,
     scoreboard: Option<(ScoreboardHandle, &'static str, String, CategoryConfig)>,
     theme: crate::theme::Theme,
 ) -> Result<()> {
@@ -82,6 +83,7 @@ pub async fn run(
         so2r_configured: conn.so2r_configured,
         so2r_connected: conn.so2r_connected,
         scoreboard_configured: conn.scoreboard_configured,
+        condx_configured: conn.condx_configured,
         bandmap_mode: conn.bandmap_mode,
         cw_echo_enabled,
         tx_radio: state.focused_radio,
@@ -340,6 +342,9 @@ pub async fn run(
             status = recv_scoreboard_status(&scoreboard_handle) => {
                 tui_state.scoreboard_status = status;
             }
+            snapshot = recv_condx(&mut condx_rx) => {
+                tui_state.condx = Some(snapshot);
+            }
         }
     };
 
@@ -578,6 +583,22 @@ async fn recv_keyer_event(rx: &mut Option<broadcast::Receiver<KeyerEvent>>) -> K
                 Err(broadcast::error::RecvError::Lagged(_)) => continue,
                 Err(broadcast::error::RecvError::Closed) => std::future::pending().await,
             }
+        },
+        None => std::future::pending().await,
+    }
+}
+
+/// Awaits the next CondX snapshot, or pends forever when the feature
+/// is disabled (so `tokio::select!` treats the arm as non-firing).
+/// Returns `snapshot` rather than `Option<snapshot>` so the select arm
+/// can assign directly without a None-branch in the handler.
+async fn recv_condx(
+    rx: &mut Option<mpsc::Receiver<logger_runtime::CondXSnapshot>>,
+) -> logger_runtime::CondXSnapshot {
+    match rx {
+        Some(r) => match r.recv().await {
+            Some(s) => s,
+            None => std::future::pending().await,
         },
         None => std::future::pending().await,
     }
