@@ -26,14 +26,10 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState, tui: &TuiState) {
     ));
     left_spans.push(Span::raw(" "));
 
-    // New mult indicator
-    if st.focused_entry().is_new_mult {
-        left_spans.push(Span::styled(
-            " MULT ",
-            Style::from(theme.status_mult_badge),
-        ));
-        left_spans.push(Span::raw(" "));
-    }
+    // MULT indicator now lives inline with DUPE in the entry box —
+    // see ui/entry_line.rs. DUPE and new-MULT are mutually exclusive,
+    // so they share one slot next to the callsign rather than
+    // competing for the operator's attention from different corners.
 
     // Passband QRM indicator
     if st.focused_entry().is_passband_qrm {

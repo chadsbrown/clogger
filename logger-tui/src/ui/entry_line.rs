@@ -153,8 +153,16 @@ pub fn render(
         Line::default()
     };
 
+    // DUPE and new-MULT are mutually exclusive; share the same line in
+    // the entry box so the operator's eye lives in one place rather
+    // than jumping to the status bar to check for new mult.
     let indicator_line = if entry.is_dupe {
         Line::from(vec![Span::styled(" DUPE ", Style::from(theme.dupe_badge))])
+    } else if entry.is_new_mult {
+        Line::from(vec![Span::styled(
+            " MULT ",
+            Style::from(theme.status_mult_badge),
+        )])
     } else {
         Line::default()
     };
