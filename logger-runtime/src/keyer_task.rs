@@ -59,6 +59,9 @@ pub enum KeyerCmd {
     /// priority channel internally, so this preempts any `Send` currently
     /// running within ~1 ms.
     Abort,
+    /// Reprogram the keyer's WPM immediately. Non-preemptive — processed
+    /// in channel order behind any queued `Send`s.
+    SetSpeed { wpm: u8 },
 }
 
 /// Spawn the keyer task.
@@ -129,6 +132,16 @@ async fn keyer_task(
             KeyerCmd::Abort => {
                 if let Err(e) = keyer.abort().await {
                     warn!("keyer abort failed: {e}");
+                    let _ = err_tx
+                        .send(AppEvent::KeyerError {
+                            message: format!("{e}"),
+                        })
+                        .await;
+                }
+            }
+            KeyerCmd::SetSpeed { wpm } => {
+                if let Err(e) = keyer.set_speed(wpm).await {
+                    warn!("keyer set_speed failed: {e}");
                     let _ = err_tx
                         .send(AppEvent::KeyerError {
                             message: format!("{e}"),

@@ -70,6 +70,16 @@ pub fn spawn_terminal_reader(tx: mpsc::Sender<TerminalEvent>, has_second_rig: bo
                 (_, KeyCode::Insert) => {
                     TerminalEvent::App(AppEvent::ToggleOpMode)
                 }
+                // PageUp/PageDown: ±2 WPM on the focused radio. Matches
+                // N1MM+'s bare-key convention. Modified variants (Shift for
+                // secondary step, Alt for inactive radio, Ctrl for band
+                // stepping) aren't wired up yet — easy to add here.
+                (_, KeyCode::PageUp) => {
+                    TerminalEvent::App(AppEvent::CwSpeedAdjust { delta: 2 })
+                }
+                (_, KeyCode::PageDown) => {
+                    TerminalEvent::App(AppEvent::CwSpeedAdjust { delta: -2 })
+                }
                 (_, KeyCode::Char(' ')) => {
                     TerminalEvent::App(AppEvent::KeyPress { key: Key::Space })
                 }

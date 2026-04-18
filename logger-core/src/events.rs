@@ -98,4 +98,9 @@ pub enum AppEvent {
     EsmTrigger,
     BandmapUp { radio: RadioId },
     BandmapDown { radio: RadioId },
+    /// Nudge the focused radio's CW sending speed by `delta` WPM. Positive
+    /// speeds up, negative slows down. Clamped to a sensible contest range
+    /// by the reducer. Bound to PageUp/PageDown in the terminal adapter,
+    /// matching N1MM+'s convention.
+    CwSpeedAdjust { delta: i8 },
 }

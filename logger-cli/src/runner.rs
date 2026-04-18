@@ -62,6 +62,9 @@ enum TraceEffect {
     So2rFocusChanged {
         radio: u8,
     },
+    KeyerSetSpeed {
+        wpm: u8,
+    },
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -444,6 +447,11 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
                     Effect::So2rFocusChanged { .. } => {
                         // SO2R hardware switching is a no-op in script tests
                     }
+                    Effect::KeyerSetSpeed { .. } => {
+                        // Keyer speed is a hardware side-effect; reducer state
+                        // already reflects the new cw_speed, which is what
+                        // scripted tests assert on.
+                    }
                 }
             }
         }
@@ -794,6 +802,7 @@ fn normalize_effect(effect: &Effect) -> TraceEffect {
         Effect::CwAbort => TraceEffect::CwAbort,
         Effect::UiClearEntry => TraceEffect::UiClearEntry,
         Effect::So2rFocusChanged { radio } => TraceEffect::So2rFocusChanged { radio: *radio },
+        Effect::KeyerSetSpeed { wpm } => TraceEffect::KeyerSetSpeed { wpm: *wpm },
     }
 }
 

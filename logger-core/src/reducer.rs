@@ -496,6 +496,34 @@ pub fn reduce(
 
             vec![Effect::RigSet { radio: target, freq_hz }]
         }
+        AppEvent::CwSpeedAdjust { delta } => {
+            // Range is the conservative contest-CW window. Widen if a user
+            // legitimately runs outside it; WK3 itself goes 5–99 WPM.
+            const MIN_WPM: u8 = 5;
+            const MAX_WPM: u8 = 60;
+
+            let radio = st.focused_radio;
+            let current = st
+                .radios
+                .get(&radio)
+                .map(|r| r.cw_speed)
+                .unwrap_or(st.default_cw_speed);
+            let next = ((current as i16) + delta as i16)
+                .clamp(MIN_WPM as i16, MAX_WPM as i16) as u8;
+            if next == current {
+                return Vec::new();
+            }
+
+            if let Some(r) = st.radios.get_mut(&radio) {
+                r.cw_speed = next;
+            } else {
+                // No rig connected yet — stash the new speed as the session
+                // default so the value sticks once RigStatus seeds RadioState.
+                st.default_cw_speed = next;
+            }
+
+            vec![Effect::KeyerSetSpeed { wpm: next }]
+        }
     }
 }
 
@@ -2415,5 +2443,83 @@ mod tests {
             show_passband_qrm: false,
             bandmap_version: 0,
         }
+    }
+
+    #[test]
+    fn cw_speed_adjust_updates_focused_radio_and_emits_effect() {
+        let contest = contest_from_id("cqww").unwrap();
+        let mut st = mk_state();
+        let macros = Macros::default();
+
+        // Seed R1 so cw_speed starts at default_cw_speed (28 in mk_state).
+        crate::reducer::reduce(
+            &mut st, contest.as_ref(), &macros,
+            &NoDupeChecker, &NoMultChecker, &NoCallHistory, &NoContestHistory, &NoScp,
+            AppEvent::RigStatus {
+                radio: 1, freq_hz: 14_025_000, mode: "CW".to_string(),
+                is_ptt: false, filter_width_hz: None,
+            },
+        );
+        assert_eq!(st.radios.get(&1).unwrap().cw_speed, 28);
+
+        let effects = crate::reducer::reduce(
+            &mut st, contest.as_ref(), &macros,
+            &NoDupeChecker, &NoMultChecker, &NoCallHistory, &NoContestHistory, &NoScp,
+            AppEvent::CwSpeedAdjust { delta: 2 },
+        );
+        assert_eq!(st.radios.get(&1).unwrap().cw_speed, 30);
+        assert_eq!(effects, vec![Effect::KeyerSetSpeed { wpm: 30 }]);
+    }
+
+    #[test]
+    fn cw_speed_adjust_clamps_and_suppresses_noop() {
+        let contest = contest_from_id("cqww").unwrap();
+        let mut st = mk_state();
+        let macros = Macros::default();
+
+        crate::reducer::reduce(
+            &mut st, contest.as_ref(), &macros,
+            &NoDupeChecker, &NoMultChecker, &NoCallHistory, &NoContestHistory, &NoScp,
+            AppEvent::RigStatus {
+                radio: 1, freq_hz: 14_025_000, mode: "CW".to_string(),
+                is_ptt: false, filter_width_hz: None,
+            },
+        );
+        // Drive up against the 60 WPM ceiling in two saturating steps.
+        for _ in 0..20 {
+            crate::reducer::reduce(
+                &mut st, contest.as_ref(), &macros,
+                &NoDupeChecker, &NoMultChecker, &NoCallHistory, &NoContestHistory, &NoScp,
+                AppEvent::CwSpeedAdjust { delta: 2 },
+            );
+        }
+        assert_eq!(st.radios.get(&1).unwrap().cw_speed, 60);
+
+        // Another PageUp at the ceiling is a no-op — no effect emitted.
+        let effects = crate::reducer::reduce(
+            &mut st, contest.as_ref(), &macros,
+            &NoDupeChecker, &NoMultChecker, &NoCallHistory, &NoContestHistory, &NoScp,
+            AppEvent::CwSpeedAdjust { delta: 2 },
+        );
+        assert!(effects.is_empty());
+    }
+
+    #[test]
+    fn cw_speed_adjust_without_rig_updates_default() {
+        // Before any RigStatus, there's no RadioState — the adjust should
+        // still take hold by bumping default_cw_speed so the value sticks.
+        let contest = contest_from_id("cqww").unwrap();
+        let mut st = mk_state();
+        let macros = Macros::default();
+        assert_eq!(st.default_cw_speed, 28);
+        assert!(st.radios.is_empty());
+
+        let effects = crate::reducer::reduce(
+            &mut st, contest.as_ref(), &macros,
+            &NoDupeChecker, &NoMultChecker, &NoCallHistory, &NoContestHistory, &NoScp,
+            AppEvent::CwSpeedAdjust { delta: -2 },
+        );
+        assert_eq!(st.default_cw_speed, 26);
+        assert_eq!(effects, vec![Effect::KeyerSetSpeed { wpm: 26 }]);
     }
 }

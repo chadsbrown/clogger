@@ -460,6 +460,11 @@ async fn dispatch_effects(
                     });
                 }
             }
+            Effect::KeyerSetSpeed { wpm } => {
+                if let Some(tx) = keyer_tx {
+                    let _ = tx.try_send(logger_runtime::KeyerCmd::SetSpeed { wpm: *wpm });
+                }
+            }
         }
     }
     Ok(())
@@ -518,7 +523,8 @@ fn needs_analytics_recompute(event: &logger_core::AppEvent) -> bool {
         | AppEvent::PersistError { .. }
         | AppEvent::SetOpMode { .. }
         | AppEvent::ToggleOpMode
-        | AppEvent::SetOperator { .. } => false,
+        | AppEvent::SetOperator { .. }
+        | AppEvent::CwSpeedAdjust { .. } => false,
     }
 }
 

@@ -1,4 +1,4 @@
-use logger_core::{AppState, RadioId, Validation};
+use logger_core::{AppState, RadioId, Validation, contest::normalize_mode};
 use ratatui::{
     Frame,
     layout::Rect,
@@ -104,16 +104,40 @@ pub fn render(
     }
 
     let _ = tx_radio;
-    let cw_line = if let Some(text) = cw_text {
-        let w = inner.width as usize;
-        let text_len = text.len().min(w);
-        let pad = (w.saturating_sub(text_len)) / 2;
-        Line::from(vec![
-            Span::raw(" ".repeat(pad)),
-            Span::styled(&text[..text_len], Style::from(theme.cw_echo)),
-        ])
-    } else {
+
+    // Speed integer on the bottom row, right-aligned, shown only when the
+    // radio is in a CW mode. No label — the number alone is enough once
+    // the operator knows this row is reserved for the WPM readout.
+    let speed_str = st.radios.get(&radio_id).and_then(|r| {
+        if normalize_mode(&r.mode) == "CW" {
+            Some(r.cw_speed.to_string())
+        } else {
+            None
+        }
+    });
+
+    let w = inner.width as usize;
+    let speed_reserved = speed_str.as_ref().map(|s| s.len() + 1).unwrap_or(0);
+    let echo_area = w.saturating_sub(speed_reserved);
+
+    let mut cw_spans: Vec<Span> = Vec::new();
+    if let Some(text) = cw_text {
+        let text_len = text.len().min(echo_area);
+        let pad = echo_area.saturating_sub(text_len) / 2;
+        cw_spans.push(Span::raw(" ".repeat(pad)));
+        cw_spans.push(Span::styled(&text[..text_len], Style::from(theme.cw_echo)));
+        let used = pad + text_len;
+        cw_spans.push(Span::raw(" ".repeat(echo_area.saturating_sub(used))));
+    } else if speed_str.is_some() {
+        cw_spans.push(Span::raw(" ".repeat(echo_area)));
+    }
+    if let Some(s) = speed_str {
+        cw_spans.push(Span::styled(s, Style::from(theme.frequency)));
+    }
+    let cw_line = if cw_spans.is_empty() {
         Line::default()
+    } else {
+        Line::from(cw_spans)
     };
 
     let freq_line = if let Some(radio) = st.radios.get(&radio_id) {

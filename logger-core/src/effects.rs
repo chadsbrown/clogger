@@ -28,4 +28,9 @@ pub enum Effect {
     /// to follow the new focus. TX routing is NOT changed — TX is purely a
     /// function of where CW is being sent (handled implicitly by CwSend dispatch).
     So2rFocusChanged { radio: RadioId },
+    /// Reprogram the keyer's current WPM immediately. Issued when the
+    /// operator adjusts speed via PageUp/PageDown so a plain (non-macro) CW
+    /// send picks up the new rate. Macro-driven sends still embed their own
+    /// `{NN}` markers from `<`/`>` expansion.
+    KeyerSetSpeed { wpm: u8 },
 }
