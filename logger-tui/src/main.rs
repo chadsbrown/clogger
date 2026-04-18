@@ -48,6 +48,10 @@ pub struct TuiState {
     /// routing without reaching into the event loop. Rendered only when
     /// `so2r_configured` is true.
     pub rx_mode: logger_core::So2rRxMode,
+    /// Contest display name (from `ContestEntry::contest_name`). Captured
+    /// once at session start; shown next to the operator's call in the
+    /// status bar so the operator always knows which contest is active.
+    pub contest_name: String,
     pub log_display: Vec<LogRow>,
     pub worked_calls: HashSet<String>,
     pub mult_calls: HashSet<String>,
@@ -88,6 +92,7 @@ impl Default for TuiState {
             cw_transmitting: false,
             tx_radio: 1,
             rx_mode: logger_core::So2rRxMode::Mono,
+            contest_name: String::new(),
             log_display: Vec::new(),
             worked_calls: HashSet::new(),
             mult_calls: HashSet::new(),

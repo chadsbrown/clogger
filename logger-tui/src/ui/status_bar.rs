@@ -13,9 +13,15 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState, tui: &TuiState) {
     let theme = &tui.theme;
     let mut left_spans = Vec::new();
 
-    // My callsign
+    // My callsign + contest name. Single badge so they read as one unit
+    // ("N9UNX / CQ WW DX") rather than competing for attention.
+    let badge_text = if tui.contest_name.is_empty() {
+        format!(" {} ", st.my_call)
+    } else {
+        format!(" {} / {} ", st.my_call, tui.contest_name)
+    };
     left_spans.push(Span::styled(
-        format!(" {} ", st.my_call),
+        badge_text,
         Style::from(theme.status_callsign_badge),
     ));
     left_spans.push(Span::raw(" "));

@@ -86,6 +86,7 @@ pub async fn run(
         cw_echo_enabled,
         tx_radio: state.focused_radio,
         rx_mode: so2r_default_rx_mode,
+        contest_name: contest.contest_name().to_string(),
         theme,
         ..Default::default()
     };
