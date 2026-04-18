@@ -10,7 +10,7 @@ use crate::{
     },
     events::{AppEvent, Key},
     macro_expand::expand_macro,
-    state::{AppState, BandmapCursor, Macros, RadioId, RadioState},
+    state::{AppState, BandmapCursor, Macros, RadioId, RadioState, Spot},
 };
 
 pub trait DupeChecker {
@@ -455,21 +455,24 @@ pub fn reduce(
             }
 
             let len = spots.len();
-            // For `On(i)` we start from spot `i`. For `Between(i)` — the rig
-            // is parked between spots — Down lands on `i` (the spot just
-            // above) and Up lands on `i-1` (the spot just below), so we seed
-            // as if we were one past the target and let the step fall on
-            // the right side naturally.
-            let prev_idx: Option<usize> = st.bandmap_cursors.get(&target).map(|c| match *c {
-                BandmapCursor::On(i) => i,
-                BandmapCursor::Between(i) => {
+            // Re-resolve the anchor every step so list churn (new spots,
+            // withdrawn spots, re-sorting) doesn't drift us off the call
+            // we last navigated to. `On.call` anchors by call; `Between`
+            // seeds the step as if we were at the insertion point.
+            let prev_idx: Option<usize> = match st.bandmap_cursors.get(&target) {
+                Some(BandmapCursor::On { call, .. }) => {
+                    spots.iter().position(|s| &s.call == call)
+                }
+                Some(BandmapCursor::Between { freq_hz }) => {
+                    let pos = spots.partition_point(|s| s.freq_hz < *freq_hz);
                     if is_down {
-                        (i + len - 1) % len
+                        Some((pos + len - 1) % len)
                     } else {
-                        i % len
+                        Some(pos % len)
                     }
                 }
-            });
+                None => None,
+            };
             let idx = match (is_down, prev_idx) {
                 (true, None) => 0,
                 (true, Some(i)) => (i + 1) % len,
@@ -481,7 +484,10 @@ pub fn reduce(
             let freq_hz = spot.freq_hz;
             let call = spot.call.clone();
 
-            st.bandmap_cursors.insert(target, BandmapCursor::On(idx));
+            st.bandmap_cursors.insert(
+                target,
+                BandmapCursor::On { call: call.clone(), freq_hz },
+            );
 
             // Temporarily swap focus to target radio so helpers operate on it
             let original_focus = st.focused_radio;
@@ -689,21 +695,97 @@ fn snap_bandmap_cursor_to_freq(st: &mut AppState, radio: RadioId) {
     };
 
     let cursor = if spots[nearest].freq_hz.abs_diff(target) <= half_width {
-        BandmapCursor::On(nearest)
+        BandmapCursor::On {
+            call: spots[nearest].call.clone(),
+            freq_hz: spots[nearest].freq_hz,
+        }
     } else {
-        BandmapCursor::Between(pos)
+        // Drop `pos` — we now anchor on the rig's actual freq instead of
+        // a list insertion point, so render recomputes `pos` every time.
+        let _ = pos;
+        BandmapCursor::Between { freq_hz: target }
     };
     st.bandmap_cursors.insert(radio, cursor);
 }
 
-/// Re-snap every known radio's bandmap cursor. Called when the bandmap
-/// itself changes (spot added/withdrawn): the rig hasn't moved, but the
-/// cursor indices now refer to a different sorted list, so the stored
-/// `On(i)` / `Between(i)` may no longer reflect the rig's real position.
+/// Called when the bandmap itself changes (spot added/withdrawn). The
+/// user's navigation cursor is call-anchored, so list churn alone
+/// doesn't move it: a stable `On { call }` stays put. Two cases need
+/// action:
+///   - anchored call was just withdrawn → demote to `Between` at its
+///     last known freq so the UI keeps a meaningful position.
+///   - cursor is `Between` and a new spot now falls inside the rig's
+///     passband → upgrade to `On` so the operator sees that a spot
+///     just appeared on their current freq (rig-follow feedback).
 fn snap_all_bandmap_cursors(st: &mut AppState) {
     let radios: Vec<RadioId> = st.radios.keys().copied().collect();
     for radio in radios {
-        snap_bandmap_cursor_to_freq(st, radio);
+        let Some(cursor) = st.bandmap_cursors.get(&radio).cloned() else {
+            continue;
+        };
+        let rs = match st.radios.get(&radio) {
+            Some(r) if r.freq_hz > 0 => r,
+            _ => continue,
+        };
+        let band = freq_to_band_label(rs.freq_hz);
+        let mode = normalize_mode(&rs.mode);
+        let target = rs.freq_hz;
+        let half_width = u64::from(
+            rs.filter_width_hz
+                .unwrap_or_else(|| default_filter_width_hz(mode)),
+        ) / 2;
+        let spots = filtered_bandmap_spots(&st.bandmap, band, mode);
+
+        match cursor {
+            BandmapCursor::On { call, freq_hz } => {
+                if !spots.iter().any(|s| s.call == call) {
+                    st.bandmap_cursors
+                        .insert(radio, BandmapCursor::Between { freq_hz });
+                }
+            }
+            BandmapCursor::Between { freq_hz } => {
+                // If a spot now sits within the rig's passband, adopt it.
+                if let Some(spot) = nearest_spot_within(&spots, target, half_width) {
+                    st.bandmap_cursors.insert(
+                        radio,
+                        BandmapCursor::On {
+                            call: spot.call.clone(),
+                            freq_hz: spot.freq_hz,
+                        },
+                    );
+                } else {
+                    // Nothing nearby — keep the Between freq as-is (render
+                    // computes the insertion point from freq_hz directly).
+                    let _ = freq_hz;
+                }
+            }
+        }
+    }
+}
+
+fn nearest_spot_within<'a>(
+    spots: &'a [Spot],
+    target: u64,
+    half_width: u64,
+) -> Option<&'a Spot> {
+    if spots.is_empty() {
+        return None;
+    }
+    let pos = spots.partition_point(|s| s.freq_hz < target);
+    let nearest = match (pos == 0, pos == spots.len()) {
+        (true, _) => 0,
+        (_, true) => spots.len() - 1,
+        _ => {
+            let lo = pos - 1;
+            let dlo = spots[lo].freq_hz.abs_diff(target);
+            let dhi = spots[pos].freq_hz.abs_diff(target);
+            if dhi < dlo { pos } else { lo }
+        }
+    };
+    if spots[nearest].freq_hz.abs_diff(target) <= half_width {
+        Some(&spots[nearest])
+    } else {
+        None
     }
 }
 
@@ -904,6 +986,7 @@ mod tests {
         effects::Effect,
         entry::state::{EntryState, EsmStep, OpMode, Validation},
         events::{AppEvent, Key},
+        state::BandmapCursor,
         reducer::{
             DupeChecker, MultChecker, NoCallHistory, NoContestHistory, NoDupeChecker,
             NoMultChecker, NoScp,
@@ -2015,10 +2098,10 @@ mod tests {
         let mut st = mk_state();
         add_spot(&mut st, "K5ZD", 14_025_000, "CW");
         rig_status(&mut st, 1, 14_025_100, "CW", Some(500));
-        assert_eq!(
-            st.bandmap_cursors.get(&1).copied(),
-            Some(crate::state::BandmapCursor::On(0))
-        );
+        assert!(matches!(
+            st.bandmap_cursors.get(&1),
+            Some(BandmapCursor::On { call, .. }) if call == "K5ZD"
+        ));
     }
 
     #[test]
@@ -2027,10 +2110,10 @@ mod tests {
         add_spot(&mut st, "DL1ABC", 14_023_000, "CW");
         add_spot(&mut st, "W1AW", 14_027_000, "CW");
         rig_status(&mut st, 1, 14_025_000, "CW", Some(500));
-        assert_eq!(
-            st.bandmap_cursors.get(&1).copied(),
-            Some(crate::state::BandmapCursor::Between(1))
-        );
+        assert!(matches!(
+            st.bandmap_cursors.get(&1),
+            Some(BandmapCursor::Between { freq_hz: 14_025_000 })
+        ));
     }
 
     #[test]
@@ -2039,12 +2122,12 @@ mod tests {
         add_spot(&mut st, "K5ZD", 14_025_000, "CW");
         add_spot(&mut st, "W1AW", 14_026_000, "CW");
         // With a wide 2400 Hz filter both spots are inside the passband;
-        // the tie-break prefers the lower-frequency spot (index 0).
+        // the tie-break prefers the lower-frequency spot.
         rig_status(&mut st, 1, 14_025_500, "CW", Some(2400));
-        assert_eq!(
-            st.bandmap_cursors.get(&1).copied(),
-            Some(crate::state::BandmapCursor::On(0))
-        );
+        assert!(matches!(
+            st.bandmap_cursors.get(&1),
+            Some(BandmapCursor::On { call, .. }) if call == "K5ZD"
+        ));
     }
 
     #[test]
@@ -2063,13 +2146,13 @@ mod tests {
             &macros,
             AppEvent::BandmapUp { radio: 1 },
         );
-        let manual = st.bandmap_cursors.get(&1).copied();
-        assert!(matches!(manual, Some(crate::state::BandmapCursor::On(_))));
+        let manual = st.bandmap_cursors.get(&1).cloned();
+        assert!(matches!(manual, Some(BandmapCursor::On { .. })));
         // Another RigStatus at the *same* freq — BandmapUp's RigSet effect
         // isn't applied in unit tests, so the rig freq is unchanged. The
         // "freq didn't change" guard must preserve the manual cursor.
         rig_status(&mut st, 1, 14_025_100, "CW", Some(500));
-        assert_eq!(st.bandmap_cursors.get(&1).copied(), manual);
+        assert_eq!(st.bandmap_cursors.get(&1).cloned(), manual);
     }
 
     #[test]
@@ -2078,17 +2161,16 @@ mod tests {
         add_spot(&mut st, "K5ZD", 14_025_000, "CW");
         add_spot(&mut st, "W1AW", 7_025_000, "CW");
         rig_status(&mut st, 1, 14_025_100, "CW", Some(500));
-        assert_eq!(
-            st.bandmap_cursors.get(&1).copied(),
-            Some(crate::state::BandmapCursor::On(0))
-        );
-        // Move to 40m — filtered list becomes just the 40m spot, at index 0
-        // in that list.
+        assert!(matches!(
+            st.bandmap_cursors.get(&1),
+            Some(BandmapCursor::On { call, .. }) if call == "K5ZD"
+        ));
+        // Move to 40m — filtered list becomes just the 40m spot.
         rig_status(&mut st, 1, 7_025_100, "CW", Some(500));
-        assert_eq!(
-            st.bandmap_cursors.get(&1).copied(),
-            Some(crate::state::BandmapCursor::On(0))
-        );
+        assert!(matches!(
+            st.bandmap_cursors.get(&1),
+            Some(BandmapCursor::On { call, .. }) if call == "W1AW"
+        ));
     }
 
     #[test]
@@ -2096,11 +2178,11 @@ mod tests {
         let mut st = mk_state();
         add_spot(&mut st, "K5ZD", 14_025_000, "CW");
         rig_status(&mut st, 1, 14_025_100, "CW", Some(500));
-        let before = st.bandmap_cursors.get(&1).copied();
+        let before = st.bandmap_cursors.get(&1).cloned();
         assert!(before.is_some());
         // 15m has no spots; snap should leave the cursor alone.
         rig_status(&mut st, 1, 21_025_000, "CW", Some(500));
-        assert_eq!(st.bandmap_cursors.get(&1).copied(), before);
+        assert_eq!(st.bandmap_cursors.get(&1).cloned(), before);
     }
 
     #[test]
@@ -2110,14 +2192,14 @@ mod tests {
         add_spot(&mut st, "W1AW", 14_027_000, "CW");
         rig_status(&mut st, 1, 14_025_100, "CW", Some(500));
         rig_status(&mut st, 2, 14_027_050, "CW", Some(500));
-        assert_eq!(
-            st.bandmap_cursors.get(&1).copied(),
-            Some(crate::state::BandmapCursor::On(0))
-        );
-        assert_eq!(
-            st.bandmap_cursors.get(&2).copied(),
-            Some(crate::state::BandmapCursor::On(1))
-        );
+        assert!(matches!(
+            st.bandmap_cursors.get(&1),
+            Some(BandmapCursor::On { call, .. }) if call == "K5ZD"
+        ));
+        assert!(matches!(
+            st.bandmap_cursors.get(&2),
+            Some(BandmapCursor::On { call, .. }) if call == "W1AW"
+        ));
     }
 
     #[test]
@@ -2127,10 +2209,10 @@ mod tests {
         // No filter_width_hz reported. CW fallback is 500 Hz, so half-width
         // is 250. A 200 Hz delta should still be "On".
         rig_status(&mut st, 1, 14_025_200, "CW", None);
-        assert_eq!(
-            st.bandmap_cursors.get(&1).copied(),
-            Some(crate::state::BandmapCursor::On(0))
-        );
+        assert!(matches!(
+            st.bandmap_cursors.get(&1),
+            Some(BandmapCursor::On { call, .. }) if call == "K5ZD"
+        ));
     }
 
     #[test]
@@ -2140,10 +2222,10 @@ mod tests {
         // Rig reports "USB" — must normalize to "SSB" before filtering or
         // the spot list is empty and the snap is a no-op.
         rig_status(&mut st, 1, 14_200_500, "USB", Some(2400));
-        assert_eq!(
-            st.bandmap_cursors.get(&1).copied(),
-            Some(crate::state::BandmapCursor::On(0))
-        );
+        assert!(matches!(
+            st.bandmap_cursors.get(&1),
+            Some(BandmapCursor::On { call, .. }) if call == "K5ZD"
+        ));
     }
 
     #[test]
@@ -2154,19 +2236,17 @@ mod tests {
         // Rig parked 1 kHz above DL1ABC, outside its 500 Hz filter — so
         // initially the cursor is Between the two spots.
         rig_status(&mut st, 1, 14_024_000, "CW", Some(500));
-        assert_eq!(
-            st.bandmap_cursors.get(&1).copied(),
-            Some(crate::state::BandmapCursor::Between(1))
-        );
+        assert!(matches!(
+            st.bandmap_cursors.get(&1),
+            Some(BandmapCursor::Between { freq_hz: 14_024_000 })
+        ));
         // A new spot arrives at 14.024.000 — now inside the rig's filter.
-        // The cursor must re-snap even without a fresh RigStatus.
+        // The cursor must upgrade to On K5ZD on the SpotReceived event.
         add_spot(&mut st, "K5ZD", 14_024_000, "CW");
-        // Sorted order is DL1ABC (14.023), K5ZD (14.024), W1AW (14.027).
-        // Rig is parked on K5ZD at index 1.
-        assert_eq!(
-            st.bandmap_cursors.get(&1).copied(),
-            Some(crate::state::BandmapCursor::On(1))
-        );
+        assert!(matches!(
+            st.bandmap_cursors.get(&1),
+            Some(BandmapCursor::On { call, .. }) if call == "K5ZD"
+        ));
     }
 
     #[test]
@@ -2176,12 +2256,13 @@ mod tests {
         add_spot(&mut st, "K5ZD", 14_025_000, "CW");
         add_spot(&mut st, "W1AW", 14_027_000, "CW");
         rig_status(&mut st, 1, 14_025_100, "CW", Some(500));
-        assert_eq!(
-            st.bandmap_cursors.get(&1).copied(),
-            Some(crate::state::BandmapCursor::On(1))
-        );
-        // Remove DL1ABC — index 1 now points to W1AW in the re-sorted
-        // list. Without re-snap the cursor would falsely highlight W1AW.
+        assert!(matches!(
+            st.bandmap_cursors.get(&1),
+            Some(BandmapCursor::On { call, .. }) if call == "K5ZD"
+        ));
+        // Remove DL1ABC — the cursor is anchored to K5ZD, so it stays on
+        // K5ZD. Previously (index-anchored), this event would have
+        // spuriously shifted the cursor to W1AW.
         let contest = contest_from_id("cqww").unwrap();
         let macros = Macros::default();
         reduce(
@@ -2192,11 +2273,10 @@ mod tests {
                 call: "DL1ABC".to_string(),
             },
         );
-        // Sorted: K5ZD (0), W1AW (1). Rig 14.025.100 is on K5ZD at 0.
-        assert_eq!(
-            st.bandmap_cursors.get(&1).copied(),
-            Some(crate::state::BandmapCursor::On(0))
-        );
+        assert!(matches!(
+            st.bandmap_cursors.get(&1),
+            Some(BandmapCursor::On { call, .. }) if call == "K5ZD"
+        ));
     }
 
     #[test]
@@ -2205,20 +2285,74 @@ mod tests {
         add_spot(&mut st, "DL1ABC", 14_023_000, "CW");
         add_spot(&mut st, "W1AW", 14_027_000, "CW");
         rig_status(&mut st, 1, 14_025_000, "CW", Some(500));
-        assert_eq!(
-            st.bandmap_cursors.get(&1).copied(),
-            Some(crate::state::BandmapCursor::Between(1))
-        );
-        // A new spot below both — cursor stays Between, but the
-        // insertion index shifts up by one because a spot was inserted
-        // below the current position.
+        assert!(matches!(
+            st.bandmap_cursors.get(&1),
+            Some(BandmapCursor::Between { freq_hz: 14_025_000 })
+        ));
+        // A new spot below both — cursor stays Between at the same freq.
+        // Under the old index-based model the insertion index would have
+        // shifted; now Between carries freq_hz directly so it's stable.
         add_spot(&mut st, "K0XX", 14_022_000, "CW");
-        // Sorted: K0XX (0), DL1ABC (1), W1AW (2). Rig at 14.025.000 is
-        // still between DL1ABC and W1AW — now at insertion index 2.
-        assert_eq!(
-            st.bandmap_cursors.get(&1).copied(),
-            Some(crate::state::BandmapCursor::Between(2))
+        assert!(matches!(
+            st.bandmap_cursors.get(&1),
+            Some(BandmapCursor::Between { freq_hz: 14_025_000 })
+        ));
+    }
+
+    #[test]
+    fn bandmap_nav_cursor_survives_new_spot_near_rig_freq() {
+        // User reports: after navigating to a spot with Ctrl-Alt-Down,
+        // a new spot arriving near the rig freq sometimes shifts the
+        // cursor off the spot they're trying to work. Next Ctrl-Alt-Down
+        // then lands somewhere unexpected (potentially right back on
+        // the just-worked call). Regression guard: once the cursor is
+        // anchored on `call`, list churn must not move it.
+        let mut st = mk_state();
+        add_spot(&mut st, "DL1ABC", 14_023_000, "CW");
+        add_spot(&mut st, "K5ZD", 14_025_000, "CW");
+        add_spot(&mut st, "W1AW", 14_027_000, "CW");
+        rig_status(&mut st, 1, 14_025_100, "CW", Some(500));
+        let contest = contest_from_id("cqww").unwrap();
+        let macros = Macros::default();
+
+        // Navigate: lands on K5ZD (next Down from the auto-snapped cursor).
+        reduce(
+            &mut st,
+            contest.as_ref(),
+            &macros,
+            AppEvent::BandmapDown { radio: 1 },
         );
+        let before = st.bandmap_cursors.get(&1).cloned();
+        assert!(
+            matches!(&before, Some(BandmapCursor::On { call, .. }) if call == "W1AW"),
+            "seeding assumption: after Down from K5ZD the cursor should land on W1AW, got {before:?}"
+        );
+
+        // A noisy new spot arrives right at the rig's freq. Pre-fix,
+        // snap_all_bandmap_cursors would yank the cursor from W1AW to
+        // the new spot (nearest to rig freq).
+        add_spot(&mut st, "NEW1", 14_025_100, "CW");
+        assert!(
+            matches!(
+                st.bandmap_cursors.get(&1),
+                Some(BandmapCursor::On { call, .. }) if call == "W1AW"
+            ),
+            "cursor must remain anchored to the call the operator navigated to"
+        );
+
+        // And another BandmapDown keeps stepping from W1AW, not the
+        // new spot. New sorted list: DL1ABC, K5ZD, NEW1, W1AW. Down
+        // from W1AW (last) wraps to DL1ABC.
+        reduce(
+            &mut st,
+            contest.as_ref(),
+            &macros,
+            AppEvent::BandmapDown { radio: 1 },
+        );
+        assert!(matches!(
+            st.bandmap_cursors.get(&1),
+            Some(BandmapCursor::On { call, .. }) if call == "DL1ABC"
+        ));
     }
 
     #[test]
@@ -2237,10 +2371,10 @@ mod tests {
             &macros,
             AppEvent::BandmapUp { radio: 1 },
         );
-        assert_eq!(
-            st.bandmap_cursors.get(&1).copied(),
-            Some(crate::state::BandmapCursor::On(0))
-        );
+        assert!(matches!(
+            st.bandmap_cursors.get(&1),
+            Some(BandmapCursor::On { call, .. }) if call == "K5ZD"
+        ));
     }
 
     // ---- Contest-history autopopulate tests --------------------------

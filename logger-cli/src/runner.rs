@@ -736,8 +736,8 @@ fn validate_expectations(artifacts: &RunArtifacts, script: &Script) -> Result<()
 
     if let Some(expected_cursors) = &script.expectations.final_bandmap_cursors {
         for (radio_id, expected) in expected_cursors {
-            let got = artifacts.st.bandmap_cursors.get(radio_id).copied();
-            if got != Some(*expected) {
+            let got = artifacts.st.bandmap_cursors.get(radio_id).cloned();
+            if got.as_ref() != Some(expected) {
                 bail!(
                     "radio {} expected bandmap_cursor {:?}, got {:?}",
                     radio_id,

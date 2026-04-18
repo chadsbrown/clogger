@@ -29,13 +29,18 @@ pub fn render(frame: &mut Frame, area: Rect, app: &AppState, tui: &TuiState, rad
     let mut cache = tui.bandmap_cache.borrow_mut();
     let spots = cache.get_or_build(&app.bandmap, app.bandmap_version, band, mode);
 
-    let cursor = app.bandmap_cursors.get(&radio_id).copied();
-    let highlight_idx = match cursor {
-        Some(BandmapCursor::On(i)) => Some(i),
+    // Resolve the cursor to concrete indices each render. `On` carries
+    // a call (index re-resolved against the current filtered list);
+    // `Between` carries a frequency (insertion point computed here).
+    let cursor = app.bandmap_cursors.get(&radio_id);
+    let highlight_idx: Option<usize> = match cursor {
+        Some(BandmapCursor::On { call, .. }) => spots.iter().position(|s| &s.call == call),
         _ => None,
     };
-    let divider_idx = match cursor {
-        Some(BandmapCursor::Between(i)) => Some(i),
+    let divider_idx: Option<usize> = match cursor {
+        Some(BandmapCursor::Between { freq_hz }) => {
+            Some(spots.partition_point(|s| s.freq_hz < *freq_hz))
+        }
         _ => None,
     };
 
@@ -74,13 +79,9 @@ pub fn render(frame: &mut Frame, area: Rect, app: &AppState, tui: &TuiState, rad
         all_rows.push(divider_row());
     }
 
-    // Scroll target: the cursor row (highlight or divider). For both
-    // variants this is the payload index; divider insertion doesn't
-    // shift it because the divider sits *at* that index.
-    let target = match cursor {
-        Some(BandmapCursor::On(i)) | Some(BandmapCursor::Between(i)) => Some(i),
-        None => None,
-    };
+    // Scroll target: the cursor row (highlight or divider). Whichever
+    // variant is active, we already resolved it to an index above.
+    let target = highlight_idx.or(divider_idx);
     let total = all_rows.len();
     let visible = area.height.saturating_sub(2) as usize;
     let skip = if let Some(c) = target {

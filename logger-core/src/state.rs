@@ -32,15 +32,21 @@ pub struct Spot {
 
 /// Per-radio bandmap cursor.
 ///
-/// The bandmap is a discrete list but the rig is a continuous tuner, so
-/// two visual states are needed. `On` means a spot falls inside the rig's
-/// current receive passband — highlight that row. `Between` means the rig
-/// is parked in clear air — draw a divider at this insertion index.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "snake_case", tag = "kind", content = "index")]
+/// User's bandmap navigation position (or the rig's inferred position
+/// when the user hasn't explicitly navigated). `On` anchors on a specific
+/// callsign so list churn — new spots arriving, old spots expiring —
+/// doesn't drift the cursor off the spot you're trying to work.
+/// `Between` carries the bare frequency for "rig parked in clear air,"
+/// resolved to an insertion point at render time.
+///
+/// Anchoring on call rather than list index is load-bearing: the reducer
+/// previously stored `On(index)`, which silently pointed at a different
+/// call whenever a new spot shifted the sorted list.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind")]
 pub enum BandmapCursor {
-    On(usize),
-    Between(usize),
+    On { call: String, freq_hz: u64 },
+    Between { freq_hz: u64 },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

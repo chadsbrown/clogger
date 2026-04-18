@@ -8,7 +8,7 @@
     ],
     "expectations": {
         "final_bandmap_cursors": {
-            "1": { "kind": "between", "index": 2 }
+            "1": { "kind": "between", "freq_hz": 14026000 }
         }
     }
 }
