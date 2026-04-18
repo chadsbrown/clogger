@@ -473,11 +473,46 @@ pub fn reduce(
                 }
                 None => None,
             };
-            let idx = match (is_down, prev_idx) {
+            let first_idx = match (is_down, prev_idx) {
                 (true, None) => 0,
                 (true, Some(i)) => (i + 1) % len,
                 (false, None) => len - 1,
                 (false, Some(i)) => (i + len - 1) % len,
+            };
+
+            // Optional skip-worked mode: step past consecutive dupes
+            // until we land on an un-worked spot. Stops if we'd wrap
+            // all the way back to `first_idx` without finding one —
+            // in that case every visible spot is worked, so the nav
+            // key becomes a no-op (no cursor/rig change).
+            let idx = if st.bandmap_skip_worked {
+                let mut i = first_idx;
+                let mut steps = 0usize;
+                loop {
+                    let s = &spots[i];
+                    let call_up = s.call.to_ascii_uppercase();
+                    if !dupe_checker.is_dupe(&call_up, band, mode) {
+                        break Some(i);
+                    }
+                    steps += 1;
+                    if steps >= len {
+                        break None;
+                    }
+                    i = if is_down {
+                        (i + 1) % len
+                    } else {
+                        (i + len - 1) % len
+                    };
+                }
+            } else {
+                Some(first_idx)
+            };
+
+            let Some(idx) = idx else {
+                // Every spot on this band+mode is a dupe. Leave the
+                // cursor, rig, and entry untouched so the operator
+                // sees that nothing moved.
+                return Vec::new();
             };
 
             let spot = &spots[idx];
@@ -1054,6 +1089,7 @@ mod tests {
             default_cw_speed: 28,
             serial_counter: None,
             show_passband_qrm: false,
+            bandmap_skip_worked: false,
             bandmap_version: 0,
         }
     }
@@ -2356,6 +2392,111 @@ mod tests {
     }
 
     #[test]
+    fn bandmap_nav_without_skip_worked_lands_on_dupe_spots() {
+        // Control test: with the flag off (default), BandmapDown must
+        // still land on a dupe like it always has.
+        let mut st = mk_state();
+        add_spot(&mut st, "K5ZD", 14_025_000, "CW");
+        add_spot(&mut st, "W1AW", 14_027_000, "CW");
+        rig_status(&mut st, 1, 14_024_000, "CW", Some(500));
+        // Clear the auto-snap Between cursor so the step starts from None.
+        st.bandmap_cursors.clear();
+        let contest = contest_from_id("cqww").unwrap();
+        let macros = Macros::default();
+        // MatchDupeChecker reports K5ZD as a dupe on 20m CW.
+        crate::reducer::reduce(
+            &mut st, contest.as_ref(), &macros,
+            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoContestHistory, &NoScp,
+            AppEvent::BandmapDown { radio: 1 },
+        );
+        assert!(matches!(
+            st.bandmap_cursors.get(&1),
+            Some(BandmapCursor::On { call, .. }) if call == "K5ZD"
+        ));
+    }
+
+    #[test]
+    fn bandmap_nav_skip_worked_jumps_past_dupe() {
+        // Flag on: BandmapDown from nothing skips past K5ZD (dupe) and
+        // lands on W1AW (unworked).
+        let mut st = mk_state();
+        st.bandmap_skip_worked = true;
+        add_spot(&mut st, "K5ZD", 14_025_000, "CW");
+        add_spot(&mut st, "W1AW", 14_027_000, "CW");
+        rig_status(&mut st, 1, 14_024_000, "CW", Some(500));
+        st.bandmap_cursors.clear();
+        let contest = contest_from_id("cqww").unwrap();
+        let macros = Macros::default();
+        crate::reducer::reduce(
+            &mut st, contest.as_ref(), &macros,
+            &MatchDupeChecker, &NoMultChecker, &NoCallHistory, &NoContestHistory, &NoScp,
+            AppEvent::BandmapDown { radio: 1 },
+        );
+        assert!(matches!(
+            st.bandmap_cursors.get(&1),
+            Some(BandmapCursor::On { call, .. }) if call == "W1AW"
+        ));
+    }
+
+    #[test]
+    fn bandmap_nav_skip_worked_is_noop_when_every_spot_is_dupe() {
+        // All spots are dupes: nav key must not change the cursor and
+        // must emit no RigSet.
+        struct AllDupe;
+        impl DupeChecker for AllDupe {
+            fn is_dupe(&self, _: &str, _: &str, _: &str) -> bool { true }
+        }
+        let mut st = mk_state();
+        st.bandmap_skip_worked = true;
+        add_spot(&mut st, "K5ZD", 14_025_000, "CW");
+        add_spot(&mut st, "W1AW", 14_027_000, "CW");
+        rig_status(&mut st, 1, 14_024_000, "CW", Some(500));
+        let before_cursor = st.bandmap_cursors.get(&1).cloned();
+        let contest = contest_from_id("cqww").unwrap();
+        let macros = Macros::default();
+        let effects = crate::reducer::reduce(
+            &mut st, contest.as_ref(), &macros,
+            &AllDupe, &NoMultChecker, &NoCallHistory, &NoContestHistory, &NoScp,
+            AppEvent::BandmapDown { radio: 1 },
+        );
+        assert!(effects.is_empty(), "all-dupes nav must not emit RigSet");
+        assert_eq!(
+            st.bandmap_cursors.get(&1).cloned(),
+            before_cursor,
+            "all-dupes nav must leave the cursor untouched"
+        );
+    }
+
+    #[test]
+    fn bandmap_nav_skip_worked_up_direction_also_skips() {
+        // BandmapUp from nothing wraps to len-1 = W1AW in sorted order
+        // (K5ZD, W1AW). W1AW is unworked → cursor lands there on the
+        // first check. To exercise the skip in Up direction, make W1AW
+        // the dupe instead.
+        struct W1awDupe;
+        impl DupeChecker for W1awDupe {
+            fn is_dupe(&self, call: &str, _: &str, _: &str) -> bool { call == "W1AW" }
+        }
+        let mut st = mk_state();
+        st.bandmap_skip_worked = true;
+        add_spot(&mut st, "K5ZD", 14_025_000, "CW");
+        add_spot(&mut st, "W1AW", 14_027_000, "CW");
+        rig_status(&mut st, 1, 14_024_000, "CW", Some(500));
+        st.bandmap_cursors.clear();
+        let contest = contest_from_id("cqww").unwrap();
+        let macros = Macros::default();
+        crate::reducer::reduce(
+            &mut st, contest.as_ref(), &macros,
+            &W1awDupe, &NoMultChecker, &NoCallHistory, &NoContestHistory, &NoScp,
+            AppEvent::BandmapUp { radio: 1 },
+        );
+        assert!(matches!(
+            st.bandmap_cursors.get(&1),
+            Some(BandmapCursor::On { call, .. }) if call == "K5ZD"
+        ));
+    }
+
+    #[test]
     fn bandmap_up_normalizes_mode_usb_to_ssb() {
         let mut st = mk_state();
         add_spot(&mut st, "K5ZD", 14_200_000, "SSB");
@@ -2658,6 +2799,7 @@ mod tests {
             default_cw_speed: 25,
             serial_counter: None,
             show_passband_qrm: false,
+            bandmap_skip_worked: false,
             bandmap_version: 0,
         }
     }

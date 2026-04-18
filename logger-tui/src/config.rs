@@ -78,6 +78,11 @@ pub struct StableConfig {
     /// reported filter width — set this flag and let the radio tell us.
     #[serde(default)]
     pub show_passband_qrm: bool,
+    /// When true, Ctrl-↑/↓ (and Ctrl-Alt-↑/↓ for R2) skip over bandmap
+    /// spots that are already worked on the target radio's band+mode.
+    /// Default: false.
+    #[serde(default)]
+    pub bandmap_skip_worked: bool,
     /// Enable Enter Sends Message (ESM). Default: true. Set to false if you
     /// prefer to send CW only via F-key macros and have Enter just log.
     #[serde(default = "default_esm_enabled")]
@@ -145,6 +150,7 @@ pub struct Config {
     pub scoreboard: ScoreboardSection,
     pub bandmap: BandmapMode,
     pub show_passband_qrm: bool,
+    pub bandmap_skip_worked: bool,
     pub esm_enabled: bool,
     pub block_dupes: bool,
     pub theme: Option<String>,
@@ -177,6 +183,7 @@ impl Config {
             scoreboard: stable.scoreboard,
             bandmap: stable.bandmap,
             show_passband_qrm: stable.show_passband_qrm,
+            bandmap_skip_worked: stable.bandmap_skip_worked,
             esm_enabled: stable.esm_enabled,
             block_dupes: stable.block_dupes,
             theme: stable.theme,

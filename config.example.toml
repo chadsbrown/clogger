@@ -98,6 +98,13 @@
 # mode-dependent default is used (CW: 500 Hz, SSB: 2400 Hz, DIGITAL: 500 Hz).
 #show_passband_qrm = true
 
+# Bandmap nav skips already-worked stations (default: false)
+# When true, Ctrl-↑/↓ (Ctrl-Alt-↑/↓ for R2) passes over bandmap spots
+# already worked on the target radio's band+mode and lands on the next
+# un-worked spot in the direction of travel. If every visible spot is a
+# dupe, the key is a no-op (no cursor change, no rig retune).
+#bandmap_skip_worked = true
+
 # ---------------------------------------------------------------------------
 # Rig control (optional — omit entire section to run without)
 #

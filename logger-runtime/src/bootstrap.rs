@@ -60,6 +60,9 @@ pub struct SessionConfig {
     /// reported receive filter (or a mode-default fallback); this flag just
     /// toggles the feature on/off.
     pub show_passband_qrm: bool,
+    /// When true, bandmap nav (Ctrl-↑/↓, Ctrl-Alt-↑/↓) skips over spots
+    /// already worked on the target radio's band+mode. Default: false.
+    pub bandmap_skip_worked: bool,
     /// Enable Enter Sends Message (ESM). When false, Enter only logs (no
     /// CW is sent automatically); operators send CW via the F-key macros.
     /// Default: true.
@@ -200,6 +203,7 @@ pub fn bootstrap(config: SessionConfig) -> Result<Session> {
         default_cw_speed: config.default_cw_speed,
         serial_counter: None,
         show_passband_qrm: config.show_passband_qrm,
+        bandmap_skip_worked: config.bandmap_skip_worked,
         bandmap_version: 0,
     };
 

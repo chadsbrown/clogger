@@ -134,6 +134,12 @@ pub struct AppState {
     /// frequency — using the rig's reported receive filter width, or a
     /// mode-dependent default when the backend doesn't report one.
     pub show_passband_qrm: bool,
+    /// When true, `BandmapUp`/`BandmapDown` skips over already-worked
+    /// stations, landing on the next un-worked spot in the direction of
+    /// travel. When every visible spot is a dupe, the key is a no-op
+    /// (no cursor change, no RigSet). Off by default to preserve
+    /// existing muscle memory.
+    pub bandmap_skip_worked: bool,
     /// Monotonic counter that increments on every bandmap mutation (spot
     /// received or withdrawn). Consumers — notably the TUI `BandmapCache` —
     /// compare stored versions against this to detect when cached filtered

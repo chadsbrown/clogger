@@ -299,6 +299,7 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
         default_cw_speed: 28,
         serial_counter: None,
         show_passband_qrm: script.show_passband_qrm,
+        bandmap_skip_worked: false,
         bandmap_version: 0,
     };
     if contest.uses_serial() {

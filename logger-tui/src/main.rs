@@ -203,6 +203,7 @@ async fn main() -> Result<()> {
         cty_path: cli.cty.as_ref().or(config.cty_file.as_ref()).cloned(),
         start_serial: None,
         show_passband_qrm: config.show_passband_qrm,
+        bandmap_skip_worked: config.bandmap_skip_worked,
         esm_enabled: config.esm_enabled,
         block_dupes: config.block_dupes,
         app_tx: app_tx.clone(),
