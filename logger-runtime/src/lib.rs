@@ -4,8 +4,10 @@ pub mod bootstrap;
 pub mod call_history;
 pub mod config;
 pub mod contest_history;
+pub mod cty;
 pub mod dxfeed_adapter;
 pub mod dxfeed_enrichment;
+pub mod dxfeed_entity;
 pub mod keyer_adapter;
 pub mod keyer_task;
 pub mod log_adapter;
@@ -18,6 +20,7 @@ pub mod so2r_adapter;
 pub mod so2r_task;
 
 pub use call_history::CallHistoryDb;
+pub use cty::CtyDb;
 pub use scp::ScpDb;
 pub use config::{
     CabrilloConfig, CategoryConfig, CategoryConfigMode, ScoreboardEndpoint,

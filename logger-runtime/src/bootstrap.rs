@@ -12,6 +12,7 @@ use serde::Deserialize;
 use tokio::sync::mpsc;
 use tracing::warn;
 
+use crate::cty::CtyDb;
 use crate::log_adapter::LogAdapter;
 
 #[derive(Debug, Deserialize, Default)]
@@ -53,6 +54,7 @@ pub struct SessionConfig {
     pub db_path: Option<PathBuf>,
     pub call_history_path: Option<PathBuf>,
     pub scp_path: Option<PathBuf>,
+    pub cty_path: Option<PathBuf>,
     pub start_serial: Option<u32>,
     /// Enable the passband QRM warning. The width comes from the rig's
     /// reported receive filter (or a mode-default fallback); this flag just
@@ -86,6 +88,11 @@ pub struct Session {
     /// that feeds call-completion in the reducer — one file load, two
     /// consumers.
     pub scp: Arc<dyn ScpLookup>,
+    /// Parsed cty.dat (DXCC/entity database). `None` when no `cty_file`
+    /// is configured. Consumed by `spawn_dxfeed_adapter` to drive
+    /// `geo.*` filter rules (continent/zone/entity). Not used elsewhere
+    /// yet; future callers (e.g. bandmap entity display) can take a clone.
+    pub cty: Option<Arc<CtyDb>>,
 }
 
 pub fn bootstrap(config: SessionConfig) -> Result<Session> {
@@ -212,6 +219,7 @@ pub fn bootstrap(config: SessionConfig) -> Result<Session> {
     }
 
     let scp = load_scp(config.scp_path.as_deref());
+    let cty = load_cty(config.cty_path.as_deref())?;
 
     Ok(Session {
         state,
@@ -220,6 +228,7 @@ pub fn bootstrap(config: SessionConfig) -> Result<Session> {
         log_adapter,
         call_history,
         scp,
+        cty,
     })
 }
 
@@ -247,4 +256,18 @@ fn load_scp(path: Option<&Path>) -> Arc<dyn ScpLookup> {
             Arc::new(NoScp)
         }
     }
+}
+
+/// Load cty.dat when configured. Unlike SCP (which degrades to an empty
+/// `NoScp` on failure), a bad cty.dat path is a hard error: the operator
+/// explicitly asked for geo data, and silently running without it would
+/// cause the same silent-drop failure mode that motivated wiring this up
+/// in the first place. Omit `cty_path` entirely to skip.
+fn load_cty(path: Option<&Path>) -> Result<Option<Arc<CtyDb>>> {
+    let Some(path) = path else {
+        return Ok(None);
+    };
+    let db = CtyDb::load(path)
+        .with_context(|| format!("loading cty_file {}", path.display()))?;
+    Ok(Some(Arc::new(db)))
 }

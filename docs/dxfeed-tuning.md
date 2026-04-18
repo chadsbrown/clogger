@@ -165,6 +165,56 @@ calling CQ.
 
 ---
 
+## Geographic filtering (continents, zones, entities)
+
+The `geo.dx.*` and `geo.spotter.*` sections in `filter.json` filter by
+resolved geographic data — continent, CQ zone, ITU zone, DXCC entity.
+These rules **require** a cty.dat file to be loaded; without it, every
+spot's geo fields resolve to None, and any allowlist silently drops every
+spot (dxfeed's default `unknown_policy` is `Neutral`, which treats
+unknown-on-allowlist as a drop).
+
+Configure the database in `config.toml`:
+
+```toml
+cty_file = "/path/to/cty.dat"
+```
+
+Get cty.dat from [country-files.com](https://www.country-files.com/).
+
+Then use geo rules in `filter.json`:
+
+```json
+{
+  "geo": {
+    "dx": {
+      "continent_allow": ["NA"]
+    }
+  }
+}
+```
+
+If the filter uses any geo rule and no `cty_file` is configured, clogger
+refuses to start — the silent-drop failure mode this prevents is
+otherwise invisible.
+
+Continent codes: `NA`, `SA`, `EU`, `AF`, `AS`, `OC`, `AN`.
+
+**Fidelity caveats** (current limitations of the station-data backing):
+
+- `entity_allow` / `entity_deny` match against the canonical DXCC prefix
+  (e.g. `"W"`, `"JA"`) rather than the full entity name
+  (`"United States"`). Use the prefix form until station-data exposes
+  names on lookup.
+- `country_allow` / `country_deny` and `state_allow` / `state_deny` have
+  no data source wired — any spot passed to those rules resolves to None
+  and drops under `Neutral` unknown policy.
+- Zones not listed in cty.dat resolve to `0` rather than unknown, so a
+  `cq_zone_allow: [5]` rule will reject stations whose zone cty.dat
+  doesn't specify.
+
+---
+
 ## Enrichment: LoTW, callbook, memberships
 
 The `enrichment` section in `filter.json` can filter on metadata about

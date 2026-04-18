@@ -12,7 +12,9 @@ use tokio::sync::mpsc;
 use tracing::{info, warn};
 
 use crate::config::DxFeedConfig;
+use crate::cty::CtyDb;
 use crate::dxfeed_enrichment::ScpEnrichment;
+use crate::dxfeed_entity::CtyEntityResolver;
 use logger_core::ScpLookup;
 use std::sync::Arc;
 
@@ -20,6 +22,7 @@ pub async fn spawn_dxfeed_adapter(
     config: &DxFeedConfig,
     tx: mpsc::Sender<AppEvent>,
     scp: Option<Arc<dyn ScpLookup>>,
+    cty: Option<Arc<CtyDb>>,
 ) -> anyhow::Result<()> {
     let mut builder = DxFeedBuilder::new();
 
@@ -40,6 +43,19 @@ pub async fn spawn_dxfeed_adapter(
     // Optional filter pipeline (band/callsign/spotter rules) loaded from JSON.
     if let Some(path) = &config.filter_file {
         let filter = load_filter_file(path)?;
+        // Guard against the silent-drop trap: if the filter uses any
+        // `geo.*` rule but no cty.dat is loaded, every spot's continent
+        // will be None, and an allowlist + Neutral unknown_policy will
+        // drop every spot. Refuse to start rather than run the contest
+        // with an invisible filter failure.
+        if filter_uses_geo(&filter) && cty.is_none() {
+            anyhow::bail!(
+                "dxfeed filter at {} uses `geo.*` rules but no cty_file is \
+                 configured — geo filters require a cty.dat. Set `cty_file` \
+                 in config.toml (or pass --cty) to a country-files.com cty.dat.",
+                path.display()
+            );
+        }
         info!("dxfeed: loaded filter from {}", path.display());
         builder = builder.set_filter(filter);
     }
@@ -60,6 +76,15 @@ pub async fn spawn_dxfeed_adapter(
     if let Some(scp) = scp {
         info!("dxfeed: installing SCP-backed enrichment resolver");
         builder = builder.enrichment_resolver(Box::new(ScpEnrichment::new(scp)));
+    }
+
+    // Entity resolution: when a cty.dat is loaded, wire the resolver so
+    // `geo.*` filter rules (continent_allow, cq_zone_allow, etc.) see
+    // real data. Without this, geo fields resolve to None and any
+    // allowlist silently drops every spot (see filter_uses_geo guard above).
+    if let Some(cty) = cty {
+        info!("dxfeed: installing cty.dat-backed entity resolver");
+        builder = builder.entity_resolver(Box::new(CtyEntityResolver::new(cty)));
     }
 
     let mut feed = builder
@@ -111,6 +136,31 @@ pub(crate) fn load_filter_file(path: &std::path::Path) -> anyhow::Result<FilterC
         .with_context(|| format!("parsing dxfeed filter_file {}", path.display()))
 }
 
+/// Does the filter configure any rule that depends on entity resolution?
+/// If so, a cty.dat must be loaded or every spot's geo fields will be
+/// None — and any allowlist will drop every spot under the default
+/// `unknown_policy: Neutral`.
+fn filter_uses_geo(filter: &FilterConfigSerde) -> bool {
+    use dxfeed::filter::config::EntityFiltersSerde;
+    fn entity_has_rules(e: &EntityFiltersSerde) -> bool {
+        !e.continent_allow.is_empty()
+            || !e.continent_deny.is_empty()
+            || !e.cq_zone_allow.is_empty()
+            || !e.cq_zone_deny.is_empty()
+            || !e.itu_zone_allow.is_empty()
+            || !e.itu_zone_deny.is_empty()
+            || !e.entity_allow.is_empty()
+            || !e.entity_deny.is_empty()
+            || !e.country_allow.is_empty()
+            || !e.country_deny.is_empty()
+            || !e.state_allow.is_empty()
+            || !e.state_deny.is_empty()
+    }
+    filter.geo.require_resolvers
+        || entity_has_rules(&filter.geo.dx)
+        || entity_has_rules(&filter.geo.spotter)
+}
+
 fn dxmode_to_str(mode: DxMode) -> String {
     match mode {
         DxMode::CW => "CW",
@@ -125,7 +175,36 @@ fn dxmode_to_str(mode: DxMode) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::load_filter_file;
+    use super::{filter_uses_geo, load_filter_file};
+    use dxfeed::domain::Continent;
+    use dxfeed::filter::config::FilterConfigSerde;
+
+    #[test]
+    fn filter_without_geo_does_not_require_cty() {
+        let cfg = FilterConfigSerde::default();
+        assert!(!filter_uses_geo(&cfg));
+    }
+
+    #[test]
+    fn filter_with_continent_allow_requires_cty() {
+        let mut cfg = FilterConfigSerde::default();
+        cfg.geo.dx.continent_allow.insert(Continent::NA);
+        assert!(filter_uses_geo(&cfg));
+    }
+
+    #[test]
+    fn filter_with_require_resolvers_requires_cty() {
+        let mut cfg = FilterConfigSerde::default();
+        cfg.geo.require_resolvers = true;
+        assert!(filter_uses_geo(&cfg));
+    }
+
+    #[test]
+    fn filter_with_spotter_geo_requires_cty() {
+        let mut cfg = FilterConfigSerde::default();
+        cfg.geo.spotter.cq_zone_allow.insert(5);
+        assert!(filter_uses_geo(&cfg));
+    }
 
     #[test]
     fn filter_file_missing_returns_error() {

@@ -32,6 +32,15 @@
 # (can also be set via --scp CLI flag)
 #scp_file = "master.scp"
 
+# cty.dat file (DXCC/entity database from country-files.com) for resolving
+# callsigns to continent, CQ/ITU zone, and DXCC entity. Required when the
+# dxfeed filter uses any `geo.*` rule (continent_allow, cq_zone_allow,
+# entity_allow, etc.) — without this, geo fields resolve to None and an
+# allowlist silently drops every spot. Also used for future bandmap
+# entity display.
+# (can also be set via --cty CLI flag)
+#cty_file = "cty.dat"
+
 # Color theme (default: "default" — matches the original hardcoded colors)
 # Built-in themes: default, dracula, one-dark-pro, nord, catppuccin-mocha,
 # catppuccin-latte, gruvbox-dark, gruvbox-light, tokyo-night, solarized-dark,
@@ -208,6 +217,12 @@
 # RBN spots, since a bogus/misdecoded call almost never matches SCP.
 # Other enrichment signals (lotw, in_callbook, memberships) return "unknown"
 # and are no-ops until a resolver for them is wired up.
+#
+# Geo: filter.json's `geo.dx.*` / `geo.spotter.*` rules (continent_allow,
+# cq_zone_allow, entity_allow, etc.) require a cty.dat — point `cty_file`
+# above at a country-files.com cty.dat. If a filter uses any geo rule and
+# no cty_file is configured, clogger refuses to start rather than silently
+# drop every spot.
 #[dxfeed]
 #filter_file = "/home/n9unx/clogger/dxfeed-filter.json"
 #

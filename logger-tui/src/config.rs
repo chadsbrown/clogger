@@ -31,6 +31,11 @@ pub struct Cli {
     #[arg(long)]
     pub scp: Option<PathBuf>,
 
+    /// cty.dat file (overrides cty_file in config file). Required when
+    /// the dxfeed filter uses any `geo.*` rule (continent/zone/entity).
+    #[arg(long)]
+    pub cty: Option<PathBuf>,
+
     /// Enable debug-level logging to clogger.log (default: info)
     #[arg(long)]
     pub debug: bool,
@@ -47,6 +52,9 @@ pub struct StableConfig {
     pub rst_sent: String,
     pub my_name: Option<String>,
     pub scp_file: Option<PathBuf>,
+    /// Path to a cty.dat DXCC/entity database. Required when the dxfeed
+    /// filter uses any `geo.*` rule (continent/zone/entity/country/state).
+    pub cty_file: Option<PathBuf>,
     #[serde(default)]
     pub cursor_style: CursorStyle,
     /// Multiple rigs supported via `[[rig]]` array of tables in TOML.
@@ -122,6 +130,7 @@ pub struct Config {
     pub db_path: Option<PathBuf>,
     pub call_history_file: Option<PathBuf>,
     pub scp_file: Option<PathBuf>,
+    pub cty_file: Option<PathBuf>,
     pub cursor_style: CursorStyle,
     pub macros: Option<logger_runtime::MacroOverrides>,
     pub rigs: Vec<logger_runtime::RigConfig>,
@@ -152,6 +161,7 @@ impl Config {
             db_path: contest.db_path,
             call_history_file: contest.call_history_file,
             scp_file: stable.scp_file,
+            cty_file: stable.cty_file,
             cursor_style: stable.cursor_style,
             macros: contest.macros,
             rigs: stable.rigs,
