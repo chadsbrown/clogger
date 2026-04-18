@@ -32,7 +32,13 @@ impl CtyEntityResolver {
 
 impl EntityResolver for CtyEntityResolver {
     fn resolve(&self, callsign: &str) -> Option<EntityInfo> {
-        let resolved = self.cty.inner.lookup(callsign)?;
+        // DX cluster / RBN spotter calls arrive with packet SSID suffixes
+        // like `W3LPL-#` or `AA4VV-2`. station-data's callsign validator
+        // rejects anything containing `-`, so every such call would resolve
+        // to None — and a `geo.spotter.continent_allow` filter would drop
+        // ~every RBN spot. Strip the SSID to the base callsign first.
+        let base = strip_ssid(callsign);
+        let resolved = self.cty.inner.lookup(base)?;
         let continent = parse_continent(&resolved.continent)?;
         Some(EntityInfo {
             entity_name: resolved.dxcc.clone(),
@@ -43,6 +49,13 @@ impl EntityResolver for CtyEntityResolver {
             lon: 0.0,
             primary_prefix: resolved.dxcc,
         })
+    }
+}
+
+fn strip_ssid(call: &str) -> &str {
+    match call.find('-') {
+        Some(i) => &call[..i],
+        None => call,
     }
 }
 
@@ -94,5 +107,25 @@ Japan:                              25:  45:  AS:   36.24: -139.00:    -9.0:  JA
     fn unknown_prefix_returns_none() {
         let r = resolver();
         assert!(r.resolve("ZZ9ZZZ").is_none());
+    }
+
+    /// Regression: RBN and packet cluster spotter calls arrive with
+    /// SSID suffixes like `W3LPL-#` or `W3LPL-2`. station-data's
+    /// `is_plausible_callsign` rejects anything containing `-`, so
+    /// before this fix every skimmer call resolved to None — and a
+    /// `geo.spotter.continent_allow` filter dropped essentially every
+    /// RBN spot.
+    #[test]
+    fn rbn_ssid_suffix_resolves_via_base_call() {
+        let r = resolver();
+        let info = r.resolve("W3LPL-2").expect("W3LPL-2 should resolve to W");
+        assert_eq!(info.continent, Continent::NA);
+    }
+
+    #[test]
+    fn ssid_suffix_also_stripped_for_dx_calls() {
+        let r = resolver();
+        let info = r.resolve("JA1ABC-3").expect("JA1ABC-3 should resolve");
+        assert_eq!(info.continent, Continent::AS);
     }
 }
