@@ -371,12 +371,22 @@ pub fn reduce(
                 }
             }
             Key::F12 => {
+                let mode = st
+                    .radios
+                    .get(&st.focused_radio)
+                    .map(|r| normalize_mode(r.mode.as_str()))
+                    .unwrap_or("CW");
                 let entry = st.focused_entry_mut();
                 entry.clear_values();
                 entry.esm_step = EsmStep::Idle;
                 entry.scp_matches.clear();
                 entry.scp_n1_matches.clear();
                 entry.scp_cycle_index = None;
+                // `clear_values` wipes the RST field along with everything
+                // else. Without this reapply, a later bandmap-nav autopopulate
+                // (which seeds the call but not RST) would leave the entry
+                // ready to log a QSO with blank RST.
+                crate::entry::esm::apply_default_rst(entry, contest, mode);
                 Vec::new()
             }
             Key::Equal => {
@@ -487,6 +497,18 @@ pub fn reduce(
 
                 entry.focus = 0;
                 entry.scp_cycle_index = None;
+
+                // Guard against logging a QSO with blank RST when the
+                // entry was previously wiped (e.g. F12 before this fix, or
+                // a manual RST delete). `apply_default_rst` only fills
+                // empty fields, so it's a no-op in the normal case.
+                let mode = st
+                    .radios
+                    .get(&target)
+                    .map(|r| normalize_mode(r.mode.as_str()))
+                    .unwrap_or("CW");
+                let entry = st.focused_entry_mut();
+                crate::entry::esm::apply_default_rst(entry, contest, mode);
             }
 
             recompute_feedback(st, dupe_checker, mult_checker);
@@ -1120,6 +1142,67 @@ mod tests {
             AppEvent::KeyPress { key: Key::Space },
         );
         assert_eq!(st.focused_entry_mut().focus, 1);
+    }
+
+    #[test]
+    fn f12_wipes_entry_but_keeps_rst_populated() {
+        // Regression: before this was fixed, F12 cleared RST and never
+        // reapplied the default, so a subsequent bandmap-nav autopopulate
+        // could log a QSO with blank RST.
+        let contest = contest_from_id("cqww").unwrap();
+        let mut st = mk_state();
+        let macros = Macros::default();
+        st.focused_entry_mut().fields[0].value = "K1ABC".to_string();
+
+        reduce(
+            &mut st,
+            contest.as_ref(),
+            &macros,
+            AppEvent::KeyPress { key: Key::F12 },
+        );
+        assert_eq!(st.focused_entry().fields[0].value, "");
+        assert_eq!(
+            st.focused_entry().fields[1].value, "599",
+            "F12 must reapply default RST so the next QSO isn't logged blank"
+        );
+    }
+
+    #[test]
+    fn bandmap_nav_fills_rst_when_entry_was_wiped() {
+        // Regression: F12 + bandmap-nav used to autopopulate the call
+        // field but leave RST empty, letting the operator log a QSO with
+        // no RST. BandmapUp/Down now reapplies the default on empty.
+        let contest = contest_from_id("cqww").unwrap();
+        let mut st = mk_state();
+        let macros = Macros::default();
+        st.radios.insert(1, crate::state::RadioState {
+            freq_hz: 14_025_000,
+            mode: "CW".to_string(),
+            is_ptt: false,
+            cw_speed: 28,
+            filter_width_hz: None,
+        });
+        st.bandmap.push(crate::state::Spot {
+            call: "W1AW".to_string(),
+            freq_hz: 14_030_000,
+            mode: "CW".to_string(),
+        });
+
+        // Simulate the post-F12 state: RST blank.
+        st.focused_entry_mut().fields[1].value.clear();
+
+        reduce(
+            &mut st,
+            contest.as_ref(),
+            &macros,
+            AppEvent::BandmapDown { radio: 1 },
+        );
+
+        assert_eq!(st.focused_entry().fields[0].value, "W1AW");
+        assert_eq!(
+            st.focused_entry().fields[1].value, "599",
+            "BandmapDown must reapply default RST when the field is blank"
+        );
     }
 
     #[test]
