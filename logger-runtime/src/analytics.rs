@@ -18,6 +18,10 @@ pub struct RateInfo {
     pub last_10_minutes: Option<f64>,
     pub last_100_minutes: Option<f64>,
     pub rate_per_hour: u32,
+    /// Seconds elapsed since the most recent (non-void) logged QSO.
+    /// `None` when the log is empty. Used by the rate panel to surface
+    /// stall time — a slow Run goes quickly without it.
+    pub secs_since_last_qso: Option<u64>,
 }
 
 #[derive(Default)]
@@ -120,9 +124,14 @@ pub fn compute_rate(log_adapter: &LogAdapter, now_ms: u64) -> RateInfo {
         _ => 0,
     };
 
+    let secs_since_last_qso = timestamps
+        .last()
+        .map(|&t| now_ms.saturating_sub(t) / 1000);
+
     RateInfo {
         last_10_minutes,
         last_100_minutes,
         rate_per_hour,
+        secs_since_last_qso,
     }
 }

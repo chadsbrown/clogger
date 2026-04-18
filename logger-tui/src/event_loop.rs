@@ -85,6 +85,7 @@ pub async fn run(
         bandmap_mode: conn.bandmap_mode,
         cw_echo_enabled,
         tx_radio: state.focused_radio,
+        rx_mode: so2r_default_rx_mode,
         theme,
         ..Default::default()
     };
@@ -123,6 +124,7 @@ pub async fn run(
                                 logger_core::So2rRxMode::Mono
                             }
                         };
+                        tui_state.rx_mode = so2r_default_rx_mode;
                         if let Some(tx) = so2r_tx.as_ref() {
                             let _ = tx.try_send(logger_runtime::So2rCmd::SetRx {
                                 radio: state.focused_radio,

@@ -5,6 +5,7 @@ pub mod export_modal;
 pub mod log_tail;
 pub mod rate_box;
 pub mod score_box;
+pub mod so2r_box;
 pub mod status_bar;
 
 use logger_core::AppState;
@@ -75,20 +76,42 @@ pub fn render(frame: &mut Frame, app: &AppState, tui: &TuiState) {
         .split(cols[1])
     };
 
-    // Left: score + available + rate
+    // Left: score + available + rate + [SO2R when configured]. The SO2R
+    // panel only appears when the operator configured an OTRSP switch —
+    // non-SO2R setups keep the classic 3-box layout with no visual cost.
     let avail_height = tui.avail.by_band.len() as u16 + 4; // header + band rows + totals + 2 borders
-    let left = Layout::vertical([
-        Constraint::Min(4),
-        Constraint::Length(avail_height),
-        Constraint::Length(5),
-    ])
-    .split(cols[0]);
+    let left = if tui.so2r_configured {
+        Layout::vertical([
+            Constraint::Min(4),
+            Constraint::Length(avail_height),
+            Constraint::Length(6), // Rate: 4 rows + 2 borders
+            Constraint::Length(5), // SO2R: 3 rows + 2 borders
+        ])
+        .split(cols[0])
+    } else {
+        Layout::vertical([
+            Constraint::Min(4),
+            Constraint::Length(avail_height),
+            Constraint::Length(6),
+        ])
+        .split(cols[0])
+    };
 
     let theme = &tui.theme;
 
     score_box::render(frame, left[0], &tui.score, theme);
     avail_box::render(frame, left[1], &tui.avail, theme);
     rate_box::render(frame, left[2], &tui.rate, theme);
+    if tui.so2r_configured {
+        so2r_box::render(
+            frame,
+            left[3],
+            app.focused_radio,
+            tui.tx_radio,
+            tui.rx_mode,
+            theme,
+        );
+    }
 
     // Center: error (top of filler) + log + entry R1 + [entry R2] + scp
     if let Some(ref msg) = tui.error_message {

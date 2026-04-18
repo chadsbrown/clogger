@@ -43,6 +43,11 @@ pub struct TuiState {
     /// Which radio is currently routed for TX (independent of entry focus).
     /// Updated by dispatch_effects when CwSend is sent to a different radio.
     pub tx_radio: RadioId,
+    /// Current SO2R RX audio routing mode. Mirrored from the event loop's
+    /// `so2r_default_rx_mode` so the status panel can render L/R ear
+    /// routing without reaching into the event loop. Rendered only when
+    /// `so2r_configured` is true.
+    pub rx_mode: logger_core::So2rRxMode,
     pub log_display: Vec<LogRow>,
     pub worked_calls: HashSet<String>,
     pub mult_calls: HashSet<String>,
@@ -82,6 +87,7 @@ impl Default for TuiState {
             cw_echo_enabled: false,
             cw_transmitting: false,
             tx_radio: 1,
+            rx_mode: logger_core::So2rRxMode::Mono,
             log_display: Vec::new(),
             worked_calls: HashSet::new(),
             mult_calls: HashSet::new(),
