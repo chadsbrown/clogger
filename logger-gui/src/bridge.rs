@@ -488,113 +488,118 @@ fn dispatch_log_only(session: &mut Session, effects: Vec<Effect>) {
 /// persist errors). Same shape regardless of whether real adapters are
 /// wired; the channel just stays empty when nothing is producing.
 pub fn adapter_events() -> Subscription<AppEvent> {
-    Subscription::run_with_id(
-        "adapter-events",
-        iced::stream::channel(64, |output| async move {
-            let Some(rx_slot) = APP_RX.get() else {
-                tracing::warn!("APP_RX not initialized");
-                std::future::pending::<()>().await;
-                return;
-            };
-            let Some(mut rx) = rx_slot.lock().ok().and_then(|mut g| g.take()) else {
-                tracing::warn!("APP_RX already taken; subscription idle");
-                std::future::pending::<()>().await;
-                return;
-            };
-            let mut output = output;
-            while let Some(ev) = rx.recv().await {
-                if output.send(ev).await.is_err() {
-                    break;
-                }
+    // iced 0.14's `Subscription::run` takes a `fn` pointer (not a closure)
+    // as the stream builder, so each subscription needs a top-level fn
+    // that produces its own stream. The fn pointer's identity serves as
+    // the subscription id; iced re-uses the same subscription across
+    // renders as long as we keep passing the same fn.
+    Subscription::run(adapter_events_stream)
+}
+
+fn adapter_events_stream() -> impl iced::futures::Stream<Item = AppEvent> {
+    iced::stream::channel(64, async |mut output| {
+        let Some(rx_slot) = APP_RX.get() else {
+            tracing::warn!("APP_RX not initialized");
+            std::future::pending::<()>().await;
+            return;
+        };
+        let Some(mut rx) = rx_slot.lock().ok().and_then(|mut g| g.take()) else {
+            tracing::warn!("APP_RX already taken; subscription idle");
+            std::future::pending::<()>().await;
+            return;
+        };
+        while let Some(ev) = rx.recv().await {
+            if output.send(ev).await.is_err() {
+                break;
             }
-        }),
-    )
+        }
+    })
 }
 
 /// CondX snapshot subscription. Only emits when the user's config enables
 /// CondX polling AND `spawn_adapters` has stashed the receiver.
 pub fn condx_events() -> Subscription<CondXSnapshot> {
-    Subscription::run_with_id(
-        "condx-events",
-        iced::stream::channel(8, |output| async move {
-            let Some(rx_slot) = CONDX_RX.get() else {
-                std::future::pending::<()>().await;
-                return;
-            };
-            let Some(mut rx) = rx_slot.lock().ok().and_then(|mut g| g.take()) else {
-                std::future::pending::<()>().await;
-                return;
-            };
-            let mut output = output;
-            while let Some(snap) = rx.recv().await {
-                if output.send(snap).await.is_err() {
-                    break;
-                }
+    Subscription::run(condx_events_stream)
+}
+
+fn condx_events_stream() -> impl iced::futures::Stream<Item = CondXSnapshot> {
+    iced::stream::channel(8, async |mut output| {
+        let Some(rx_slot) = CONDX_RX.get() else {
+            std::future::pending::<()>().await;
+            return;
+        };
+        let Some(mut rx) = rx_slot.lock().ok().and_then(|mut g| g.take()) else {
+            std::future::pending::<()>().await;
+            return;
+        };
+        while let Some(snap) = rx.recv().await {
+            if output.send(snap).await.is_err() {
+                break;
             }
-        }),
-    )
+        }
+    })
 }
 
 /// Scoreboard-status subscription. Emits on every status transition
 /// (Idle → Ok / Failing). Only populated when the scoreboard adapter is
 /// spawned.
 pub fn scoreboard_events() -> Subscription<ScoreboardStatus> {
-    Subscription::run_with_id(
-        "scoreboard-events",
-        iced::stream::channel(8, |output| async move {
-            let Some(rx_slot) = SCOREBOARD_STATUS_RX.get() else {
-                std::future::pending::<()>().await;
-                return;
-            };
-            let Some(mut rx) = rx_slot.lock().ok().and_then(|mut g| g.take()) else {
-                std::future::pending::<()>().await;
-                return;
-            };
-            let mut output = output;
-            // Emit the current value on start, then on every change.
-            let initial = *rx.borrow();
-            if output.send(initial).await.is_err() {
-                return;
+    Subscription::run(scoreboard_events_stream)
+}
+
+fn scoreboard_events_stream() -> impl iced::futures::Stream<Item = ScoreboardStatus> {
+    iced::stream::channel(8, async |mut output| {
+        let Some(rx_slot) = SCOREBOARD_STATUS_RX.get() else {
+            std::future::pending::<()>().await;
+            return;
+        };
+        let Some(mut rx) = rx_slot.lock().ok().and_then(|mut g| g.take()) else {
+            std::future::pending::<()>().await;
+            return;
+        };
+        // Emit the current value on start, then on every change.
+        let initial = *rx.borrow();
+        if output.send(initial).await.is_err() {
+            return;
+        }
+        while rx.changed().await.is_ok() {
+            let v = *rx.borrow();
+            if output.send(v).await.is_err() {
+                break;
             }
-            while rx.changed().await.is_ok() {
-                let v = *rx.borrow();
-                if output.send(v).await.is_err() {
-                    break;
-                }
-            }
-        }),
-    )
+        }
+    })
 }
 
 /// Keyer-echo subscription. Only emits when a keyer is configured AND
 /// `cw_echo = true` in the keyer config.
 pub fn keyer_events() -> Subscription<KeyerEvent> {
-    Subscription::run_with_id(
-        "keyer-events",
-        iced::stream::channel(64, |output| async move {
-            let Some(rx_slot) = KEYER_RX.get() else {
-                std::future::pending::<()>().await;
-                return;
-            };
-            let Some(mut rx) = rx_slot.lock().ok().and_then(|mut g| g.take()) else {
-                std::future::pending::<()>().await;
-                return;
-            };
-            let mut output = output;
-            loop {
-                match rx.recv().await {
-                    Ok(ev) => {
-                        if output.send(ev).await.is_err() {
-                            break;
-                        }
+    Subscription::run(keyer_events_stream)
+}
+
+fn keyer_events_stream() -> impl iced::futures::Stream<Item = KeyerEvent> {
+    iced::stream::channel(64, async |mut output| {
+        let Some(rx_slot) = KEYER_RX.get() else {
+            std::future::pending::<()>().await;
+            return;
+        };
+        let Some(mut rx) = rx_slot.lock().ok().and_then(|mut g| g.take()) else {
+            std::future::pending::<()>().await;
+            return;
+        };
+        loop {
+            match rx.recv().await {
+                Ok(ev) => {
+                    if output.send(ev).await.is_err() {
+                        break;
                     }
-                    Err(broadcast::error::RecvError::Lagged(n)) => {
-                        tracing::warn!(skipped = n, "keyer broadcast lagged");
-                    }
-                    Err(broadcast::error::RecvError::Closed) => break,
                 }
+                Err(broadcast::error::RecvError::Lagged(n)) => {
+                    tracing::warn!(skipped = n, "keyer broadcast lagged");
+                }
+                Err(broadcast::error::RecvError::Closed) => break,
             }
-        }),
-    )
+        }
+    })
 }
 

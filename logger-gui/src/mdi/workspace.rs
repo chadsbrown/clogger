@@ -343,7 +343,7 @@ impl Workspace {
         order.sort_by_key(|p| p.z);
 
         let mut layers: Vec<Element<'a, M>> = Vec::with_capacity(order.len() + 1);
-        let background: Element<Message> = container(Space::new(Length::Fill, Length::Fill))
+        let background: Element<Message> = container(Space::new().width(Length::Fill).height(Length::Fill))
             .width(Length::Fill)
             .height(Length::Fill)
             .style(|t: &Theme| {
@@ -369,7 +369,7 @@ impl Workspace {
 
 fn toolbar_button(pane: &Pane) -> iced::widget::Button<'_, Message> {
     let visible = pane.visible;
-    let label = text(pane.title.clone()).size(12);
+    let label = text(pane.title.clone()).size(12.0);
     button(label)
         .padding([4, 10])
         .on_press(Message::Toggle(pane.id))
@@ -414,7 +414,7 @@ fn pane_view<'a, M>(
 where
     M: 'a + Clone,
 {
-    let title_text = container(text(pane.title.clone()).size(13))
+    let title_text = container(text(pane.title.clone()).size(13.0))
         .padding([2, 10])
         .width(Length::Fill)
         .height(TITLE_H)
@@ -448,7 +448,7 @@ where
         .on_press(wrap(Message::StartMove(pane.id)))
         .interaction(mouse::Interaction::Grab);
 
-    let close_btn = button(text("✕").size(12))
+    let close_btn = button(text("✕").size(12.0))
         .padding([0, 6])
         .on_press(wrap(Message::Close(pane.id)))
         .style(|t: &Theme, status| {
@@ -479,7 +479,7 @@ where
     let body_area = mouse_area(body).on_press(wrap(Message::PaneClicked(pane.id)));
 
     let resize_handle = mouse_area(
-        container(text("◢").size(12).color(Color::from_rgb(0.6, 0.6, 0.6)))
+        container(text("◢").size(12.0).color(Color::from_rgb(0.6, 0.6, 0.6)))
             .padding(0)
             .width(RESIZE)
             .height(RESIZE)
@@ -489,7 +489,7 @@ where
     .on_press(wrap(Message::StartResize(pane.id)))
     .interaction(mouse::Interaction::ResizingDiagonallyDown);
 
-    let footer = row![Space::new(Length::Fill, RESIZE), resize_handle];
+    let footer = row![Space::new().width(Length::Fill).height(RESIZE), resize_handle];
 
     container(column![title_bar, body_area, footer].spacing(0))
         .width(Length::Fill)

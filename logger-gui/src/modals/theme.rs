@@ -19,7 +19,7 @@ pub fn view<'a, M: 'a + Clone + 'static>(
         tiles.push(tile(t, t.to_string() == current_name, on_select).into());
     }
 
-    let close = button(text("✕").size(14))
+    let close = button(text("✕").size(14.0))
         .padding([0, 8])
         .on_press(on_close.clone())
         .style(|t: &Theme, status| {
@@ -42,7 +42,7 @@ pub fn view<'a, M: 'a + Clone + 'static>(
 
     let header = row![
         text("Choose a theme").size(style::TEXT_HEADER),
-        Space::with_width(Length::Fill),
+        Space::new().width(Length::Fill),
         close,
     ]
     .align_y(iced::alignment::Vertical::Center);
@@ -50,7 +50,7 @@ pub fn view<'a, M: 'a + Clone + 'static>(
     let body: Element<M> = container(
         column![
             header,
-            Space::with_height(10),
+            Space::new().height(10),
             scrollable(
                 column(split_into_rows(tiles, 3))
                     .spacing(6)
@@ -58,7 +58,7 @@ pub fn view<'a, M: 'a + Clone + 'static>(
             )
             .width(Length::Fill)
             .height(Length::Fill),
-            Space::with_height(8),
+            Space::new().height(8),
             text(format!("Current: {current_name}"))
                 .size(style::TEXT_LABEL)
                 .style(style::muted),
@@ -101,7 +101,7 @@ fn tile<'a, M: 'a + Clone + 'static>(
     let inner = container(
         column![
             text(name).size(style::TEXT_BODY),
-            Space::with_height(6),
+            Space::new().height(6),
             row![
                 swatch(theme.extended_palette().primary.strong.color),
                 swatch(theme.extended_palette().success.base.color),
@@ -151,7 +151,7 @@ fn tile<'a, M: 'a + Clone + 'static>(
 }
 
 fn swatch<'a, M: 'a>(color: Color) -> Element<'a, M> {
-    container(Space::new(Length::Fill, Length::Fill))
+    container(Space::new().width(Length::Fill).height(Length::Fill))
         .width(Length::Fixed(14.0))
         .height(Length::Fixed(14.0))
         .style(move |_t: &Theme| container::Style {
@@ -181,7 +181,7 @@ fn split_into_rows<'a, M: 'a>(
     if !current.is_empty() {
         // Pad the final partial row so tiles keep a consistent width.
         while current.len() < per_row {
-            current.push(Space::with_width(Length::Fill).into());
+            current.push(Space::new().width(Length::Fill).into());
         }
         out.push(row(current).spacing(6).into());
     }

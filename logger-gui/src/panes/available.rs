@@ -25,9 +25,9 @@ pub fn view<'a, M: 'a>(state: &'a AppState, log: &'a LogAdapter) -> Element<'a, 
     );
 
     let header = row![
-        text("BAND").size(11).style(style::muted).width(Length::Fixed(60.0)),
-        text("Q").size(11).style(style::muted).width(Length::Fixed(50.0)),
-        text("MULT").size(11).style(style::muted).width(Length::Fill),
+        text("BAND").size(11.0).style(style::muted).width(Length::Fixed(60.0)),
+        text("Q").size(11.0).style(style::muted).width(Length::Fixed(50.0)),
+        text("MULT").size(11.0).style(style::muted).width(Length::Fill),
     ]
     .spacing(4);
 
@@ -40,15 +40,15 @@ pub fn view<'a, M: 'a>(state: &'a AppState, log: &'a LogAdapter) -> Element<'a, 
         rows.push(
             row![
                 text(band.clone())
-                    .size(12)
+                    .size(12.0)
                     .style(style::body)
                     .width(Length::Fixed(60.0)),
                 text(format!("{}", qsos))
-                    .size(12)
+                    .size(12.0)
                     .style(style::body)
                     .width(Length::Fixed(50.0)),
                 text(format!("{}", mults))
-                    .size(12)
+                    .size(12.0)
                     .style(move |t: &Theme| if mult_is_present {
                         iced::widget::text::Style {
                             color: Some(style::MULT_COLOR),
@@ -65,7 +65,7 @@ pub fn view<'a, M: 'a>(state: &'a AppState, log: &'a LogAdapter) -> Element<'a, 
     if rows.is_empty() {
         rows.push(
             text("(no available spots)")
-                .size(12)
+                .size(12.0)
                 .style(style::very_muted)
                 .into(),
         );
@@ -73,15 +73,15 @@ pub fn view<'a, M: 'a>(state: &'a AppState, log: &'a LogAdapter) -> Element<'a, 
 
     let totals = row![
         text("TOTAL")
-            .size(12)
+            .size(12.0)
             .style(style::body)
             .width(Length::Fixed(60.0)),
         text(format!("{}", info.total_qsos))
-            .size(12)
+            .size(12.0)
             .style(style::body)
             .width(Length::Fixed(50.0)),
         text(format!("{}", info.total_mults))
-            .size(12)
+            .size(12.0)
             .style(style::body)
             .width(Length::Fill),
     ]
@@ -91,9 +91,9 @@ pub fn view<'a, M: 'a>(state: &'a AppState, log: &'a LogAdapter) -> Element<'a, 
     container(
         column![
             header,
-            Space::with_height(2),
+            Space::new().height(2),
             column(rows).spacing(2),
-            Space::with_height(4),
+            Space::new().height(4),
             totals,
         ]
         .spacing(0),

@@ -455,7 +455,7 @@ fn view(state: &App) -> Element<'_, Message> {
         .error_banner
         .as_ref()
         .map(|msg| error_banner_view(msg.clone()))
-        .unwrap_or_else(|| iced::widget::Space::with_height(0).into());
+        .unwrap_or_else(|| iced::widget::Space::new().height(0).into());
     let main = state.workspace.view(
         |pane| body_for(state, pane),
         // Stack the banner on top of the status bar at the bottom so critical
@@ -468,7 +468,7 @@ fn view(state: &App) -> Element<'_, Message> {
         use iced::widget::{container, mouse_area, stack, Space};
         use iced::{Background, Color, Length};
         let backdrop: Element<Message> = mouse_area(
-            container(Space::new(Length::Fill, Length::Fill))
+            container(Space::new().width(Length::Fill).height(Length::Fill))
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .style(|_| iced::widget::container::Style {
@@ -496,11 +496,11 @@ fn error_banner_view(msg: String) -> Element<'static, Message> {
     container(
         row![
             text("⚠")
-                .size(14)
+                .size(14.0)
                 .color(Color::WHITE),
-            text(msg).size(12).color(Color::WHITE),
-            Space::with_width(Length::Fill),
-            button(text("✕").size(12).color(Color::WHITE))
+            text(msg).size(12.0).color(Color::WHITE),
+            Space::new().width(Length::Fill),
+            button(text("✕").size(12.0).color(Color::WHITE))
                 .padding([0, 8])
                 .on_press(Message::DismissError)
                 .style(|_t, _status| iced::widget::button::Style {
@@ -659,19 +659,19 @@ fn status_bar(state: &App) -> Element<'_, Message> {
     // Palette glyph — opens the theme picker modal. Single entry point
     // instead of the old binary dark/light toggle, since iced ships ~20
     // themes and we want them all reachable.
-    let theme_btn = iced::widget::button(text("🎨").size(12))
+    let theme_btn = iced::widget::button(text("🎨").size(12.0))
         .padding([0, 6])
         .on_press(Message::OpenModal(modals::Modal::ThemePicker))
         .style(icon_btn_style);
-    let help_btn = iced::widget::button(text("?").size(12))
+    let help_btn = iced::widget::button(text("?").size(12.0))
         .padding([0, 6])
         .on_press(Message::OpenModal(modals::Modal::Help))
         .style(icon_btn_style);
-    let font_down = iced::widget::button(text("A−").size(12))
+    let font_down = iced::widget::button(text("A−").size(12.0))
         .padding([0, 6])
         .on_press(Message::FontScaleDown)
         .style(icon_btn_style);
-    let font_up = iced::widget::button(text("A+").size(12))
+    let font_up = iced::widget::button(text("A+").size(12.0))
         .padding([0, 6])
         .on_press(Message::FontScaleUp)
         .style(icon_btn_style);
@@ -721,10 +721,10 @@ fn status_bar(state: &App) -> Element<'_, Message> {
     }
 
     let mut bar = row![
-        text(label).size(12).color(Color::from_rgb(0.85, 0.85, 0.9)),
-        Space::with_width(Length::Fill),
-        text(utc).size(12).color(Color::from_rgb(0.95, 0.95, 0.7)),
-        Space::with_width(Length::Fill),
+        text(label).size(12.0).color(Color::from_rgb(0.85, 0.85, 0.9)),
+        Space::new().width(Length::Fill),
+        text(utc).size(12.0).color(Color::from_rgb(0.95, 0.95, 0.7)),
+        Space::new().width(Length::Fill),
     ]
     .spacing(8)
     .align_y(iced::alignment::Vertical::Center);
@@ -779,7 +779,7 @@ fn indicator_owned<'a>(label: String, state: IndicatorState) -> Element<'a, Mess
         IndicatorState::Ok => (Color::from_rgb(0.18, 0.5, 0.22), Color::WHITE),
         IndicatorState::Error => (Color::from_rgb(0.55, 0.2, 0.2), Color::WHITE),
     };
-    container(text(label).size(10).color(fg))
+    container(text(label).size(10.0).color(fg))
         .padding([1, 6])
         .style(move |_t: &Theme| container::Style {
             background: Some(bg.into()),
@@ -990,15 +990,16 @@ fn main() -> anyhow::Result<()> {
         ..Default::default()
     };
 
-    iced::application("Clogger", update, view)
+    iced::application(init, update, view)
+        .title(|_state: &App| "Clogger".to_string())
         .subscription(subscription)
         .theme(theme_for)
         .scale_factor(scale_factor_for)
         .window(window_settings)
-        .run_with(init)
+        .run()
         .map_err(|e| anyhow::anyhow!("iced exited: {e}"))
 }
 
-fn scale_factor_for(state: &App) -> f64 {
-    state.font_scale as f64
+fn scale_factor_for(state: &App) -> f32 {
+    state.font_scale
 }

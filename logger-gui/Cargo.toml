@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 logger-core = { path = "../logger-core" }
 logger-runtime = { path = "../logger-runtime" }
-iced = { version = "0.13", features = ["tokio", "canvas", "advanced"] }
+iced = { version = "0.14", features = ["tokio", "canvas", "advanced"] }
 tokio = { version = "1", features = ["full"] }
 anyhow = "1"
 tracing = "0.1"

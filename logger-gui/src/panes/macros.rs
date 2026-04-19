@@ -25,8 +25,8 @@ pub fn view<'a, M: 'a>(macros: &'a Macros) -> Element<'a, M> {
     }
 
     if let Some(sp_f2) = &macros.sp_f2 {
-        rows.push(Space::with_height(4).into());
-        rows.push(text("S&P overrides").size(11).style(style::muted).into());
+        rows.push(Space::new().height(4).into());
+        rows.push(text("S&P overrides").size(11.0).style(style::muted).into());
         rows.push(macro_row("S&P F2", sp_f2.as_str()));
     }
 
@@ -39,8 +39,8 @@ pub fn view<'a, M: 'a>(macros: &'a Macros) -> Element<'a, M> {
     ];
     let any_secondary = secondary.iter().any(|(_, v)| !v.is_empty());
     if any_secondary {
-        rows.push(Space::with_height(4).into());
-        rows.push(text("Ctrl+Alt+Fn").size(11).style(style::muted).into());
+        rows.push(Space::new().height(4).into());
+        rows.push(text("Ctrl+Alt+Fn").size(11.0).style(style::muted).into());
         for (label, value) in secondary {
             if !value.is_empty() {
                 rows.push(macro_row(label, value));
@@ -60,10 +60,10 @@ fn macro_row<'a, M: 'a>(label: &str, value: &str) -> Element<'a, M> {
     let value_str = if empty { "—".to_string() } else { value.to_string() };
     row![
         text(label.to_string())
-            .size(12)
+            .size(12.0)
             .style(style::accent)
             .width(Length::Fixed(70.0)),
-        text(value_str).size(12).style(move |t: &iced::Theme| {
+        text(value_str).size(12.0).style(move |t: &iced::Theme| {
             if empty {
                 style::very_muted(t)
             } else {

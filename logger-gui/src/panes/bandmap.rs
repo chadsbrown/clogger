@@ -161,19 +161,19 @@ impl<'a, M> canvas::Program<M> for BandmapProgram<'a, M> {
     fn update(
         &self,
         _state: &mut Self::State,
-        event: canvas::Event,
+        event: &canvas::Event,
         bounds: Rectangle,
         cursor: mouse::Cursor,
-    ) -> (canvas::event::Status, Option<M>) {
+    ) -> Option<canvas::Action<M>> {
         use iced::mouse::{Button, Event as MouseEvent, ScrollDelta};
 
         match event {
             canvas::Event::Mouse(MouseEvent::WheelScrolled { delta }) => {
                 if cursor.position_in(bounds).is_none() {
-                    return (canvas::event::Status::Ignored, None);
+                    return None;
                 }
                 let y = match delta {
-                    ScrollDelta::Lines { y, .. } => y,
+                    ScrollDelta::Lines { y, .. } => *y,
                     // ~20 pixels per "line" is a rough but reasonable match
                     // for a typical mouse wheel click on most platforms.
                     ScrollDelta::Pixels { y, .. } => y / 20.0,
@@ -183,17 +183,14 @@ impl<'a, M> canvas::Program<M> for BandmapProgram<'a, M> {
                 } else if y < 0.0 {
                     (self.zoom / ZOOM_STEP).min(1.0)
                 } else {
-                    return (canvas::event::Status::Ignored, None);
+                    return None;
                 };
-                (
-                    canvas::event::Status::Captured,
-                    Some((self.on_zoom)(new_zoom)),
-                )
+                Some(canvas::Action::publish((self.on_zoom)(new_zoom)).and_capture())
             }
             canvas::Event::Mouse(MouseEvent::ButtonPressed(Button::Left)) => {
                 if let Some(pos) = cursor.position_in(bounds) {
                     if pos.x < AXIS_X {
-                        return (canvas::event::Status::Ignored, None);
+                        return None;
                     }
                     let (vlow, vhigh) = self.visible_range();
                     let band_span = (vhigh - vlow).max(1) as f32;
@@ -204,15 +201,12 @@ impl<'a, M> canvas::Program<M> for BandmapProgram<'a, M> {
                         Some((call, freq)) => (Some(call), freq),
                         None => (None, raw),
                     };
-                    (
-                        canvas::event::Status::Captured,
-                        Some((self.on_click)(call, target)),
-                    )
+                    Some(canvas::Action::publish((self.on_click)(call, target)).and_capture())
                 } else {
-                    (canvas::event::Status::Ignored, None)
+                    None
                 }
             }
-            _ => (canvas::event::Status::Ignored, None),
+            _ => None,
         }
     }
 

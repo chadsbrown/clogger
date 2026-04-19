@@ -64,7 +64,7 @@ fn render_radio<'a, M: 'a>(
             .unwrap_or(state.default_cw_speed);
         format!("R{radio_id}  •  {mode_str}  •  {wpm} WPM  •  {freq_str}")
     };
-    let header = text(header_line).size(11).style(move |t: &Theme| {
+    let header = text(header_line).size(11.0).style(move |t: &Theme| {
         if is_active {
             style::accent(t)
         } else {
@@ -79,7 +79,7 @@ fn render_radio<'a, M: 'a>(
             let is_focused_field = is_active && idx == entry.focus;
             let box_width = (field.width as f32 * PX_PER_COL + BOX_HPAD).max(MIN_BOX_PX);
 
-            let label = text(field.label.clone()).size(10).style(style::muted);
+            let label = text(field.label.clone()).size(10.0).style(style::muted);
 
             let empty = field.value.is_empty();
             let value_str = if empty {
@@ -116,7 +116,7 @@ fn render_radio<'a, M: 'a>(
             };
             let value = container(
                 text(value_str)
-                    .size(14)
+                    .size(14.0)
                     .font(Font::MONOSPACE)
                     .style(style::body),
             )
@@ -151,7 +151,7 @@ fn render_radio<'a, M: 'a>(
             status_bits.push(badge(" QRM ", style::QRM_BADGE).into());
         }
         if let Some(sn) = entry.assigned_serial {
-            status_bits.push(text(format!("# {sn}")).size(12).style(style::body).into());
+            status_bits.push(text(format!("# {sn}")).size(12.0).style(style::body).into());
         }
     }
 
@@ -176,13 +176,13 @@ fn render_radio<'a, M: 'a>(
 
     let body_children: Vec<Element<M>> = vec![
         header.into(),
-        Space::with_height(4).into(),
+        Space::new().height(4).into(),
         fields_row,
-        Space::with_height(4).into(),
+        Space::new().height(4).into(),
         echo_row,
-        Space::with_height(4).into(),
+        Space::new().height(4).into(),
         status_row.into(),
-        Space::with_height(4).into(),
+        Space::new().height(4).into(),
         scp_slot,
     ];
 
@@ -258,7 +258,7 @@ fn scp_row_view<'a, M: 'a>(matches: &'a [String]) -> Element<'a, M> {
         chips.push(
             container(
                 text(m.clone())
-                    .size(12)
+                    .size(12.0)
                     .font(Font::MONOSPACE)
                     .style(style::accent),
             )
@@ -290,7 +290,7 @@ fn scp_row_view<'a, M: 'a>(matches: &'a [String]) -> Element<'a, M> {
 }
 
 fn badge<'a, M: 'a>(label: &'static str, bg: Color) -> Element<'a, M> {
-    container(text(label).size(11).color(Color::WHITE))
+    container(text(label).size(11.0).color(Color::WHITE))
         .padding([1, 4])
         .style(move |_t: &Theme| container::Style {
             background: Some(bg.into()),

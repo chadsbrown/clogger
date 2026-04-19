@@ -11,9 +11,9 @@ pub fn view<'a, M: 'a>(log: &'a LogAdapter) -> Element<'a, M> {
     let summary = log.score_summary();
 
     let header = row![
-        text("BAND").size(11).style(style::muted).width(Length::Fixed(60.0)),
-        text("QSO").size(11).style(style::muted).width(Length::Fixed(60.0)),
-        text("MULT").size(11).style(style::muted).width(Length::Fill),
+        text("BAND").size(11.0).style(style::muted).width(Length::Fixed(60.0)),
+        text("QSO").size(11.0).style(style::muted).width(Length::Fixed(60.0)),
+        text("MULT").size(11.0).style(style::muted).width(Length::Fill),
     ]
     .spacing(4);
 
@@ -22,15 +22,15 @@ pub fn view<'a, M: 'a>(log: &'a LogAdapter) -> Element<'a, M> {
         rows.push(
             row![
                 text(band.clone())
-                    .size(12)
+                    .size(12.0)
                     .style(style::body)
                     .width(Length::Fixed(60.0)),
                 text(format!("{}", bs.qsos))
-                    .size(12)
+                    .size(12.0)
                     .style(style::body)
                     .width(Length::Fixed(60.0)),
                 text(format!("{}", bs.mults))
-                    .size(12)
+                    .size(12.0)
                     .style(style::body)
                     .width(Length::Fill),
             ]
@@ -41,7 +41,7 @@ pub fn view<'a, M: 'a>(log: &'a LogAdapter) -> Element<'a, M> {
     if rows.is_empty() {
         rows.push(
             text("(no QSOs logged)")
-                .size(12)
+                .size(12.0)
                 .style(style::very_muted)
                 .into(),
         );
@@ -49,32 +49,32 @@ pub fn view<'a, M: 'a>(log: &'a LogAdapter) -> Element<'a, M> {
 
     let totals = row![
         text("TOTAL")
-            .size(12)
+            .size(12.0)
             .style(style::body)
             .width(Length::Fixed(60.0)),
         text(format!("{}", summary.total_qsos))
-            .size(12)
+            .size(12.0)
             .style(style::body)
             .width(Length::Fixed(60.0)),
         text(format!("{}", summary.total_mults))
-            .size(12)
+            .size(12.0)
             .style(style::body)
             .width(Length::Fill),
     ]
     .spacing(4);
 
     let claimed = text(format!("Claimed: {}", summary.claimed_score))
-        .size(14)
+        .size(14.0)
         .style(style::accent);
 
     container(
         column![
             header,
-            Space::with_height(2),
+            Space::new().height(2),
             column(rows).spacing(2),
-            Space::with_height(4),
+            Space::new().height(4),
             totals,
-            Space::with_height(6),
+            Space::new().height(6),
             claimed,
         ]
         .spacing(0),

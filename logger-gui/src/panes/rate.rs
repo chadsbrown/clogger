@@ -53,11 +53,11 @@ pub fn view<'a, M: 'a>(log: &'a LogAdapter) -> Element<'a, M> {
     container(
         column![
             line("Last 10 min", fmt_rate(Some(r10))),
-            Space::with_height(2),
+            Space::new().height(2),
             line("Last 60 min", fmt_rate(Some(r60))),
-            Space::with_height(2),
+            Space::new().height(2),
             line("Last 5 Qs", fmt_rate(r5)),
-            Space::with_height(2),
+            Space::new().height(2),
             line("Since last Q", fmt_since(since)),
         ]
         .spacing(0),

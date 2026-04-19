@@ -23,19 +23,19 @@ pub fn view<'a, M: 'a>(
 
     let status_line: Element<M> = if !handles.so2r_configured {
         text("(no SO2R configured)")
-            .size(12)
+            .size(12.0)
             .style(style::very_muted)
             .into()
     } else if handles.so2r_connected {
         text("● connected")
-            .size(11)
+            .size(11.0)
             .style(|t: &Theme| iced::widget::text::Style {
                 color: Some(style::success_color(t)),
             })
             .into()
     } else {
         text("● configured, not connected")
-            .size(11)
+            .size(11.0)
             .style(|t: &Theme| iced::widget::text::Style {
                 color: Some(style::danger_color(t)),
             })
@@ -45,10 +45,10 @@ pub fn view<'a, M: 'a>(
     let line = |label: &'static str, value: String, accent_value: bool| -> Element<'a, M> {
         row![
             text(label)
-                .size(12)
+                .size(12.0)
                 .style(style::muted)
                 .width(Length::Fixed(70.0)),
-            text(value).size(14).style(move |t: &Theme| {
+            text(value).size(14.0).style(move |t: &Theme| {
                 if accent_value {
                     style::accent(t)
                 } else {
@@ -63,18 +63,18 @@ pub fn view<'a, M: 'a>(
     let _ = Color::TRANSPARENT;
     container(
         column![
-            text("SO2R routing").size(11).style(style::accent),
-            Space::with_height(6),
+            text("SO2R routing").size(11.0).style(style::accent),
+            Space::new().height(6),
             line("FOCUS", format!("R{focused_radio}"), true),
-            Space::with_height(2),
+            Space::new().height(2),
             line("RX", rx_str, false),
-            Space::with_height(2),
+            Space::new().height(2),
             line("TX", format!("R{tx_radio}"), tx_radio != focused_radio),
-            Space::with_height(10),
+            Space::new().height(10),
             status_line,
-            Space::with_height(4),
+            Space::new().height(4),
             text("Press ` to toggle RX mono/stereo")
-                .size(10)
+                .size(10.0)
                 .style(style::very_muted),
         ]
         .spacing(0),

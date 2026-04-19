@@ -33,17 +33,17 @@ pub fn view<'a, M: 'a + Clone + 'static>(on_close: M) -> Element<'a, M> {
         rows.push(
             row![
                 text(keys.to_string())
-                    .size(13)
+                    .size(13.0)
                     .color(Color::from_rgb(0.55, 0.7, 0.95))
                     .width(Length::Fixed(170.0)),
-                text(desc.to_string()).size(13),
+                text(desc.to_string()).size(13.0),
             ]
             .spacing(10)
             .into(),
         );
     }
 
-    let close = button(text("✕").size(14))
+    let close = button(text("✕").size(14.0))
         .padding([0, 8])
         .on_press(on_close.clone())
         .style(|t: &Theme, status| {
@@ -65,8 +65,8 @@ pub fn view<'a, M: 'a + Clone + 'static>(on_close: M) -> Element<'a, M> {
         });
 
     let header = row![
-        text("Keybindings").size(15),
-        Space::with_width(Length::Fill),
+        text("Keybindings").size(15.0),
+        Space::new().width(Length::Fill),
         close,
     ]
     .align_y(iced::alignment::Vertical::Center);
@@ -74,12 +74,12 @@ pub fn view<'a, M: 'a + Clone + 'static>(on_close: M) -> Element<'a, M> {
     let body: Element<M> = container(
         column![
             header,
-            Space::with_height(8),
+            Space::new().height(8),
             scrollable(column(rows).spacing(4))
                 .width(Length::Fill)
                 .height(Length::Fill),
-            Space::with_height(6),
-            text("Esc or click outside to close").size(11).color(
+            Space::new().height(6),
+            text("Esc or click outside to close").size(11.0).color(
                 Color::from_rgb(0.5, 0.5, 0.5),
             ),
         ]

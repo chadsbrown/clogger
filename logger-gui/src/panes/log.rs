@@ -14,11 +14,11 @@ pub fn view<'a, M: 'a>(log: &'a LogAdapter) -> Element<'a, M> {
     let count = records.len();
 
     let header = row![
-        text("#").size(11).style(style::muted).width(Length::Fixed(40.0)),
-        text("CALL").size(11).style(style::muted).width(Length::Fixed(90.0)),
-        text("BAND").size(11).style(style::muted).width(Length::Fixed(60.0)),
-        text("MODE").size(11).style(style::muted).width(Length::Fixed(60.0)),
-        text("FREQ").size(11).style(style::muted).width(Length::Fill),
+        text("#").size(11.0).style(style::muted).width(Length::Fixed(40.0)),
+        text("CALL").size(11.0).style(style::muted).width(Length::Fixed(90.0)),
+        text("BAND").size(11.0).style(style::muted).width(Length::Fixed(60.0)),
+        text("MODE").size(11.0).style(style::muted).width(Length::Fixed(60.0)),
+        text("FREQ").size(11.0).style(style::muted).width(Length::Fill),
     ]
     .spacing(4);
 
@@ -28,23 +28,23 @@ pub fn view<'a, M: 'a>(log: &'a LogAdapter) -> Element<'a, M> {
         rows.push(
             row![
                 text(format!("{}", i + 1))
-                    .size(12)
+                    .size(12.0)
                     .style(style::body)
                     .width(Length::Fixed(40.0)),
                 text(rec.callsign_norm.clone())
-                    .size(12)
+                    .size(12.0)
                     .style(style::body)
                     .width(Length::Fixed(90.0)),
                 text(format!("{:?}", rec.band))
-                    .size(12)
+                    .size(12.0)
                     .style(style::body)
                     .width(Length::Fixed(60.0)),
                 text(format!("{:?}", rec.mode))
-                    .size(12)
+                    .size(12.0)
                     .style(style::body)
                     .width(Length::Fixed(60.0)),
                 text(format!("{:.3}", rec.freq_hz as f64 / 1_000_000.0))
-                    .size(12)
+                    .size(12.0)
                     .style(style::body)
                     .width(Length::Fill),
             ]
@@ -55,7 +55,7 @@ pub fn view<'a, M: 'a>(log: &'a LogAdapter) -> Element<'a, M> {
     if rows.is_empty() {
         rows.push(
             text("(no QSOs yet)")
-                .size(12)
+                .size(12.0)
                 .style(style::very_muted)
                 .into(),
         );
@@ -64,9 +64,9 @@ pub fn view<'a, M: 'a>(log: &'a LogAdapter) -> Element<'a, M> {
     container(
         column![
             text(format!("{} QSO{}", count, if count == 1 { "" } else { "s" }))
-                .size(11)
+                .size(11.0)
                 .style(style::accent),
-            Space::with_height(4),
+            Space::new().height(4),
             header,
             column(rows).spacing(2),
         ]

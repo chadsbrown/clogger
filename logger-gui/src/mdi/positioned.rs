@@ -4,7 +4,7 @@
 
 use iced::advanced::widget::{tree, Tree, Widget};
 use iced::advanced::{layout, mouse, overlay, renderer, Clipboard, Layout, Shell};
-use iced::{event, Element, Event, Length, Point, Rectangle, Size, Vector};
+use iced::{Element, Event, Length, Point, Rectangle, Size, Vector};
 
 pub struct Positioned<'a, Message, Theme, Renderer> {
     pos: Point,
@@ -52,7 +52,7 @@ where
     }
 
     fn layout(
-        &self,
+        &mut self,
         tree: &mut Tree,
         renderer: &Renderer,
         limits: &layout::Limits,
@@ -60,7 +60,7 @@ where
         let child_limits = layout::Limits::new(Size::ZERO, self.size);
         let child = self
             .content
-            .as_widget()
+            .as_widget_mut()
             .layout(&mut tree.children[0], renderer, &child_limits);
         let child = child.move_to(self.pos);
         layout::Node::with_children(limits.max(), vec![child])
@@ -88,19 +88,19 @@ where
         );
     }
 
-    fn on_event(
+    fn update(
         &mut self,
         tree: &mut Tree,
-        event: Event,
+        event: &Event,
         layout: Layout<'_>,
         cursor: mouse::Cursor,
         renderer: &Renderer,
         clipboard: &mut dyn Clipboard,
         shell: &mut Shell<'_, Message>,
         viewport: &Rectangle,
-    ) -> event::Status {
+    ) {
         let child_layout = layout.children().next().unwrap();
-        self.content.as_widget_mut().on_event(
+        self.content.as_widget_mut().update(
             &mut tree.children[0],
             event,
             child_layout,
@@ -109,7 +109,7 @@ where
             clipboard,
             shell,
             viewport,
-        )
+        );
     }
 
     fn mouse_interaction(
@@ -133,8 +133,9 @@ where
     fn overlay<'b>(
         &'b mut self,
         tree: &'b mut Tree,
-        layout: Layout<'_>,
+        layout: Layout<'b>,
         renderer: &Renderer,
+        viewport: &Rectangle,
         translation: Vector,
     ) -> Option<overlay::Element<'b, Message, Theme, Renderer>> {
         let child_layout = layout.children().next().unwrap();
@@ -142,6 +143,7 @@ where
             &mut tree.children[0],
             child_layout,
             renderer,
+            viewport,
             translation,
         )
     }

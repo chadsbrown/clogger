@@ -8,16 +8,16 @@ use iced::widget::text;
 use iced::{Color, Theme};
 
 // --- Unified text sizes (in logical pixels; the global font_scale
-// multiplies these via iced's scale_factor). Constants for a consistent
-// typographic hierarchy; not all are currently referenced in-tree but
-// they're part of the public vocabulary for future pane work.
+// multiplies these via iced's scale_factor). `f32` because iced 0.14's
+// text widget `.size()` wants `impl Into<Pixels>`, and `Pixels` has
+// `From<f32>` / `From<u32>` but not `From<u16>`.
 #[allow(dead_code)]
-pub const TEXT_TINY: u16 = 10;
-pub const TEXT_LABEL: u16 = 11;
-pub const TEXT_BODY: u16 = 13;
+pub const TEXT_TINY: f32 = 10.0;
+pub const TEXT_LABEL: f32 = 11.0;
+pub const TEXT_BODY: f32 = 13.0;
 #[allow(dead_code)]
-pub const TEXT_VALUE: u16 = 14;
-pub const TEXT_HEADER: u16 = 15;
+pub const TEXT_VALUE: f32 = 14.0;
+pub const TEXT_HEADER: f32 = 15.0;
 
 // --- Shape constants for a more modern feel. ---
 pub const RADIUS_FRAME: f32 = 6.0;
