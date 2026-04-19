@@ -1,4 +1,4 @@
-use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use logger_core::{AppEvent, Key};
 use tokio::sync::mpsc;
 
@@ -33,14 +33,37 @@ pub fn spawn_terminal_reader(tx: mpsc::Sender<TerminalEvent>, has_second_rig: bo
             if key_ev.kind != KeyEventKind::Press {
                 continue;
             }
-            let terminal_event = match (key_ev.modifiers, key_ev.code) {
+            let Some(terminal_event) = map_key_event(key_ev, has_second_rig) else {
+                continue;
+            };
+            if tx.blocking_send(terminal_event).is_err() {
+                break;
+            }
+        }
+    });
+}
+
+/// Pure key → TerminalEvent mapping. Lifted out of the spawned reader
+/// so it's unit-testable without crossterm stdin / a real terminal.
+/// `None` means the key press isn't one clogger reacts to — the caller
+/// should just drop it and keep reading.
+pub(crate) fn map_key_event(key_ev: KeyEvent, has_second_rig: bool) -> Option<TerminalEvent> {
+    let evt = match (key_ev.modifiers, key_ev.code) {
                 (m, KeyCode::Char('c')) if m.contains(KeyModifiers::CONTROL) => {
                     TerminalEvent::Shutdown
                 }
                 (m, KeyCode::Char('e')) if m.contains(KeyModifiers::CONTROL) => {
                 TerminalEvent::OpenExportModal
             }
-                (m, KeyCode::Char('+')) if m.contains(KeyModifiers::CONTROL) => {
+                (m, KeyCode::Enter) if m.contains(KeyModifiers::ALT) => {
+                    // QuickLog: log the current entry without emitting CW.
+                    // Must precede the bare `KeyCode::Enter` arm below —
+                    // match arms are evaluated top-to-bottom, and modifier-
+                    // bearing matches have to come first or the bare arm
+                    // would shadow them. Ctrl+Plus was the historical
+                    // binding, but most terminals eat Ctrl+Plus for
+                    // font-size zoom, so this binding never actually
+                    // reached crossterm in practice.
                     TerminalEvent::App(AppEvent::QuickLog)
                 }
                 (m, KeyCode::Up)
@@ -121,7 +144,7 @@ pub fn spawn_terminal_reader(tx: mpsc::Sender<TerminalEvent>, has_second_rig: bo
                         10 => Key::CtrlAltF10,
                         11 => Key::CtrlAltF11,
                         12 => Key::CtrlAltF12,
-                        _ => continue,
+                        _ => return None,
                     };
                     TerminalEvent::App(AppEvent::KeyPress { key })
                 }
@@ -134,11 +157,57 @@ pub fn spawn_terminal_reader(tx: mpsc::Sender<TerminalEvent>, has_second_rig: bo
                 (_, KeyCode::F(8)) => TerminalEvent::App(AppEvent::KeyPress { key: Key::F8 }),
                 (_, KeyCode::F(9)) => TerminalEvent::App(AppEvent::KeyPress { key: Key::F9 }),
                 (_, KeyCode::F(12)) => TerminalEvent::App(AppEvent::KeyPress { key: Key::F12 }),
-                _ => continue,
-            };
-            if tx.blocking_send(terminal_event).is_err() {
-                break;
-            }
+                _ => return None,
+    };
+    Some(evt)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn key(code: KeyCode, mods: KeyModifiers) -> KeyEvent {
+        KeyEvent::new(code, mods)
+    }
+
+    #[test]
+    fn alt_enter_maps_to_quicklog() {
+        let ev = map_key_event(key(KeyCode::Enter, KeyModifiers::ALT), true)
+            .expect("Alt+Enter should map");
+        match ev {
+            TerminalEvent::App(AppEvent::QuickLog) => {}
+            _ => panic!("expected QuickLog"),
         }
-    });
+    }
+
+    #[test]
+    fn plain_enter_is_not_quicklog() {
+        // Bare Enter must fall through to the normal ESM/Enter path,
+        // not be shadowed by the QuickLog arm.
+        let ev = map_key_event(key(KeyCode::Enter, KeyModifiers::NONE), true)
+            .expect("Enter should map");
+        match ev {
+            TerminalEvent::App(AppEvent::KeyPress { key: Key::Enter }) => {}
+            TerminalEvent::App(AppEvent::QuickLog) => {
+                panic!("plain Enter must not map to QuickLog")
+            }
+            _ => panic!("expected Enter keypress, not QuickLog"),
+        }
+    }
+
+    #[test]
+    fn ctrl_plus_no_longer_triggers_quicklog() {
+        // The old binding (Ctrl+Plus) was never reachable through most
+        // terminals because they intercept it for font zoom. Now that
+        // we've moved off it, confirm nothing else caught it — it
+        // should fall through to the generic Char path (which uppercases
+        // to '+').
+        let ev = map_key_event(key(KeyCode::Char('+'), KeyModifiers::CONTROL), true);
+        match ev {
+            Some(TerminalEvent::App(AppEvent::QuickLog)) => {
+                panic!("Ctrl+Plus must no longer fire QuickLog")
+            }
+            _ => {}
+        }
+    }
 }

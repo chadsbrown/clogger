@@ -178,7 +178,7 @@ pub fn render(frame: &mut Frame, app: &AppState, tui: &TuiState) {
 
     // Footer
     let footer = ratatui::widgets::Paragraph::new(
-        " F1:CQ  F2:Exch  F3:TU  F5:Call  Esc:Stop  F12:Wipe  Enter:ESM  Ins:Run/S&P  \u{2191}\u{2193}:R1/R2  C-\u{2191}\u{2193}:BM R1  CA-\u{2191}\u{2193}:BM R2  `:RX  C-E:Export  Ctrl-C:Quit",
+        " F1:CQ  F2:Exch  F3:TU  F5:Call  Esc:Stop  F12:Wipe  Enter:ESM  A-Enter:LogOnly  Ins:Run/S&P  \u{2191}\u{2193}:R1/R2  C-\u{2191}\u{2193}:BM R1  CA-\u{2191}\u{2193}:BM R2  `:RX  C-E:Export  Ctrl-C:Quit",
     )
     .style(ratatui::style::Style::from(theme.footer));
     frame.render_widget(footer, rows[2]);

@@ -39,6 +39,15 @@ cp contest.example.toml contest.toml     # edit: contest id, macros, etc.
 cargo run -p logger-tui -- --config config.toml --contest contest.toml
 ```
 
+## Documentation
+
+- **[User Guide](docs/user-guide.md)** — start here.
+- [Configuration reference](docs/configuration.md) — every TOML field.
+- [Operating](docs/operating.md) — keybindings, ESM, CW macros, SO2R, TUI panels.
+- [Contests](docs/contests.md) — supported contests and per-contest config.
+- [DX feed tuning](docs/dxfeed-tuning.md) — skimmer quality engine + filter pipeline.
+- [Adding contests](docs/adding-contests.md) — spec-driven vs. code-driven contests.
+
 ## Dependencies
 
 clogger depends on a handful of other crates I maintain, all in the same

@@ -162,6 +162,14 @@ pub fn reduce(
         | AppEvent::So2rError { .. }
         | AppEvent::PersistError { .. } => Vec::new(),
         AppEvent::SpotReceived { spot } => {
+            // Drop self-spots before they touch the bandmap. A spot for
+            // the operator's own call is never a workable target, and
+            // if it slipped past upstream filters it would anchor the
+            // bandmap cursor on `my_call` and make nav feel stuck —
+            // every keypress would spend a hop landing on yourself.
+            if spot.call.trim().eq_ignore_ascii_case(&st.my_call) {
+                return Vec::new();
+            }
             st.bandmap.push(spot);
             st.bandmap_version = st.bandmap_version.wrapping_add(1);
             snap_all_bandmap_cursors(st);
@@ -2262,6 +2270,35 @@ mod tests {
             st.bandmap_cursors.get(&1),
             Some(BandmapCursor::On { call, .. }) if call == "K5ZD"
         ));
+    }
+
+    #[test]
+    fn self_spot_is_dropped_before_bandmap() {
+        // Regression: if the operator gets spotted on their own freq,
+        // the spot must not reach the bandmap. Otherwise nav steps
+        // through the self-spot and the cursor can re-anchor on it.
+        let mut st = mk_state(); // my_call = "N0CALL"
+        let bandmap_version_before = st.bandmap_version;
+        add_spot(&mut st, "N0CALL", 14_025_000, "CW");
+        assert!(st.bandmap.is_empty(), "self-spot must not enter bandmap");
+        assert_eq!(
+            st.bandmap_version, bandmap_version_before,
+            "self-spot must not bump bandmap_version"
+        );
+    }
+
+    #[test]
+    fn self_spot_match_is_case_insensitive() {
+        let mut st = mk_state(); // my_call = "N0CALL"
+        add_spot(&mut st, "n0call", 14_025_000, "CW");
+        assert!(st.bandmap.is_empty(), "lowercase match must still drop");
+    }
+
+    #[test]
+    fn non_self_spots_still_reach_bandmap() {
+        let mut st = mk_state(); // my_call = "N0CALL"
+        add_spot(&mut st, "K5ZD", 14_025_000, "CW");
+        assert_eq!(st.bandmap.len(), 1, "non-self spot must be recorded");
     }
 
     #[test]
