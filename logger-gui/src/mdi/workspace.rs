@@ -68,7 +68,7 @@ pub enum Message {
 
 const MIN_W: f32 = 140.0;
 const MIN_H: f32 = 80.0;
-const TITLE_H: f32 = 24.0;
+const TITLE_H: f32 = 20.0;
 const RESIZE: f32 = 14.0;
 const TOOLBAR_H: f32 = 32.0;
 // Keep at least this much of a pane visible when dragging.

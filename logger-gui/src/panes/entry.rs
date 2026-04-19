@@ -154,7 +154,7 @@ fn render_radio<'a, M: 'a>(
                     text_part,
                     Space::new().width(Length::Fill),
                     text("\u{2713}")
-                        .size(16.0)
+                        .size(14.0)
                         .font(Font {
                             weight: iced::font::Weight::Bold,
                             ..Font::default()

@@ -749,6 +749,18 @@ fn snap_bandmap_cursor_to_freq(st: &mut AppState, radio: RadioId) {
         return;
     }
 
+    // Preserve the caller's call-anchored cursor when the rig's new freq
+    // already matches the anchor and the anchored call is still present.
+    // Without this short-circuit, `partition_point` below collapses a
+    // cluster of co-located spots to its first member — breaking Ctrl+Up
+    // navigation through spots at the same frequency (and click-to-select
+    // when multiple spots share a freq).
+    if let Some(BandmapCursor::On { call, freq_hz }) = st.bandmap_cursors.get(&radio) {
+        if *freq_hz == target && spots.iter().any(|s| &s.call == call) {
+            return;
+        }
+    }
+
     let pos = spots.partition_point(|s| s.freq_hz < target);
     let nearest = match (pos == 0, pos == spots.len()) {
         (true, _) => 0,
@@ -2577,6 +2589,99 @@ mod tests {
             st.bandmap_cursors.get(&1),
             Some(BandmapCursor::On { call, .. }) if call == "K5ZD"
         ));
+    }
+
+    /// Three spots at the exact same frequency, plus one bracketing spot
+    /// above. Walking Up from the bracketing spot should visit each
+    /// co-located call in turn, not collapse to the first-at-freq.
+    /// Regression test for a bug where `snap_bandmap_cursor_to_freq`
+    /// ran after every cross-freq BandmapUp and overwrote the anchored
+    /// cursor with `spots[partition_point]` (always the lowest-indexed
+    /// spot at target freq).
+    #[test]
+    fn bandmap_up_walks_through_co_located_spots() {
+        let mut st = mk_state();
+        add_spot(&mut st, "A1A", 14_000_000, "CW");
+        add_spot(&mut st, "B2B", 14_000_000, "CW");
+        add_spot(&mut st, "C3C", 14_000_000, "CW");
+        add_spot(&mut st, "R9R", 14_010_000, "CW");
+        rig_status(&mut st, 1, 14_010_000, "CW", Some(500));
+        // Cursor now On(R9R).
+        assert!(matches!(
+            st.bandmap_cursors.get(&1),
+            Some(BandmapCursor::On { call, .. }) if call == "R9R"
+        ));
+
+        let contest = contest_from_id("cqww").unwrap();
+        let macros = Macros::default();
+
+        // First Up: cursor moves to C3C; rig follows to 14_000_000.
+        // The reducer's BandmapUp sets the cursor On(C3C), and the
+        // RigStatus fire-back at the new freq must not re-snap to A1A.
+        reduce(
+            &mut st, contest.as_ref(), &macros,
+            AppEvent::BandmapUp { radio: 1 },
+        );
+        rig_status(&mut st, 1, 14_000_000, "CW", Some(500));
+        assert!(
+            matches!(
+                st.bandmap_cursors.get(&1),
+                Some(BandmapCursor::On { call, .. }) if call == "C3C"
+            ),
+            "first Up should land on C3C (the highest-indexed co-located spot), not snap to A1A; got {:?}",
+            st.bandmap_cursors.get(&1)
+        );
+
+        // Second Up: C3C → B2B. Rig freq unchanged, so no snap.
+        reduce(
+            &mut st, contest.as_ref(), &macros,
+            AppEvent::BandmapUp { radio: 1 },
+        );
+        assert!(matches!(
+            st.bandmap_cursors.get(&1),
+            Some(BandmapCursor::On { call, .. }) if call == "B2B"
+        ));
+
+        // Third Up: B2B → A1A.
+        reduce(
+            &mut st, contest.as_ref(), &macros,
+            AppEvent::BandmapUp { radio: 1 },
+        );
+        assert!(matches!(
+            st.bandmap_cursors.get(&1),
+            Some(BandmapCursor::On { call, .. }) if call == "A1A"
+        ));
+    }
+
+    /// Direct check on the snap short-circuit: with the cursor already
+    /// pinned to the middle spot of a co-located cluster, a `RigStatus`
+    /// event that moves the rig freq *to* that cluster's frequency must
+    /// leave the cursor alone rather than snapping to the first-at-freq.
+    #[test]
+    fn bandmap_snap_preserves_middle_of_cluster() {
+        let mut st = mk_state();
+        add_spot(&mut st, "A1A", 14_000_000, "CW");
+        add_spot(&mut st, "B2B", 14_000_000, "CW");
+        add_spot(&mut st, "C3C", 14_000_000, "CW");
+        // Start the rig away from the cluster so the subsequent
+        // rig_status is a genuine freq change (snap will run).
+        rig_status(&mut st, 1, 14_010_000, "CW", Some(500));
+        // Pin the cursor on B2B, the middle of the cluster.
+        st.bandmap_cursors.insert(
+            1,
+            BandmapCursor::On { call: "B2B".to_string(), freq_hz: 14_000_000 },
+        );
+        // Rig moves to the cluster freq. Without the short-circuit,
+        // snap would pick A1A (partition_point's first-at-freq).
+        rig_status(&mut st, 1, 14_000_000, "CW", Some(500));
+        assert!(
+            matches!(
+                st.bandmap_cursors.get(&1),
+                Some(BandmapCursor::On { call, .. }) if call == "B2B"
+            ),
+            "snap must preserve a valid call-anchor at target freq; got {:?}",
+            st.bandmap_cursors.get(&1)
+        );
     }
 
     // ---- Contest-history autopopulate tests --------------------------
