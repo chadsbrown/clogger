@@ -11,7 +11,7 @@ use std::time::Duration;
 use clap::Parser;
 use iced::{event, keyboard, Element, Event, Point, Size, Subscription, Theme};
 use logger_core::{AppEvent, Effect, RadioId};
-use logger_runtime::{CondXSnapshot, KeyerEvent, ScoreboardStatus, Session};
+use logger_runtime::{CondXSnapshot, KeyerEvent, RigConfig, ScoreboardStatus, Session};
 
 use bridge::AdapterHandles;
 
@@ -50,6 +50,7 @@ struct App {
     pane_macros: u32,
     pane_so2r: u32,
     pane_condx: u32,
+    pane_scp: u32,
     theme: Theme,
     modal: Option<modals::Modal>,
     /// Sticky error banner. Set by `AppEvent::*Error` / `*Disconnected`;
@@ -65,14 +66,27 @@ struct App {
     /// so every widget — text, padding, borders, the bandmap canvas — grows
     /// or shrinks together. Persisted alongside the layout.
     font_scale: f32,
+    /// Rig configs kept around for auto-reconnect after
+    /// `AppEvent::RigDisconnected`. The rig adapter itself doesn't retry
+    /// (it just exits on disconnect), so the GUI supervises by re-spawning
+    /// with the saved config on a back-off schedule.
+    rig_configs: std::collections::HashMap<RadioId, RigConfig>,
+    /// Clone of the `AppEvent` sender that adapter tasks publish to.
+    /// Needed so `Message::RigReconnectAttempt` can hand a fresh sender
+    /// to a re-spawned `spawn_rig_adapter` task.
+    app_tx: tokio::sync::mpsc::Sender<AppEvent>,
 }
 
 const FONT_SCALE_MIN: f32 = 0.6;
 const FONT_SCALE_MAX: f32 = 2.0;
 const FONT_SCALE_STEP: f32 = 0.1;
+/// Delay between rig-reconnect attempts. Long enough to not hammer a
+/// stuck serial port; short enough that flipping a radio off/on doesn't
+/// feel unresponsive.
+const RIG_RECONNECT_DELAY: Duration = Duration::from_secs(5);
 
 impl App {
-    fn new(session: Session) -> Self {
+    fn new(session: Session, app_tx: tokio::sync::mpsc::Sender<AppEvent>) -> Self {
         let mut workspace = mdi::Workspace::default();
         mdi::load(&mut workspace);
         if workspace.panes.is_empty() {
@@ -86,6 +100,7 @@ impl App {
             workspace.add("Macros", Point::new(40.0, 580.0), Size::new(440.0, 200.0));
             workspace.add("SO2R", Point::new(840.0, 580.0), Size::new(320.0, 180.0));
             workspace.add("CondX", Point::new(1180.0, 40.0), Size::new(280.0, 340.0));
+            workspace.add("SCP", Point::new(40.0, 800.0), Size::new(440.0, 160.0));
         }
         let pane_entry = workspace.id_by_title("Entry").unwrap_or_else(|| {
             workspace.add("Entry", Point::new(40.0, 40.0), Size::new(440.0, 260.0))
@@ -124,6 +139,9 @@ impl App {
         let pane_condx = workspace.id_by_title("CondX").unwrap_or_else(|| {
             workspace.add("CondX", Point::new(1180.0, 40.0), Size::new(280.0, 340.0))
         });
+        let pane_scp = workspace.id_by_title("SCP").unwrap_or_else(|| {
+            workspace.add("SCP", Point::new(40.0, 800.0), Size::new(440.0, 160.0))
+        });
         let tx_radio = session.state.focused_radio;
         let bandmap_zoom = std::collections::HashMap::new();
         Self {
@@ -144,11 +162,14 @@ impl App {
             pane_macros,
             pane_so2r,
             pane_condx,
+            pane_scp,
             theme: resolve_saved_theme().unwrap_or(Theme::Dark),
             modal: None,
             error_banner: None,
             adapters_ready: false,
             font_scale: mdi::load_font_scale().unwrap_or(1.0).clamp(FONT_SCALE_MIN, FONT_SCALE_MAX),
+            rig_configs: std::collections::HashMap::new(),
+            app_tx,
         }
     }
 
@@ -201,6 +222,13 @@ enum Message {
         radio: RadioId,
         zoom: f32,
     },
+    /// Retry connecting to a rig after a prior `RigDisconnected`. Scheduled
+    /// automatically by the `RigDisconnected` handler with a back-off; the
+    /// Task::perform payload holds the result of `spawn_rig_adapter`.
+    RigReconnected {
+        radio: RadioId,
+        result: Result<tokio::sync::mpsc::Sender<logger_runtime::RigCmd>, String>,
+    },
     SetTheme(Theme),
     ToggleSo2rRxMode,
     OpenModal(modals::Modal),
@@ -223,7 +251,12 @@ enum AdapterHandlesResult {
     Err(String),
 }
 
-fn update(state: &mut App, msg: Message) {
+fn update(state: &mut App, msg: Message) -> iced::Task<Message> {
+    // Rig reconnect scheduling is the only code path that needs to return
+    // a `Task` from `update()`; every other arm is fine with `()` → none.
+    // Capture the task in a local, run the match, then return at the end.
+    let mut pending: iced::Task<Message> = iced::Task::none();
+
     match msg {
         Message::Mdi(m) => {
             state.workspace.update(m);
@@ -253,7 +286,7 @@ fn update(state: &mut App, msg: Message) {
                 && matches!(&ev, AppEvent::KeyPress { key: logger_core::Key::Esc })
             {
                 state.modal = None;
-                return;
+                return iced::Task::none();
             }
             // Disconnect/error events flow through the reducer as no-ops,
             // but the GUI must surface them — update the status-bar
@@ -262,6 +295,12 @@ fn update(state: &mut App, msg: Message) {
                 AppEvent::RigDisconnected { radio } => {
                     state.handles.rig_status.insert(*radio, false);
                     state.error_banner = Some(format!("RIG{radio}: connection lost"));
+                    // Schedule an automatic reconnect if we have the config
+                    // saved. Adapter itself doesn't retry — the GUI supervises
+                    // by re-spawning with the saved config on a back-off.
+                    if let Some(cfg) = state.rig_configs.get(radio).cloned() {
+                        pending = schedule_rig_reconnect(*radio, cfg, state.app_tx.clone());
+                    }
                 }
                 AppEvent::KeyerDisconnected => {
                     state.handles.keyer_connected = false;
@@ -432,6 +471,23 @@ fn update(state: &mut App, msg: Message) {
                 &state.theme.to_string(),
             );
         }
+        Message::RigReconnected { radio, result } => match result {
+            Ok(cmd_tx) => {
+                tracing::info!(radio, "rig reconnected");
+                state.handles.rig_txs.insert(radio, cmd_tx);
+                state.handles.rig_status.insert(radio, true);
+                // Dismissing the stale "connection lost" banner is nice but
+                // we leave it to the operator — they may want to see what
+                // happened. It'll be replaced by any future error anyway.
+            }
+            Err(e) => {
+                tracing::warn!(radio, err = %e, "rig reconnect failed; retrying");
+                // Keep trying in the background. Same back-off delay.
+                if let Some(cfg) = state.rig_configs.get(&radio).cloned() {
+                    pending = schedule_rig_reconnect(radio, cfg, state.app_tx.clone());
+                }
+            }
+        },
         Message::FontScaleReset => {
             state.font_scale = 1.0;
             mdi::save(
@@ -441,6 +497,29 @@ fn update(state: &mut App, msg: Message) {
             );
         }
     }
+
+    pending
+}
+
+/// Build a `Task` that sleeps for `RIG_RECONNECT_DELAY` then attempts
+/// `spawn_rig_adapter` with the saved config. Producer of
+/// `Message::RigReconnected`, whose handler either stores the fresh
+/// `RigCmd` sender or schedules another retry on failure.
+fn schedule_rig_reconnect(
+    radio: RadioId,
+    cfg: RigConfig,
+    app_tx: tokio::sync::mpsc::Sender<AppEvent>,
+) -> iced::Task<Message> {
+    iced::Task::perform(
+        async move {
+            tokio::time::sleep(RIG_RECONNECT_DELAY).await;
+            let result = logger_runtime::spawn_rig_adapter(&cfg, app_tx)
+                .await
+                .map_err(|e| format!("{e:#}"));
+            (radio, result)
+        },
+        |(radio, result)| Message::RigReconnected { radio, result },
+    )
 }
 
 fn view(state: &App) -> Element<'_, Message> {
@@ -561,6 +640,8 @@ fn body_for<'a>(state: &'a App, pane: &'a mdi::Pane) -> Element<'a, Message> {
         )
     } else if pane.id == state.pane_condx {
         panes::condx::view(state.condx.as_ref())
+    } else if pane.id == state.pane_scp {
+        panes::scp::view(&state.session.state)
     } else {
         iced::widget::text(pane.body.clone()).into()
     }
@@ -712,6 +793,21 @@ fn status_bar(state: &App) -> Element<'_, Message> {
             },
         ));
     }
+    // Scoreboard upload status: gray Idle when not configured OR before
+    // the first upload cycle fires; green on a successful post; red when
+    // the adapter reports upload failures.
+    indicators.push(indicator(
+        "SCRBD",
+        if !state.handles.scoreboard_configured {
+            IndicatorState::Idle
+        } else {
+            match state.handles.scoreboard_status {
+                ScoreboardStatus::Ok => IndicatorState::Ok,
+                ScoreboardStatus::Failing => IndicatorState::Error,
+                ScoreboardStatus::Idle => IndicatorState::Idle,
+            }
+        },
+    ));
 
     let mut bar = row![
         text(label).size(12.0).color(Color::from_rgb(0.85, 0.85, 0.9)),
@@ -845,7 +941,7 @@ fn init() -> (App, iced::Task<Message>) {
 
     let app_tx = bridge::make_app_channel();
 
-    let (session, adapter_bits) = match maybe_cfg {
+    let (session, adapter_bits, rig_configs) = match maybe_cfg {
         Some(cfg) => {
             let (session_bits, adapter_bits) = cfg.into_parts();
             tracing::info!(
@@ -855,7 +951,15 @@ fn init() -> (App, iced::Task<Message>) {
             );
             let s = bridge::bootstrap_from_session(session_bits, app_tx.clone())
                 .expect("bootstrap_from_session failed");
-            (s, Some(adapter_bits))
+            // Snapshot the rig configs before spawn_adapters consumes
+            // `adapter_bits`; we need them for reconnect.
+            let rig_configs: std::collections::HashMap<RadioId, RigConfig> = adapter_bits
+                .rigs
+                .iter()
+                .cloned()
+                .map(|c| (c.radio_id, c))
+                .collect();
+            (s, Some(adapter_bits), rig_configs)
         }
         None => {
             tracing::info!("no --config given; running demo session (CWT, callsign TEST)");
@@ -864,7 +968,7 @@ fn init() -> (App, iced::Task<Message>) {
             // first opening the GUI. No periodic generator — those used to
             // run, and they were misleading.
             bridge::inject_demo_state(&mut s);
-            (s, None)
+            (s, None, std::collections::HashMap::new())
         }
     };
 
@@ -881,7 +985,8 @@ fn init() -> (App, iced::Task<Message>) {
         let cat = bits.category.as_ref()?;
         session.contest.cabrillo_id(cat.mode.to_category_mode())
     });
-    let app = App::new(session);
+    let mut app = App::new(session, app_tx.clone());
+    app.rig_configs = rig_configs;
 
     let task = if let Some(bits) = adapter_bits {
         iced::Task::perform(

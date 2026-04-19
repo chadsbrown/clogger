@@ -59,6 +59,15 @@ pub fn translate(key: &Key, modifiers: Modifiers, text: Option<&str>) -> Option<
         }
     }
 
+    // SCP cycle on bare "=" — TUI parity. The reducer treats Key::Equal as
+    // "advance through scp_matches, replacing the CALL field." Intercept
+    // it BEFORE the generic text path so the reducer doesn't get a
+    // TextInput { s: "=" } that would just append the literal character.
+    // Modifier-held variants (Ctrl-= for font scale) are handled above.
+    if !ctrl && !alt && text == Some("=") {
+        return Some(AppEvent::KeyPress { key: LKey::Equal });
+    }
+
     // Fall through to character text input for printable keys. Skip when
     // a modifier other than Shift is held (e.g. Ctrl-A) so the reducer
     // doesn't see "A" pasted into the entry box for shortcut chords.

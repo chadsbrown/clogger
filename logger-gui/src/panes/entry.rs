@@ -154,9 +154,9 @@ fn render_radio<'a, M: 'a>(
         }
     }
 
-    // Both the badges row and the SCP row are conditional by content, so
-    // they need fixed-height containers — otherwise appearance/absence
-    // changes on R1 would push R2 up and down as the operator types.
+    // Status row needs a fixed-height container — otherwise appearance/
+    // absence of badges on R1 would push R2 up and down as the operator
+    // types. SCP suggestions live in their own pane now (panes::scp).
     let status_row = container(
         row(status_bits)
             .spacing(6)
@@ -165,13 +165,7 @@ fn render_radio<'a, M: 'a>(
     .width(Length::Fill)
     .height(Length::Fixed(22.0));
 
-    let scp_slot = scp_row_view(
-        entry
-            .map(|e| e.scp_matches.as_slice())
-            .unwrap_or(&[] as &[String]),
-    );
-
-    let echo_row = echo_line_view(echo, radio_id);
+    let echo_row = echo_line_view(echo);
 
     let body_children: Vec<Element<M>> = vec![
         header.into(),
@@ -181,8 +175,6 @@ fn render_radio<'a, M: 'a>(
         echo_row,
         Space::new().height(4).into(),
         status_row.into(),
-        Space::new().height(4).into(),
-        scp_slot,
     ];
 
     container(column(body_children))
@@ -203,88 +195,27 @@ fn render_radio<'a, M: 'a>(
         .into()
 }
 
-/// One-line inline CW-echo display for a specific radio. Lives directly
-/// under the field row so the operator sees *this* radio's keyer output
-/// without looking away from the entry. Fixed height so the status row
-/// below doesn't jump when echo appears/clears.
-fn echo_line_view<'a, M: 'a>(echo: Option<&'a str>, radio_id: RadioId) -> Element<'a, M> {
+/// One-line inline CW-echo display for a specific radio. Plain text,
+/// horizontally centered, no box and no background change — just sits in
+/// the entry's normal surface so the operator's eye doesn't have to chase
+/// a separate region. Fixed height so the status row below doesn't jump
+/// when echo appears/clears.
+fn echo_line_view<'a, M: 'a>(echo: Option<&'a str>) -> Element<'a, M> {
     let body = echo
         .map(|s| s.to_string())
         .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| "—".to_string());
-    let is_placeholder = body == "—";
-
-    let label = text(format!("R{radio_id} CW"))
-        .size(style::TEXT_TINY)
-        .style(style::muted)
-        .width(Length::Fixed(48.0));
-    let echo_text = text(body)
-        .size(style::TEXT_VALUE)
-        .font(Font::MONOSPACE)
-        .style(move |t: &Theme| {
-            if is_placeholder {
-                style::very_muted(t)
-            } else {
-                style::body(t)
-            }
-        });
+        .unwrap_or_default();
 
     container(
-        row![label, echo_text]
-            .spacing(6)
-            .align_y(iced::alignment::Vertical::Center),
+        text(body)
+            .size(style::TEXT_VALUE)
+            .font(Font::MONOSPACE)
+            .style(style::body),
     )
     .padding([3, 8])
     .width(Length::Fill)
     .height(Length::Fixed(24.0))
-    .style(|t: &Theme| container::Style {
-        background: Some(t.extended_palette().background.weak.color.into()),
-        border: Border {
-            color: style::border_color(t),
-            width: 1.0,
-            radius: style::RADIUS_INPUT.into(),
-        },
-        ..container::Style::default()
-    })
-    .into()
-}
-
-fn scp_row_view<'a, M: 'a>(matches: &'a [String]) -> Element<'a, M> {
-    let take = matches.len().min(10);
-    let mut chips: Vec<Element<M>> = Vec::with_capacity(take + 1);
-    chips.push(text("SCP").size(style::TEXT_TINY).style(style::muted).into());
-    for m in matches.iter().take(take) {
-        chips.push(
-            container(
-                text(m.clone())
-                    .size(12.0)
-                    .font(Font::MONOSPACE)
-                    .style(style::accent),
-            )
-            .padding([1, 5])
-            .style(|t: &Theme| container::Style {
-                background: Some(t.extended_palette().primary.weak.color.into()),
-                border: Border {
-                    color: Color::TRANSPARENT,
-                    width: 0.0,
-                    radius: style::RADIUS_CHIP.into(),
-                },
-                ..container::Style::default()
-            })
-            .into(),
-        );
-    }
-    // Fixed height so the R2 block below doesn't jump when the operator
-    // types a call that starts / stops producing SCP suggestions. Height
-    // fits one wrapped row comfortably; extra matches wrap into it rather
-    // than pushing everything else down.
-    container(
-        row(chips)
-            .spacing(4)
-            .align_y(iced::alignment::Vertical::Center),
-    )
-    .width(Length::Fill)
-    .height(Length::Fixed(22.0))
+    .center_x(Length::Fill)
     .into()
 }
 

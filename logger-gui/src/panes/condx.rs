@@ -54,7 +54,9 @@ pub fn view<'a, M: 'a>(condx: Option<&'a CondXSnapshot>) -> Element<'a, M> {
         .map(|v| v.to_string())
         .unwrap_or_else(|| "—".to_string());
 
-    let updated_text = text(format!("updated {}", snap.updated))
+    // hamqsl emits timestamps as "<time>Z <date> GMT"; rewrite to UTC
+    // since that's the standard amateur-radio convention.
+    let updated_text = text(format!("updated {}", snap.updated.replace("GMT", "UTC")))
         .size(10.0)
         .style(style::very_muted);
 
@@ -71,24 +73,42 @@ pub fn view<'a, M: 'a>(condx: Option<&'a CondXSnapshot>) -> Element<'a, M> {
 
     if !snap.conditions.is_empty() {
         body.push(Space::new().height(6).into());
+        // Header row: band / day / night. Day and night ratings share one
+        // line per band — hamqsl emits them as two separate `BandCondition`
+        // entries tagged `"day"` / `"night"` for the same band label, so
+        // group them before rendering.
         body.push(
-            text("Band ratings (time — rating)")
-                .size(11.0)
-                .style(style::muted)
-                .into(),
+            row![
+                text("Band")
+                    .size(11.0)
+                    .style(style::muted)
+                    .width(Length::Fixed(80.0)),
+                text("Day")
+                    .size(11.0)
+                    .style(style::muted)
+                    .width(Length::Fill),
+                text("Night")
+                    .size(11.0)
+                    .style(style::muted)
+                    .width(Length::Fill),
+            ]
+            .spacing(4)
+            .into(),
         );
-        for band_cond in &snap.conditions {
+
+        let grouped = group_by_band(&snap.conditions);
+        for (band, day, night) in grouped {
             body.push(
                 row![
-                    text(band_cond.band.clone())
+                    text(band)
                         .size(12.0)
                         .style(style::body)
                         .width(Length::Fixed(80.0)),
-                    text(band_cond.time.clone())
+                    text(day.unwrap_or_else(|| "—".to_string()))
                         .size(12.0)
-                        .style(style::muted)
-                        .width(Length::Fixed(56.0)),
-                    text(band_cond.rating.clone())
+                        .style(style::body)
+                        .width(Length::Fill),
+                    text(night.unwrap_or_else(|| "—".to_string()))
                         .size(12.0)
                         .style(style::body)
                         .width(Length::Fill),
@@ -107,4 +127,27 @@ pub fn view<'a, M: 'a>(condx: Option<&'a CondXSnapshot>) -> Element<'a, M> {
         .width(Length::Fill)
         .height(Length::Fill)
         .into()
+}
+
+/// Collapse the flat `[BandCondition]` list from hamqsl (which repeats
+/// each band label twice — once for `time="day"`, once for `time="night"`)
+/// into one `(band, day_rating, night_rating)` per band, preserving the
+/// first-seen band order so the display matches the feed.
+fn group_by_band(conds: &[logger_runtime::BandCondition]) -> Vec<(String, Option<String>, Option<String>)> {
+    let mut out: Vec<(String, Option<String>, Option<String>)> = Vec::new();
+    for c in conds {
+        let is_day = c.time.eq_ignore_ascii_case("day");
+        if let Some(entry) = out.iter_mut().find(|(b, _, _)| b == &c.band) {
+            if is_day {
+                entry.1 = Some(c.rating.clone());
+            } else {
+                entry.2 = Some(c.rating.clone());
+            }
+        } else if is_day {
+            out.push((c.band.clone(), Some(c.rating.clone()), None));
+        } else {
+            out.push((c.band.clone(), None, Some(c.rating.clone())));
+        }
+    }
+    out
 }
