@@ -230,7 +230,9 @@ impl<'a, M> canvas::Program<M> for BandmapProgram<'a, M> {
         };
 
         let pal = theme.extended_palette();
-        let bg_color = pal.background.weak.color;
+        // Match the pane frame's own background so the canvas blends with
+        // every other pane instead of reading as a sunk-in sub-surface.
+        let bg_color = pal.background.base.color;
         let axis_color = if style::is_light(theme) {
             Color::from_rgb(0.55, 0.55, 0.6)
         } else {

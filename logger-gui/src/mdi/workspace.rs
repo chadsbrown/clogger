@@ -448,23 +448,42 @@ where
         .on_press(wrap(Message::StartMove(pane.id)))
         .interaction(mouse::Interaction::Grab);
 
+    // Fill the full title-bar height so the frame background doesn't show
+    // through as a horizontal band above/below the ✕ glyph, and match the
+    // title bar's tint (primary when focused, background.strong otherwise)
+    // so the whole strip reads as one color until hover flips it red. The
+    // top-right corner picks up the frame's outer radius; other corners
+    // stay square so the seam with the drag handle is flush.
     let close_btn = button(text("✕").size(12.0))
-        .padding([0, 6])
+        .padding([0, 10])
+        .height(Length::Fixed(TITLE_H))
         .on_press(wrap(Message::Close(pane.id)))
-        .style(|t: &Theme, status| {
-            let pal = t.extended_palette().background.strong;
-            let bg = match status {
-                button::Status::Hovered => t.extended_palette().danger.base.color,
-                _ => pal.color,
+        .style(move |t: &Theme, status| {
+            let base = if focused {
+                t.extended_palette().primary.strong
+            } else {
+                t.extended_palette().background.strong
             };
-            let fg = match status {
-                button::Status::Hovered => t.extended_palette().danger.base.text,
-                _ => pal.text,
+            let (bg, fg) = match status {
+                button::Status::Hovered => (
+                    t.extended_palette().danger.base.color,
+                    t.extended_palette().danger.base.text,
+                ),
+                _ => (base.color, base.text),
             };
             button::Style {
                 background: Some(bg.into()),
                 text_color: fg,
-                border: Border::default(),
+                border: Border {
+                    color: Color::TRANSPARENT,
+                    width: 0.0,
+                    radius: iced::border::Radius {
+                        top_left: 0.0,
+                        top_right: style::RADIUS_FRAME - 1.0,
+                        bottom_left: 0.0,
+                        bottom_right: 0.0,
+                    },
+                },
                 ..button::Style::default()
             }
         });
