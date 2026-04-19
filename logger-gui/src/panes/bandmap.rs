@@ -1,10 +1,8 @@
 //! Bandmap pane — vertical-axis frequency canvas for a specific radio.
-//! Spots are color-coded per that radio's band+mode:
-//!   - worked (dupe) → gray
-//!   - mult-needed → yellow
-//!   - new → green
-//! Click anywhere below the axis to tune that radio. Clicks within 5 kHz of
-//! a spot snap to the spot's exact frequency and populate the entry's CALL.
+//! Scroll wheel zooms in/out; at any zoom level < 1, the view stays
+//! centered on the rig's current frequency (clamped to band edges).
+//! Click tunes; clicks within 5 kHz of a spot snap to the spot's exact
+//! frequency and populate the entry's CALL field.
 
 use std::collections::HashSet;
 
@@ -17,9 +15,12 @@ use logger_runtime::{compute_worked_calls, LogAdapter};
 use super::style;
 
 const AXIS_X: f32 = 56.0;
-const TICK_KHZ: u64 = 5;
-const LABEL_KHZ: u64 = 25;
 const SNAP_HZ: u64 = 5_000;
+/// Zoom factor multiplier for each scroll-wheel click (in/out).
+const ZOOM_STEP: f32 = 0.75;
+/// Don't zoom past this fraction of the full band — keeps a few spots
+/// on screen at most-zoomed-in.
+const MIN_ZOOM: f32 = 0.02;
 
 pub fn view<'a, M: 'a + Clone + Send + Sync + 'static>(
     state: &'a AppState,
@@ -95,6 +96,30 @@ fn snap_to_spot_with_call(
     best.map(|(_, s)| (s.call.clone(), s.freq_hz))
 }
 
+/// Per-canvas zoom state — lives inside iced's canvas::Program state so it
+/// survives across draws.
+#[derive(Debug, Clone, Copy)]
+pub struct ZoomState {
+    /// Fraction of the full band that's visible. 1.0 = whole band.
+    /// Defaults to 1.0 on first show.
+    pub zoom: f32,
+}
+
+impl Default for ZoomState {
+    fn default() -> Self {
+        Self { zoom: 1.0 }
+    }
+}
+
+impl ZoomState {
+    fn zoom_in(&mut self) {
+        self.zoom = (self.zoom * ZOOM_STEP).max(MIN_ZOOM);
+    }
+    fn zoom_out(&mut self) {
+        self.zoom = (self.zoom / ZOOM_STEP).min(1.0);
+    }
+}
+
 struct BandmapProgram<'a, M> {
     spots: &'a [logger_core::state::Spot],
     worked: HashSet<String>,
@@ -105,42 +130,103 @@ struct BandmapProgram<'a, M> {
     on_click: fn(Option<String>, u64) -> M,
 }
 
+impl<'a, M> BandmapProgram<'a, M> {
+    /// Current visible frequency range, given a zoom factor. Centered on
+    /// `cursor_hz` when there's room; clamped to band edges otherwise.
+    fn visible_range(&self, zoom: f32) -> (u64, u64) {
+        let z = zoom.clamp(MIN_ZOOM, 1.0);
+        if z >= 1.0 || self.cursor_hz == 0 {
+            return (self.band_low_hz, self.band_high_hz);
+        }
+        let full_span = self.band_high_hz - self.band_low_hz;
+        let span = ((full_span as f32 * z) as u64).max(1000);
+        let half = span / 2;
+        let cursor = self.cursor_hz.clamp(self.band_low_hz, self.band_high_hz);
+        let want_low = cursor.saturating_sub(half);
+        let want_high = cursor.saturating_add(half);
+        if want_low < self.band_low_hz {
+            (self.band_low_hz, self.band_low_hz + span)
+        } else if want_high > self.band_high_hz {
+            (self.band_high_hz.saturating_sub(span), self.band_high_hz)
+        } else {
+            (want_low, want_high)
+        }
+    }
+}
+
+/// Pick sensible tick + label intervals for the currently visible span.
+fn tick_intervals(visible_span_hz: u64) -> (u64, u64) {
+    // (tick_hz, label_hz) — labels only on multiples of `label_hz`.
+    if visible_span_hz <= 30_000 {
+        (1_000, 5_000)
+    } else if visible_span_hz <= 100_000 {
+        (2_000, 10_000)
+    } else if visible_span_hz <= 200_000 {
+        (5_000, 20_000)
+    } else {
+        (5_000, 25_000)
+    }
+}
+
 impl<'a, M> canvas::Program<M> for BandmapProgram<'a, M> {
-    type State = ();
+    type State = ZoomState;
 
     fn update(
         &self,
-        _state: &mut Self::State,
+        state: &mut Self::State,
         event: canvas::Event,
         bounds: Rectangle,
         cursor: mouse::Cursor,
     ) -> (canvas::event::Status, Option<M>) {
-        use iced::mouse::{Button, Event as MouseEvent};
-        if let canvas::Event::Mouse(MouseEvent::ButtonPressed(Button::Left)) = event {
-            if let Some(pos) = cursor.position_in(bounds) {
-                if pos.x < AXIS_X {
+        use iced::mouse::{Button, Event as MouseEvent, ScrollDelta};
+
+        match event {
+            canvas::Event::Mouse(MouseEvent::WheelScrolled { delta }) => {
+                if cursor.position_in(bounds).is_none() {
                     return (canvas::event::Status::Ignored, None);
                 }
-                let band_span = (self.band_high_hz - self.band_low_hz).max(1) as f32;
-                let raw = self.band_low_hz
-                    + ((pos.y.clamp(0.0, bounds.height) / bounds.height) * band_span) as u64;
-                let snapped = snap_to_spot_with_call(self.spots, raw);
-                let (call, target) = match snapped {
-                    Some((call, freq)) => (Some(call), freq),
-                    None => (None, raw),
+                let y = match delta {
+                    ScrollDelta::Lines { y, .. } => y,
+                    // ~20 pixels per "line" is a rough but reasonable match
+                    // for a typical mouse wheel click on most platforms.
+                    ScrollDelta::Pixels { y, .. } => y / 20.0,
                 };
-                return (
-                    canvas::event::Status::Captured,
-                    Some((self.on_click)(call, target)),
-                );
+                if y > 0.0 {
+                    state.zoom_in();
+                } else if y < 0.0 {
+                    state.zoom_out();
+                }
+                (canvas::event::Status::Captured, None)
             }
+            canvas::Event::Mouse(MouseEvent::ButtonPressed(Button::Left)) => {
+                if let Some(pos) = cursor.position_in(bounds) {
+                    if pos.x < AXIS_X {
+                        return (canvas::event::Status::Ignored, None);
+                    }
+                    let (vlow, vhigh) = self.visible_range(state.zoom);
+                    let band_span = (vhigh - vlow).max(1) as f32;
+                    let raw = vlow
+                        + ((pos.y.clamp(0.0, bounds.height) / bounds.height) * band_span) as u64;
+                    let snapped = snap_to_spot_with_call(self.spots, raw);
+                    let (call, target) = match snapped {
+                        Some((call, freq)) => (Some(call), freq),
+                        None => (None, raw),
+                    };
+                    (
+                        canvas::event::Status::Captured,
+                        Some((self.on_click)(call, target)),
+                    )
+                } else {
+                    (canvas::event::Status::Ignored, None)
+                }
+            }
+            _ => (canvas::event::Status::Ignored, None),
         }
-        (canvas::event::Status::Ignored, None)
     }
 
     fn draw(
         &self,
-        _state: &Self::State,
+        state: &Self::State,
         renderer: &Renderer,
         theme: &Theme,
         bounds: Rectangle,
@@ -150,13 +236,14 @@ impl<'a, M> canvas::Program<M> for BandmapProgram<'a, M> {
         let h = bounds.height;
         let w = bounds.width;
 
-        let band_span = (self.band_high_hz - self.band_low_hz).max(1) as f32;
+        let (vlow, vhigh) = self.visible_range(state.zoom);
+        let visible_span = vhigh - vlow;
+        let span_f = visible_span.max(1) as f32;
         let y_for = |hz: u64| -> f32 {
-            let offset = hz.saturating_sub(self.band_low_hz) as f32;
-            (offset / band_span) * h
+            let offset = hz.saturating_sub(vlow) as f32;
+            (offset / span_f) * h
         };
 
-        // Theme-driven background and gridlines.
         let pal = theme.extended_palette();
         let bg_color = pal.background.weak.color;
         let axis_color = if style::is_light(theme) {
@@ -167,26 +254,25 @@ impl<'a, M> canvas::Program<M> for BandmapProgram<'a, M> {
         let label_color = style::muted_color(theme);
         let text_color = pal.background.base.text;
 
-        let bg = Path::rectangle(Point::ORIGIN, Size::new(w, h));
-        frame.fill(&bg, bg_color);
+        frame.fill(
+            &Path::rectangle(Point::ORIGIN, Size::new(w, h)),
+            bg_color,
+        );
 
-        let axis = Path::line(Point::new(AXIS_X, 0.0), Point::new(AXIS_X, h));
         frame.stroke(
-            &axis,
+            &Path::line(Point::new(AXIS_X, 0.0), Point::new(AXIS_X, h)),
             Stroke::default().with_width(1.0).with_color(axis_color),
         );
 
-        let mut hz = (self.band_low_hz / (TICK_KHZ * 1000)) * (TICK_KHZ * 1000);
-        if hz < self.band_low_hz {
-            hz += TICK_KHZ * 1000;
-        }
-        while hz <= self.band_high_hz {
+        let (tick_hz, label_hz) = tick_intervals(visible_span);
+        let first_tick = vlow.div_ceil(tick_hz) * tick_hz;
+        let mut hz = first_tick;
+        while hz <= vhigh {
             let y = y_for(hz);
-            let is_label = hz % (LABEL_KHZ * 1000) == 0;
+            let is_label = hz % label_hz == 0;
             let tick_len = if is_label { 8.0 } else { 4.0 };
-            let tick = Path::line(Point::new(AXIS_X - tick_len, y), Point::new(AXIS_X, y));
             frame.stroke(
-                &tick,
+                &Path::line(Point::new(AXIS_X - tick_len, y), Point::new(AXIS_X, y)),
                 Stroke::default().with_width(1.0).with_color(axis_color),
             );
             if is_label {
@@ -198,11 +284,14 @@ impl<'a, M> canvas::Program<M> for BandmapProgram<'a, M> {
                     ..Text::default()
                 });
             }
-            hz += TICK_KHZ * 1000;
+            hz = hz.saturating_add(tick_hz);
+            if hz == 0 {
+                break;
+            }
         }
 
         for spot in self.spots {
-            if spot.freq_hz < self.band_low_hz || spot.freq_hz > self.band_high_hz {
+            if spot.freq_hz < vlow || spot.freq_hz > vhigh {
                 continue;
             }
             let y = y_for(spot.freq_hz);
@@ -214,11 +303,13 @@ impl<'a, M> canvas::Program<M> for BandmapProgram<'a, M> {
                 (style::new_spot_color(theme), text_color)
             };
             let dot_size = 6.0;
-            let dot = Path::rectangle(
-                Point::new(AXIS_X - dot_size / 2.0, y - dot_size / 2.0),
-                Size::new(dot_size, dot_size),
+            frame.fill(
+                &Path::rectangle(
+                    Point::new(AXIS_X - dot_size / 2.0, y - dot_size / 2.0),
+                    Size::new(dot_size, dot_size),
+                ),
+                dot_color,
             );
-            frame.fill(&dot, dot_color);
             frame.fill_text(Text {
                 content: spot.call.clone(),
                 position: Point::new(AXIS_X + 6.0, y - 7.0),
@@ -228,15 +319,27 @@ impl<'a, M> canvas::Program<M> for BandmapProgram<'a, M> {
             });
         }
 
-        if self.cursor_hz >= self.band_low_hz && self.cursor_hz <= self.band_high_hz {
+        if self.cursor_hz >= vlow && self.cursor_hz <= vhigh {
             let y = y_for(self.cursor_hz);
-            let line = Path::line(Point::new(AXIS_X, y), Point::new(w, y));
             frame.stroke(
-                &line,
+                &Path::line(Point::new(AXIS_X, y), Point::new(w, y)),
                 Stroke::default()
                     .with_width(1.5)
                     .with_color(style::CURSOR_COLOR),
             );
+        }
+
+        // Zoom indicator in the top-right — "100%" when full band,
+        // smaller values as the user zooms in.
+        let pct = (state.zoom.clamp(MIN_ZOOM, 1.0) * 100.0).round() as u32;
+        if pct < 100 {
+            frame.fill_text(Text {
+                content: format!("{pct}%"),
+                position: Point::new(w - 40.0, 4.0),
+                color: label_color,
+                size: 10.0.into(),
+                ..Text::default()
+            });
         }
 
         vec![frame.into_geometry()]

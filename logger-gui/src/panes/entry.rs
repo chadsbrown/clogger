@@ -1,13 +1,23 @@
-//! Entry pane — shows the exchange fields for R1 and (optionally) R2 so
-//! SO2R operators can see both simultaneously. Plus SCP (super-check-partial)
-//! suggestions under each radio's call field so partial callsigns get
-//! completed the way every real contest logger does it.
+//! Entry pane — R1 and (optionally) R2 exchange fields laid out horizontally
+//! per radio, matching the "run box" layout contest operators expect. Each
+//! field's pixel width comes from the contest spec's `field.width` (in
+//! character columns), translated through a monospace font.
 
 use iced::widget::{column, container, row, text, Space};
-use iced::{Border, Color, Element, Length, Theme};
+use iced::{Border, Color, Element, Font, Length, Theme};
 use logger_core::{AppState, RadioId};
 
 use super::style;
+
+/// Pixels per character-column for the value-box width calculation.
+/// Picked to look roughly right at value text size 14 in the default
+/// monospace font.
+const PX_PER_COL: f32 = 11.0;
+/// Extra horizontal padding inside the value box (left + right combined).
+const BOX_HPAD: f32 = 12.0;
+/// Minimum field width even if the spec says something smaller, so
+/// single-char fields (like PREC) still have a visible box.
+const MIN_BOX_PX: f32 = 42.0;
 
 pub fn view<'a, M: 'a>(state: &'a AppState, show_r2: bool) -> Element<'a, M> {
     let mut sections: Vec<Element<M>> = Vec::with_capacity(2);
@@ -47,19 +57,21 @@ fn render_radio<'a, M: 'a>(state: &'a AppState, radio_id: RadioId) -> Element<'a
         }
     });
 
-    let mut field_rows: Vec<Element<M>> = Vec::new();
-    if let Some(entry) = entry {
+    // Horizontal field row — one column per field (label above value box).
+    let fields_row: Element<M> = if let Some(entry) = entry {
+        let mut columns: Vec<Element<M>> = Vec::with_capacity(entry.fields.len());
         for (idx, field) in entry.fields.iter().enumerate() {
             let is_focused_field = is_active && idx == entry.focus;
-            let value_str = if field.value.is_empty() {
+            let box_width = (field.width as f32 * PX_PER_COL + BOX_HPAD).max(MIN_BOX_PX);
+
+            let label = text(field.label.clone()).size(10).style(style::muted);
+
+            let empty = field.value.is_empty();
+            let value_str = if empty {
                 "—".to_string()
             } else {
                 field.value.clone()
             };
-            let label = text(format!("{:>6}", field.label))
-                .size(13)
-                .style(style::muted);
-            let empty = field.value.is_empty();
             let value_style = move |t: &Theme| container::Style {
                 background: Some(
                     if is_focused_field {
@@ -87,20 +99,30 @@ fn render_radio<'a, M: 'a>(state: &'a AppState, radio_id: RadioId) -> Element<'a
                 },
                 ..container::Style::default()
             };
-            let value = container(text(value_str).size(14))
-                .padding([2, 6])
-                .width(Length::Fill)
-                .style(value_style);
-            field_rows.push(
-                row![label, value]
-                    .spacing(8)
-                    .align_y(iced::alignment::Vertical::Center)
+            let value = container(
+                text(value_str)
+                    .size(14)
+                    .font(Font::MONOSPACE)
+                    .style(style::body),
+            )
+            .padding([3, 6])
+            .width(Length::Fixed(box_width))
+            .style(value_style);
+
+            columns.push(
+                column![label, value]
+                    .spacing(2)
+                    .width(Length::Fixed(box_width))
                     .into(),
             );
         }
+        row(columns)
+            .spacing(8)
+            .align_y(iced::alignment::Vertical::Bottom)
+            .into()
     } else {
-        field_rows.push(text("(no entry state)").style(style::muted).into());
-    }
+        text("(no entry state)").style(style::muted).into()
+    };
 
     let mut status_bits: Vec<Element<M>> = Vec::new();
     if let Some(entry) = entry {
@@ -122,9 +144,6 @@ fn render_radio<'a, M: 'a>(state: &'a AppState, radio_id: RadioId) -> Element<'a
         .spacing(6)
         .align_y(iced::alignment::Vertical::Center);
 
-    // SCP suggestions — partial-callsign autocompletion from the master
-    // database. Shows up to 10 suggestions when the call field has content
-    // and produces matches. This is contest logger table stakes.
     let scp_row = entry
         .filter(|e| !e.scp_matches.is_empty())
         .map(|e| scp_row_view(&e.scp_matches));
@@ -132,7 +151,7 @@ fn render_radio<'a, M: 'a>(state: &'a AppState, radio_id: RadioId) -> Element<'a
     let mut body_children: Vec<Element<M>> = vec![
         header.into(),
         Space::with_height(4).into(),
-        column(field_rows).spacing(4).into(),
+        fields_row,
         Space::with_height(4).into(),
         status_row.into(),
     ];
@@ -141,9 +160,7 @@ fn render_radio<'a, M: 'a>(state: &'a AppState, radio_id: RadioId) -> Element<'a
         body_children.push(scp);
     }
 
-    let body = column(body_children);
-
-    container(body)
+    container(column(body_children))
         .padding(6)
         .width(Length::Fill)
         .style(move |t: &Theme| container::Style {
@@ -167,18 +184,23 @@ fn scp_row_view<'a, M: 'a>(matches: &'a [String]) -> Element<'a, M> {
     chips.push(text("SCP").size(10).style(style::muted).into());
     for m in matches.iter().take(take) {
         chips.push(
-            container(text(m.clone()).size(12).style(style::accent))
-                .padding([1, 5])
-                .style(|t: &Theme| container::Style {
-                    background: Some(t.extended_palette().primary.weak.color.into()),
-                    border: Border {
-                        color: Color::TRANSPARENT,
-                        width: 0.0,
-                        radius: 2.0.into(),
-                    },
-                    ..container::Style::default()
-                })
-                .into(),
+            container(
+                text(m.clone())
+                    .size(12)
+                    .font(Font::MONOSPACE)
+                    .style(style::accent),
+            )
+            .padding([1, 5])
+            .style(|t: &Theme| container::Style {
+                background: Some(t.extended_palette().primary.weak.color.into()),
+                border: Border {
+                    color: Color::TRANSPARENT,
+                    width: 0.0,
+                    radius: 2.0.into(),
+                },
+                ..container::Style::default()
+            })
+            .into(),
         );
     }
     row(chips).spacing(4).wrap().into()

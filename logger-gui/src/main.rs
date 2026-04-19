@@ -50,6 +50,12 @@ struct App {
     /// Sticky error banner. Set by `AppEvent::*Error` / `*Disconnected`;
     /// cleared by the user (✕ on the banner).
     error_banner: Option<String>,
+    /// False until `spawn_adapters` completes and `Message::AdaptersReady`
+    /// fires. Subscriptions that depend on receivers stashed by
+    /// `spawn_adapters` (condx, keyer echo, scoreboard status) are only
+    /// registered after this flips — otherwise they'd activate before the
+    /// receivers exist, see `None`, and park in `pending` forever.
+    adapters_ready: bool,
 }
 
 impl App {
@@ -128,6 +134,7 @@ impl App {
             dark_mode: true,
             modal: None,
             error_banner: None,
+            adapters_ready: false,
         }
     }
 
@@ -307,13 +314,19 @@ fn update(state: &mut App, msg: Message) {
                         dxfeed = h.dxfeed_connected,
                         so2r = h.so2r_connected,
                         condx = h.condx_configured,
+                        scoreboard = h.scoreboard_configured,
                         "adapters ready"
                     );
                     state.handles = h;
+                    // Flipping this flag re-runs `subscription()` and adds
+                    // the condx/keyer/scoreboard streams now that their
+                    // OnceLock receivers are populated.
+                    state.adapters_ready = true;
                 }
             }
             AdapterHandlesResult::Err(e) => {
                 tracing::error!(err = %e, "adapter setup failed; running without hardware");
+                state.error_banner = Some(format!("ADAPTERS: {e}"));
             }
         },
         Message::KeyerEvent(ev) => match ev {
@@ -663,16 +676,24 @@ fn indicator_owned<'a>(label: String, state: IndicatorState) -> Element<'a, Mess
         .into()
 }
 
-fn subscription(_state: &App) -> Subscription<Message> {
-    Subscription::batch([
-        _state.workspace.subscription().map(Message::Mdi),
+fn subscription(state: &App) -> Subscription<Message> {
+    let mut subs: Vec<Subscription<Message>> = vec![
+        state.workspace.subscription().map(Message::Mdi),
         iced::time::every(Duration::from_secs(1)).map(|_| Message::Tick),
         bridge::adapter_events().map(Message::Domain),
-        bridge::condx_events().map(Message::CondxSnapshot),
-        bridge::keyer_events().map(Message::KeyerEvent),
-        bridge::scoreboard_events().map(Message::ScoreboardStatus),
         keyboard_subscription(),
-    ])
+    ];
+    // Subscriptions that depend on adapter receivers are registered only
+    // after `spawn_adapters` completes and populates them. Registering
+    // them earlier would make the subscription closure activate against
+    // empty `OnceLock`s, then park forever in `pending` — which is why
+    // the CondX pane was stuck at "no snapshot yet" with config loaded.
+    if state.adapters_ready {
+        subs.push(bridge::condx_events().map(Message::CondxSnapshot));
+        subs.push(bridge::keyer_events().map(Message::KeyerEvent));
+        subs.push(bridge::scoreboard_events().map(Message::ScoreboardStatus));
+    }
+    Subscription::batch(subs)
 }
 
 fn keyboard_subscription() -> Subscription<Message> {
