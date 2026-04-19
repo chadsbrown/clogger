@@ -5,7 +5,6 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  BIN_NAME: logger-tui
 
 jobs:
   build:
@@ -30,7 +29,16 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libudev-dev pkg-config
+          sudo apt-get install -y \
+            libudev-dev \
+            pkg-config \
+            libxkbcommon-dev \
+            libwayland-dev \
+            libxcb1-dev \
+            libxrandr-dev \
+            libxi-dev \
+            libxcursor-dev \
+            libfontconfig1-dev
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -42,8 +50,8 @@ jobs:
         with:
           key: ${{ matrix.target }}
 
-      - name: Build release binary
-        run: cargo build --release --locked --target ${{ matrix.target }} -p ${{ env.BIN_NAME }}
+      - name: Build release binaries
+        run: cargo build --release --locked --target ${{ matrix.target }} -p logger-tui -p logger-gui
 
       - name: Stage release files (Linux)
         if: runner.os == 'Linux'
@@ -51,7 +59,8 @@ jobs:
         run: |
           STAGING="staging"
           mkdir -p "$STAGING"
-          cp "target/${{ matrix.target }}/release/${{ env.BIN_NAME }}" "$STAGING/"
+          cp "target/${{ matrix.target }}/release/logger-tui" "$STAGING/"
+          cp "target/${{ matrix.target }}/release/logger-gui" "$STAGING/"
           cp README.md config.example.toml contest.example.toml "$STAGING/" 2>/dev/null || true
 
       - name: Stage release files (Windows)
@@ -59,7 +68,8 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path staging | Out-Null
-          Copy-Item "target/${{ matrix.target }}/release/${{ env.BIN_NAME }}.exe" -Destination staging
+          Copy-Item "target/${{ matrix.target }}/release/logger-tui.exe" -Destination staging
+          Copy-Item "target/${{ matrix.target }}/release/logger-gui.exe" -Destination staging
           if (Test-Path "README.md") { Copy-Item "README.md" -Destination staging }
           if (Test-Path "config.example.toml") { Copy-Item "config.example.toml" -Destination staging }
           if (Test-Path "contest.example.toml") { Copy-Item "contest.example.toml" -Destination staging }

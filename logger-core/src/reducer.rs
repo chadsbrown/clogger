@@ -527,45 +527,16 @@ pub fn reduce(
             let freq_hz = spot.freq_hz;
             let call = spot.call.clone();
 
-            st.bandmap_cursors.insert(
-                target,
-                BandmapCursor::On { call: call.clone(), freq_hz },
-            );
-
-            // Temporarily swap focus to target radio so helpers operate on it
-            let original_focus = st.focused_radio;
-            st.focused_radio = target;
-            {
-                let entry = st.focused_entry_mut();
-                entry.mode = OpMode::Sp;
-
-                if let Some(field) = entry.fields.iter_mut().find(|f| f.field_id == 1) {
-                    field.cursor = call.len();
-                    field.value = call;
-                }
-
-                entry.focus = 0;
-                entry.scp_cycle_index = None;
-
-                // Guard against logging a QSO with blank RST when the
-                // entry was previously wiped (e.g. F12 before this fix, or
-                // a manual RST delete). `apply_default_rst` only fills
-                // empty fields, so it's a no-op in the normal case.
-                let mode = st
-                    .radios
-                    .get(&target)
-                    .map(|r| normalize_mode(r.mode.as_str()))
-                    .unwrap_or("CW");
-                let entry = st.focused_entry_mut();
-                crate::entry::esm::apply_default_rst(entry, contest, mode);
-            }
-
-            recompute_feedback(st, dupe_checker, mult_checker);
-            apply_history_only(st, contest, call_history, contest_history);
-            revalidate_after_edit(st, contest);
-            st.focused_radio = original_focus;
-
-            vec![Effect::RigSet { radio: target, freq_hz }]
+            select_bandmap_spot(
+                st, target, call, freq_hz, contest, dupe_checker, mult_checker,
+                call_history, contest_history,
+            )
+        }
+        AppEvent::BandmapSelect { radio: target, call, freq_hz } => {
+            select_bandmap_spot(
+                st, target, call, freq_hz, contest, dupe_checker, mult_checker,
+                call_history, contest_history,
+            )
         }
         AppEvent::CwSpeedAdjust { delta } => {
             // Range is the conservative contest-CW window. Widen if a user
@@ -635,6 +606,59 @@ fn try_frequency_entry(st: &mut AppState) -> Option<Vec<Effect>> {
     }
 
     Some(vec![Effect::RigSet { radio, freq_hz }])
+}
+
+/// Select a specific bandmap spot for `target` radio: pin the cursor to it,
+/// populate the CALL field, switch to S&P, autofill from history, and emit
+/// a `RigSet` for the spot's frequency. Shared by `BandmapUp/Down` (which
+/// pick a spot relative to the current cursor) and `BandmapSelect` (which
+/// is given the call+freq directly — e.g. from a GUI bandmap click).
+fn select_bandmap_spot(
+    st: &mut AppState,
+    target: RadioId,
+    call: String,
+    freq_hz: u64,
+    contest: &dyn ContestEntry,
+    dupe_checker: &dyn DupeChecker,
+    mult_checker: &dyn MultChecker,
+    call_history: &dyn CallHistoryLookup,
+    contest_history: &dyn ContestHistoryLookup,
+) -> Vec<Effect> {
+    st.bandmap_cursors.insert(
+        target,
+        BandmapCursor::On {
+            call: call.clone(),
+            freq_hz,
+        },
+    );
+
+    let original_focus = st.focused_radio;
+    st.focused_radio = target;
+    {
+        let entry = st.focused_entry_mut();
+        entry.mode = OpMode::Sp;
+        if let Some(field) = entry.fields.iter_mut().find(|f| f.field_id == 1) {
+            field.cursor = call.len();
+            field.value = call;
+        }
+        entry.focus = 0;
+        entry.scp_cycle_index = None;
+
+        let mode = st
+            .radios
+            .get(&target)
+            .map(|r| normalize_mode(r.mode.as_str()))
+            .unwrap_or("CW");
+        let entry = st.focused_entry_mut();
+        crate::entry::esm::apply_default_rst(entry, contest, mode);
+    }
+
+    recompute_feedback(st, dupe_checker, mult_checker);
+    apply_history_only(st, contest, call_history, contest_history);
+    revalidate_after_edit(st, contest);
+    st.focused_radio = original_focus;
+
+    vec![Effect::RigSet { radio: target, freq_hz }]
 }
 
 fn revalidate_after_edit(st: &mut AppState, contest: &dyn ContestEntry) {
