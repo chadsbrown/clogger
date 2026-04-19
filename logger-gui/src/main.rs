@@ -35,6 +35,10 @@ struct App {
     /// Which radio the keyer is currently keying (independent of entry
     /// focus). Updated from `Effect::CwSend` in `observe_effects`.
     tx_radio: RadioId,
+    /// True while the keyer reports a CW send in flight. Set optimistically
+    /// on `Effect::CwSend`, cleared on `KeyerEvent::StatusChanged { busy: false }`.
+    /// Drives the red TX border on the transmitting radio's entry section.
+    cw_transmitting: bool,
     /// Per-radio bandmap zoom factor. Lives on the host rather than inside
     /// the Canvas's `Program::State` because iced's widget-tree diff ties
     /// canvas state to tree position — any pane click that bumps z-order
@@ -151,6 +155,7 @@ impl App {
             echo_per_radio: std::collections::HashMap::new(),
             condx: None,
             tx_radio,
+            cw_transmitting: false,
             bandmap_zoom,
             pane_entry,
             pane_bandmap_r1,
@@ -179,6 +184,7 @@ impl App {
         for ef in effects {
             if let Effect::CwSend { radio, text } = ef {
                 self.tx_radio = *radio;
+                self.cw_transmitting = true;
                 if self.handles.cw_echo_enabled {
                     // Live-echo mode: clear the buffer and let
                     // `KeyerEvent::CharacterSent` fill it as the keyer
@@ -436,7 +442,11 @@ fn update(state: &mut App, msg: Message) -> iced::Task<Message> {
             KeyerEvent::Disconnected => {
                 state.handles.keyer_connected = false;
             }
-            KeyerEvent::StatusChanged(_) => {}
+            KeyerEvent::StatusChanged(status) => {
+                if !status.busy {
+                    state.cw_transmitting = false;
+                }
+            }
             _ => {}
         },
         Message::CondxSnapshot(snap) => {
@@ -601,6 +611,7 @@ fn body_for<'a>(state: &'a App, pane: &'a mdi::Pane) -> Element<'a, Message> {
             &state.session.state,
             state.show_r2(),
             &state.echo_per_radio,
+            state.cw_transmitting.then_some(state.tx_radio),
         )
     } else if pane.id == state.pane_bandmap_r1 {
         let zoom = state.bandmap_zoom.get(&1).copied().unwrap_or(1.0);

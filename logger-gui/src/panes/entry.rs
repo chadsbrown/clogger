@@ -29,11 +29,22 @@ pub fn view<'a, M: 'a>(
     state: &'a AppState,
     show_r2: bool,
     echoes: &'a HashMap<RadioId, String>,
+    tx_radio: Option<RadioId>,
 ) -> Element<'a, M> {
     let mut sections: Vec<Element<M>> = Vec::with_capacity(2);
-    sections.push(render_radio(state, 1, echoes.get(&1).map(|s| s.as_str())));
+    sections.push(render_radio(
+        state,
+        1,
+        echoes.get(&1).map(|s| s.as_str()),
+        tx_radio == Some(1),
+    ));
     if show_r2 {
-        sections.push(render_radio(state, 2, echoes.get(&2).map(|s| s.as_str())));
+        sections.push(render_radio(
+            state,
+            2,
+            echoes.get(&2).map(|s| s.as_str()),
+            tx_radio == Some(2),
+        ));
     }
     container(column(sections).spacing(8))
         .padding(6)
@@ -46,6 +57,7 @@ fn render_radio<'a, M: 'a>(
     state: &'a AppState,
     radio_id: RadioId,
     echo: Option<&'a str>,
+    is_tx: bool,
 ) -> Element<'a, M> {
     let is_active = state.focused_radio == radio_id;
     let entry = state.entries.get(&radio_id);
@@ -232,12 +244,14 @@ fn render_radio<'a, M: 'a>(
         .width(Length::Fill)
         .style(move |t: &Theme| container::Style {
             border: Border {
-                color: if is_active {
+                color: if is_tx {
+                    style::danger_color(t)
+                } else if is_active {
                     style::focused_border_color(t)
                 } else {
                     style::border_color(t)
                 },
-                width: if is_active { 1.5 } else { 1.0 },
+                width: if is_tx || is_active { 1.5 } else { 1.0 },
                 radius: 3.0.into(),
             },
             ..container::Style::default()
