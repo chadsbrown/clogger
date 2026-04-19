@@ -369,7 +369,7 @@ impl Workspace {
 
 fn toolbar_button(pane: &Pane) -> iced::widget::Button<'_, Message> {
     let visible = pane.visible;
-    let label = text(pane.title.clone()).size(12.0);
+    let label = text(pane.title.clone()).size(style::TEXT_LABEL);
     button(label)
         .padding([4, 10])
         .on_press(Message::Toggle(pane.id))
@@ -414,7 +414,7 @@ fn pane_view<'a, M>(
 where
     M: 'a + Clone,
 {
-    let title_text = container(text(pane.title.clone()).size(13.0))
+    let title_text = container(text(pane.title.clone()).size(style::TEXT_LABEL))
         .padding([2, 10])
         .width(Length::Fill)
         .height(TITLE_H)
@@ -456,7 +456,7 @@ where
     // stay square so the seam with the drag handle is flush.
     let close_btn = button(
         text("✕")
-            .size(12.0)
+            .size(style::TEXT_LABEL)
             .height(Length::Fill)
             .align_y(iced::alignment::Vertical::Center),
     )

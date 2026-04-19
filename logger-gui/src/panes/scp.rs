@@ -18,23 +18,25 @@ pub fn view<'a, M: 'a>(state: &'a AppState) -> Element<'a, M> {
     let focused = state.focused_radio;
     let entry = state.entries.get(&focused);
 
-    let header = text(format!("SCP — R{focused}"))
-        .size(style::TEXT_LABEL)
-        .style(style::accent);
-
+    // When the operator hasn't entered a partial callsign, don't render
+    // anything — the pane's purpose is self-evident, so header/placeholder
+    // text just adds noise. The pane frame itself still occupies its slot
+    // in the layout; we just leave the body empty.
     let Some(entry) = entry else {
-        return wrap(column![header, Space::new().height(6), empty_msg("(no entry state)")]);
+        return wrap(Space::new().width(Length::Fill).height(Length::Fill));
     };
-
-    let mut sections: Vec<Element<M>> = vec![header.into(), Space::new().height(6).into()];
 
     let exact_count = entry.scp_matches.len();
     let n1_count = entry.scp_n1_matches.len();
 
     if exact_count == 0 && n1_count == 0 {
-        sections.push(empty_msg("(type a callsign to see suggestions)"));
-        return wrap(column(sections));
+        return wrap(Space::new().width(Length::Fill).height(Length::Fill));
     }
+
+    let header = text(format!("SCP — R{focused}"))
+        .size(style::TEXT_LABEL)
+        .style(style::accent);
+    let mut sections: Vec<Element<M>> = vec![header.into(), Space::new().height(6).into()];
 
     if !entry.scp_matches.is_empty() {
         sections.push(
@@ -80,10 +82,6 @@ fn wrap<'a, M: 'a>(body: impl Into<Element<'a, M>>) -> Element<'a, M> {
         .width(Length::Fill)
         .height(Length::Fill)
         .into()
-}
-
-fn empty_msg<'a, M: 'a>(msg: &'static str) -> Element<'a, M> {
-    text(msg).size(style::TEXT_BODY).style(style::very_muted).into()
 }
 
 /// `cycle_idx` highlights the currently-selected match (only meaningful for
