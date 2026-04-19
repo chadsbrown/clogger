@@ -9,7 +9,6 @@ use logger_runtime::{compute_avail, LogAdapter};
 use super::style;
 
 pub fn view<'a, M: 'a>(state: &'a AppState, log: &'a LogAdapter) -> Element<'a, M> {
-    let _perf = crate::perf::Span::new("pane.available"); // PROFILING
     let focused_mode = state
         .radios
         .get(&state.focused_radio)

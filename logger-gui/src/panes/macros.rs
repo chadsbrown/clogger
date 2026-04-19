@@ -8,7 +8,6 @@ use logger_core::Macros;
 use super::style;
 
 pub fn view<'a, M: 'a>(macros: &'a Macros) -> Element<'a, M> {
-    let _perf = crate::perf::Span::new("pane.macros"); // PROFILING
     let bare = [
         ("F1", macros.f1.as_str()),
         ("F2", macros.f2.as_str()),

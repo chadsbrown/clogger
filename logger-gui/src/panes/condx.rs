@@ -8,7 +8,6 @@ use logger_runtime::CondXSnapshot;
 use super::style;
 
 pub fn view<'a, M: 'a>(condx: Option<&'a CondXSnapshot>) -> Element<'a, M> {
-    let _perf = crate::perf::Span::new("pane.condx"); // PROFILING
     let Some(snap) = condx else {
         return container(
             column![

@@ -30,7 +30,6 @@ pub fn view<'a, M: 'a + Clone + Send + Sync + 'static>(
     on_click: fn(Option<String>, u64) -> M,
     on_zoom: fn(f32) -> M,
 ) -> Element<'a, M> {
-    let _perf = crate::perf::Span::new("pane.bandmap"); // PROFILING
     let radio = state.radios.get(&radio_id);
     let cursor_hz = radio.map(|r| r.freq_hz).unwrap_or(0);
     let mode = radio.map(|r| r.mode.as_str()).unwrap_or("CW");

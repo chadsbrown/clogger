@@ -4,7 +4,6 @@ mod keys;
 mod mdi;
 mod modals;
 mod panes;
-mod perf;
 
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
@@ -225,7 +224,6 @@ enum AdapterHandlesResult {
 }
 
 fn update(state: &mut App, msg: Message) {
-    let _perf = perf::Span::new("update.total"); // PROFILING
     match msg {
         Message::Mdi(m) => {
             state.workspace.update(m);
@@ -238,12 +236,10 @@ fn update(state: &mut App, msg: Message) {
         Message::Tick => {
             let now = chrono::Utc::now().timestamp_millis();
             let effects = {
-                let _perf = perf::Span::new("reducer.step.tick"); // PROFILING
                 bridge::step(&mut state.session, AppEvent::TimerTick { now_ms: now })
             };
             state.observe_effects(&effects);
             {
-                let _perf = perf::Span::new("reducer.dispatch.tick"); // PROFILING
                 bridge::dispatch(&mut state.session, effects, &state.handles);
             }
             // Push a fresh scoreboard snapshot if the score has moved.
@@ -287,12 +283,10 @@ fn update(state: &mut App, msg: Message) {
                 _ => {}
             }
             let effects = {
-                let _perf = perf::Span::new("reducer.step.domain"); // PROFILING
                 bridge::step(&mut state.session, ev)
             };
             state.observe_effects(&effects);
             {
-                let _perf = perf::Span::new("reducer.dispatch.domain"); // PROFILING
                 bridge::dispatch(&mut state.session, effects, &state.handles);
             }
         }
@@ -450,7 +444,6 @@ fn update(state: &mut App, msg: Message) {
 }
 
 fn view(state: &App) -> Element<'_, Message> {
-    let _perf = perf::Span::new("view.total"); // PROFILING
     let banner = state
         .error_banner
         .as_ref()
@@ -821,7 +814,6 @@ fn keyboard_subscription() -> Subscription<Message> {
             text,
             ..
         }) => {
-            let _perf = perf::Span::new("keyboard.fire"); // PROFILING
             // Ctrl-modifier shortcuts that should never reach the reducer.
             // Match on the Key (which is layout-aware and stable across
             // shift state) rather than the produced text.
@@ -960,8 +952,7 @@ fn main() -> anyhow::Result<()> {
              naga=error,\
              iced_wgpu=warn,\
              iced_winit=warn,\
-             cosmic_text=error,\
-             perf=debug"
+             cosmic_text=error"
         ))
     });
     tracing_subscriber::fmt().with_env_filter(filter).init();

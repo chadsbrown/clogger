@@ -24,7 +24,6 @@ use logger_runtime::LogAdapter;
 use super::style;
 
 pub fn view<'a, M: 'a>(log: &'a LogAdapter) -> Element<'a, M> {
-    let _perf = crate::perf::Span::new("pane.rate"); // PROFILING
     let now_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
     let timestamps: Vec<u64> = log
         .ordered_records()
