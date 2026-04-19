@@ -24,9 +24,14 @@
 //!
 //! Instrumented sites (search `// PROFILING` to confirm):
 //!
-//! - `src/main.rs` — `update(Message::Domain)` wraps `bridge::step` and
-//!   `bridge::dispatch`; `update(Message::Tick)` wraps `bridge::step`;
-//!   `view()` wraps the whole render
+//! - `src/main.rs` — `update()` whole-fn span (`update.total`); inside,
+//!   `bridge::step` and `bridge::dispatch` get sub-spans for both Domain
+//!   and Tick messages; `view()` wraps the whole render
+//! - `src/main.rs::keyboard_subscription` — fires for every keyboard
+//!   event iced delivers to us (span `keyboard.fire`). Useful for
+//!   detecting iced event-pipeline backpressure: compare its rate vs
+//!   `reducer.step.domain` and look at gaps between consecutive
+//!   timestamps when holding a key.
 //! - `src/panes/entry.rs::view`
 //! - `src/panes/bandmap.rs::view`
 //! - `src/panes/log.rs::view`

@@ -225,6 +225,7 @@ enum AdapterHandlesResult {
 }
 
 fn update(state: &mut App, msg: Message) {
+    let _perf = perf::Span::new("update.total"); // PROFILING
     match msg {
         Message::Mdi(m) => {
             state.workspace.update(m);
@@ -820,6 +821,7 @@ fn keyboard_subscription() -> Subscription<Message> {
             text,
             ..
         }) => {
+            let _perf = perf::Span::new("keyboard.fire"); // PROFILING
             // Ctrl-modifier shortcuts that should never reach the reducer.
             // Match on the Key (which is layout-aware and stable across
             // shift state) rather than the produced text.
