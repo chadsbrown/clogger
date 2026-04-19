@@ -10,14 +10,9 @@ use super::style;
 pub fn view<'a, M: 'a>(condx: Option<&'a CondXSnapshot>) -> Element<'a, M> {
     let Some(snap) = condx else {
         return container(
-            column![
-                text("CondX").size(11.0).style(style::accent),
-                Space::new().height(6),
-                text("(no snapshot yet — enable [condx] in config)")
-                    .size(12.0)
-                    .style(style::very_muted),
-            ]
-            .spacing(0),
+            text("(no snapshot yet — enable [condx] in config)")
+                .size(12.0)
+                .style(style::very_muted),
         )
         .padding(8)
         .width(Length::Fill)
@@ -61,8 +56,6 @@ pub fn view<'a, M: 'a>(condx: Option<&'a CondXSnapshot>) -> Element<'a, M> {
         .style(style::very_muted);
 
     let mut body: Vec<Element<M>> = vec![
-        text("CondX").size(11.0).style(style::accent).into(),
-        Space::new().height(4).into(),
         line("SFI", sfi),
         line("Sunspots", sunspots),
         line("A / K", format!("{a_idx} / {k_idx}")),

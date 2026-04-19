@@ -82,7 +82,7 @@ fn render_radio<'a, M: 'a>(
         };
         format!("R{radio_id}  •  {mode_str}{wpm_str}  •  {freq_str}")
     };
-    let header = text(header_line).size(11.0).style(move |t: &Theme| {
+    let header = text(header_line).size(style::TEXT_BODY).style(move |t: &Theme| {
         if is_active {
             style::accent(t)
         } else {
@@ -171,9 +171,7 @@ fn render_radio<'a, M: 'a>(
                             weight: iced::font::Weight::Bold,
                             ..Font::default()
                         })
-                        .style(|t: &Theme| iced::widget::text::Style {
-                            color: Some(style::success_color(t)),
-                        }),
+                        .style(style::body),
                 ]
                 .align_y(iced::alignment::Vertical::Center)
                 .into()
