@@ -9,6 +9,7 @@ use super::style;
 const MAX_ROWS: usize = 12;
 
 pub fn view<'a, M: 'a>(log: &'a LogAdapter) -> Element<'a, M> {
+    let _perf = crate::perf::Span::new("pane.log"); // PROFILING
     let records = log.ordered_records();
     let count = records.len();
 

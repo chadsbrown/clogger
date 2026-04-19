@@ -4,6 +4,7 @@ mod keys;
 mod mdi;
 mod modals;
 mod panes;
+mod perf;
 
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
@@ -235,9 +236,15 @@ fn update(state: &mut App, msg: Message) {
         }
         Message::Tick => {
             let now = chrono::Utc::now().timestamp_millis();
-            let effects = bridge::step(&mut state.session, AppEvent::TimerTick { now_ms: now });
+            let effects = {
+                let _perf = perf::Span::new("reducer.step.tick"); // PROFILING
+                bridge::step(&mut state.session, AppEvent::TimerTick { now_ms: now })
+            };
             state.observe_effects(&effects);
-            bridge::dispatch(&mut state.session, effects, &state.handles);
+            {
+                let _perf = perf::Span::new("reducer.dispatch.tick"); // PROFILING
+                bridge::dispatch(&mut state.session, effects, &state.handles);
+            }
             // Push a fresh scoreboard snapshot if the score has moved.
             bridge::refresh_scoreboard_snapshot(&state.session, &mut state.handles);
         }
@@ -278,9 +285,15 @@ fn update(state: &mut App, msg: Message) {
                 }
                 _ => {}
             }
-            let effects = bridge::step(&mut state.session, ev);
+            let effects = {
+                let _perf = perf::Span::new("reducer.step.domain"); // PROFILING
+                bridge::step(&mut state.session, ev)
+            };
             state.observe_effects(&effects);
-            bridge::dispatch(&mut state.session, effects, &state.handles);
+            {
+                let _perf = perf::Span::new("reducer.dispatch.domain"); // PROFILING
+                bridge::dispatch(&mut state.session, effects, &state.handles);
+            }
         }
         Message::OpenModal(m) => state.modal = Some(m),
         Message::CloseModal => state.modal = None,
@@ -436,6 +449,7 @@ fn update(state: &mut App, msg: Message) {
 }
 
 fn view(state: &App) -> Element<'_, Message> {
+    let _perf = perf::Span::new("view.total"); // PROFILING
     let banner = state
         .error_banner
         .as_ref()
@@ -944,7 +958,8 @@ fn main() -> anyhow::Result<()> {
              naga=error,\
              iced_wgpu=warn,\
              iced_winit=warn,\
-             cosmic_text=error"
+             cosmic_text=error,\
+             perf=debug"
         ))
     });
     tracing_subscriber::fmt().with_env_filter(filter).init();

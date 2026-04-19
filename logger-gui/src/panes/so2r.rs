@@ -13,6 +13,7 @@ pub fn view<'a, M: 'a>(
     tx_radio: RadioId,
     handles: &'a AdapterHandles,
 ) -> Element<'a, M> {
+    let _perf = crate::perf::Span::new("pane.so2r"); // PROFILING
     let rx_mode = handles.so2r_default_rx_mode;
     let rx_str = match rx_mode {
         So2rRxMode::Mono => format!("Mono (R{focused_radio})"),

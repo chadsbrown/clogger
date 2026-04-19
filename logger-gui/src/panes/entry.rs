@@ -30,6 +30,7 @@ pub fn view<'a, M: 'a>(
     show_r2: bool,
     echoes: &'a HashMap<RadioId, String>,
 ) -> Element<'a, M> {
+    let _perf = crate::perf::Span::new("pane.entry"); // PROFILING
     let mut sections: Vec<Element<M>> = Vec::with_capacity(2);
     sections.push(render_radio(state, 1, echoes.get(&1).map(|s| s.as_str())));
     if show_r2 {

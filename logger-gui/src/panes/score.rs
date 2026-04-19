@@ -7,6 +7,7 @@ use logger_runtime::LogAdapter;
 use super::style;
 
 pub fn view<'a, M: 'a>(log: &'a LogAdapter) -> Element<'a, M> {
+    let _perf = crate::perf::Span::new("pane.score"); // PROFILING
     let summary = log.score_summary();
 
     let header = row![
