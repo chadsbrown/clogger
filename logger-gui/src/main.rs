@@ -699,19 +699,8 @@ fn status_bar(state: &App) -> Element<'_, Message> {
     use iced::{Background, Border, Color, Length};
 
     let s = &state.session.state;
-    let focused_freq = s
-        .radios
-        .get(&s.focused_radio)
-        .map(|r| format!("{:.3} MHz {}", r.freq_hz as f64 / 1_000_000.0, r.mode))
-        .unwrap_or_else(|| "—".to_string());
     let utc = chrono::Utc::now().format("%H:%M:%S UTC").to_string();
-    let label = format!(
-        "{} • {} • R{}: {}",
-        s.my_call,
-        state.session.contest.contest_name(),
-        s.focused_radio,
-        focused_freq
-    );
+    let label = format!("{} • {}", s.my_call, state.session.contest.contest_name());
 
     let icon_btn_style = |t: &Theme, status: iced::widget::button::Status| {
         let pal = t.extended_palette().background.weak;

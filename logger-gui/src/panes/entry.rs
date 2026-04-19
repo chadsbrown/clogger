@@ -55,13 +55,20 @@ fn render_radio<'a, M: 'a>(
         let freq_str = radio
             .map(|r| format!("{:.3} MHz {}", r.freq_hz as f64 / 1_000_000.0, r.mode))
             .unwrap_or_else(|| "—".to_string());
-        let mode_str = entry
-            .map(|e| format!("{:?}", e.mode))
-            .unwrap_or_else(|| "Run".to_string());
-        let wpm = radio
-            .map(|r| r.cw_speed)
-            .unwrap_or(state.default_cw_speed);
-        format!("R{radio_id}  •  {mode_str}  •  {wpm} WPM  •  {freq_str}")
+        let mode_str = match entry.map(|e| e.mode) {
+            Some(logger_core::OpMode::Sp) => "S&P",
+            _ => "RUN",
+        };
+        let is_cw = radio.map(|r| r.mode.eq_ignore_ascii_case("CW")).unwrap_or(false);
+        let wpm_str = if is_cw {
+            let wpm = radio
+                .map(|r| r.cw_speed)
+                .unwrap_or(state.default_cw_speed);
+            format!("  •  {wpm} WPM")
+        } else {
+            String::new()
+        };
+        format!("R{radio_id}  •  {mode_str}{wpm_str}  •  {freq_str}")
     };
     let header = text(header_line).size(11.0).style(move |t: &Theme| {
         if is_active {
@@ -81,11 +88,6 @@ fn render_radio<'a, M: 'a>(
             let label = text(field.label.clone()).size(10.0).style(style::muted);
 
             let empty = field.value.is_empty();
-            let value_str = if empty {
-                "—".to_string()
-            } else {
-                field.value.clone()
-            };
             let value_style = move |t: &Theme| container::Style {
                 background: Some(
                     if is_focused_field {
@@ -113,15 +115,59 @@ fn render_radio<'a, M: 'a>(
                 },
                 ..container::Style::default()
             };
-            let value = container(
-                text(value_str)
+            let scp_check = field.field_id == 1
+                && !field.value.is_empty()
+                && entry.scp_matches.contains(&field.value);
+
+            // In the focused field, split the value at field.cursor and
+            // insert a visible caret glyph so the operator can see where
+            // typing will land. Unfocused fields render the value verbatim
+            // (or an em-dash placeholder when empty).
+            let mk_text = |s: String| {
+                text(s)
                     .size(14.0)
                     .font(Font::MONOSPACE)
-                    .style(style::body),
-            )
-            .padding([3, 6])
-            .width(Length::Fixed(box_width))
-            .style(value_style);
+                    .style(style::body)
+            };
+            let text_part: Element<M> = if is_focused_field {
+                let cur = field.cursor.min(field.value.len());
+                let (before, after) = field.value.split_at(cur);
+                row![
+                    mk_text(before.to_string()),
+                    text("|")
+                        .size(14.0)
+                        .font(Font::MONOSPACE)
+                        .style(|t: &Theme| iced::widget::text::Style {
+                            color: Some(style::accent_color(t)),
+                        }),
+                    mk_text(after.to_string()),
+                ]
+                .spacing(0)
+                .into()
+            } else if empty {
+                mk_text("—".to_string()).into()
+            } else {
+                mk_text(field.value.clone()).into()
+            };
+            let inner: Element<M> = if scp_check {
+                row![
+                    text_part,
+                    Space::new().width(Length::Fill),
+                    text("\u{2713}")
+                        .size(14.0)
+                        .style(|t: &Theme| iced::widget::text::Style {
+                            color: Some(style::success_color(t)),
+                        }),
+                ]
+                .align_y(iced::alignment::Vertical::Center)
+                .into()
+            } else {
+                text_part
+            };
+            let value = container(inner)
+                .padding([3, 6])
+                .width(Length::Fixed(box_width))
+                .style(value_style);
 
             columns.push(
                 column![label, value]
