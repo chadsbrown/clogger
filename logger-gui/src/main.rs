@@ -830,6 +830,7 @@ fn status_bar(state: &App) -> Element<'_, Message> {
         .padding([4, 10])
         .width(Length::Fill)
         .height(Length::Fixed(24.0))
+        .align_y(iced::alignment::Vertical::Center)
         .style(|t: &Theme| {
             let pal = t.extended_palette().background.strong;
             container::Style {

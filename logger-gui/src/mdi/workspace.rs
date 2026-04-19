@@ -454,7 +454,12 @@ where
     // so the whole strip reads as one color until hover flips it red. The
     // top-right corner picks up the frame's outer radius; other corners
     // stay square so the seam with the drag handle is flush.
-    let close_btn = button(text("✕").size(12.0))
+    let close_btn = button(
+        text("✕")
+            .size(12.0)
+            .height(Length::Fill)
+            .align_y(iced::alignment::Vertical::Center),
+    )
         .padding([0, 10])
         .height(Length::Fixed(TITLE_H))
         .on_press(wrap(Message::Close(pane.id)))

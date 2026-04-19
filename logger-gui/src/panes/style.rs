@@ -135,55 +135,16 @@ pub fn error_banner(t: &Theme) -> Color {
 }
 
 pub fn mult_color(t: &Theme) -> Color {
-    match t.to_string().as_str() {
-        "Gruvbox Dark" => Color::from_rgb8(0xfa, 0xbd, 0x2f),
-        "Gruvbox Light" => Color::from_rgb8(0xd7, 0x99, 0x21),
-        "Nord" => Color::from_rgb8(0xeb, 0xcb, 0x8b),
-        "Dracula" => Color::from_rgb8(0xf1, 0xfa, 0x8c),
-        "Solarized Dark" | "Solarized Light" => Color::from_rgb8(0xb5, 0x89, 0x00),
-        "Catppuccin Latte" => Color::from_rgb8(0xdf, 0x8e, 0x1d),
-        "Catppuccin Frappé" => Color::from_rgb8(0xe5, 0xc8, 0x90),
-        "Catppuccin Macchiato" => Color::from_rgb8(0xee, 0xd4, 0x9f),
-        "Catppuccin Mocha" => Color::from_rgb8(0xf9, 0xe2, 0xaf),
-        "Tokyo Night" | "Tokyo Night Storm" => Color::from_rgb8(0xe0, 0xaf, 0x68),
-        "Tokyo Night Light" => Color::from_rgb8(0x8f, 0x5e, 0x15),
-        "Kanagawa Wave" => Color::from_rgb8(0xdc, 0xa5, 0x61),
-        "Kanagawa Dragon" => Color::from_rgb8(0xc4, 0xb2, 0x8a),
-        "Kanagawa Lotus" => Color::from_rgb8(0x77, 0x71, 0x3f),
-        "Moonfly" => Color::from_rgb8(0xe3, 0xc7, 0x8a),
-        "Nightfly" => Color::from_rgb8(0xe3, 0xd1, 0x8a),
-        "Oxocarbon" => Color::from_rgb8(0xee, 0x53, 0x96),
-        "Ferra" => Color::from_rgb8(0xe6, 0xb4, 0x50),
-        "Light" => Color::from_rgb8(0xb8, 0x86, 0x0b),
-        "Dark" => Color::from_rgb8(0xf5, 0xc7, 0x1a),
-        _ => t.extended_palette().primary.strong.color,
-    }
+    // Intentionally same as `qrm_badge` — both read as the theme's softer
+    // red. DUPE (danger.base) remains a step bolder, so the three badges
+    // still sort visually by severity even though MULT and QRM share a hue.
+    t.extended_palette().danger.weak.color
 }
 
 pub fn cursor_color(t: &Theme) -> Color {
-    match t.to_string().as_str() {
-        "Gruvbox Dark" => Color::from_rgb8(0xfe, 0x80, 0x19),
-        "Gruvbox Light" => Color::from_rgb8(0xaf, 0x3a, 0x03),
-        "Nord" => Color::from_rgb8(0xd0, 0x87, 0x70),
-        "Dracula" => Color::from_rgb8(0xff, 0xb8, 0x6c),
-        "Solarized Dark" | "Solarized Light" => Color::from_rgb8(0xcb, 0x4b, 0x16),
-        "Catppuccin Latte" => Color::from_rgb8(0xfe, 0x64, 0x0b),
-        "Catppuccin Frappé" => Color::from_rgb8(0xef, 0x9f, 0x76),
-        "Catppuccin Macchiato" => Color::from_rgb8(0xf5, 0xa9, 0x7f),
-        "Catppuccin Mocha" => Color::from_rgb8(0xfa, 0xb3, 0x87),
-        "Tokyo Night" | "Tokyo Night Storm" => Color::from_rgb8(0xff, 0x9e, 0x64),
-        "Tokyo Night Light" => Color::from_rgb8(0x96, 0x54, 0x27),
-        "Kanagawa Wave" => Color::from_rgb8(0xff, 0xa0, 0x66),
-        "Kanagawa Dragon" => Color::from_rgb8(0xb6, 0x92, 0x7b),
-        "Kanagawa Lotus" => Color::from_rgb8(0xc7, 0x60, 0x22),
-        "Moonfly" => Color::from_rgb8(0xf0, 0x9f, 0x72),
-        "Nightfly" => Color::from_rgb8(0xf7, 0x8c, 0x6c),
-        "Oxocarbon" => Color::from_rgb8(0xff, 0x7e, 0xb6),
-        "Ferra" => Color::from_rgb8(0xd1, 0x85, 0x51),
-        "Light" => Color::from_rgb8(0xd9, 0x53, 0x13),
-        "Dark" => Color::from_rgb8(0xff, 0x9a, 0x3c),
-        _ => t.extended_palette().primary.strong.color,
-    }
+    // The theme's primary accent — always palette-native and distinct
+    // from MULT (which derives from the danger slot).
+    t.extended_palette().primary.strong.color
 }
 
 pub fn new_spot_color(t: &Theme) -> Color {
