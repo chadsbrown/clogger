@@ -204,6 +204,7 @@ async fn main() -> Result<()> {
         start_serial: None,
         show_passband_qrm: config.show_passband_qrm,
         bandmap_skip_worked: config.bandmap_skip_worked,
+        bandmap_high_at_top: config.bandmap_high_at_top,
         esm_enabled: config.esm_enabled,
         block_dupes: config.block_dupes,
         app_tx: app_tx.clone(),

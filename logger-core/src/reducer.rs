@@ -447,7 +447,16 @@ pub fn reduce(
         AppEvent::QuickLog => quick_log(st, contest, macros),
         AppEvent::EsmTrigger => handle_esm(st, contest, macros),
         AppEvent::BandmapUp { radio: target } | AppEvent::BandmapDown { radio: target } => {
-            let is_down = matches!(ev, AppEvent::BandmapDown { .. });
+            let raw_is_down = matches!(ev, AppEvent::BandmapDown { .. });
+            // When the bandmap renders high-freq-at-top, the operator's
+            // "visually down" is a lower frequency. The cursor-step math
+            // (Some / Between branches and the skip-worked loop) needs the
+            // flipped direction so the step lands visually below/above the
+            // anchor. The no-cursor case stays on `raw_is_down`: the
+            // existing convention (Down→lowest, Up→highest) already aligns
+            // visually in reversed mode (lowest is at the bottom, highest
+            // at the top) and matches operator muscle memory.
+            let is_down = if st.bandmap_high_at_top { !raw_is_down } else { raw_is_down };
 
             let radio_state = st.radios.get(&target).filter(|r| r.freq_hz > 0);
             let band = radio_state
@@ -481,11 +490,22 @@ pub fn reduce(
                 }
                 None => None,
             };
-            let first_idx = match (is_down, prev_idx) {
+            let first_idx = match (raw_is_down, prev_idx) {
+                // No cursor: use the raw key direction so muscle memory
+                // ("Down → lowest", "Up → highest") is preserved across
+                // both display orientations.
                 (true, None) => 0,
-                (true, Some(i)) => (i + 1) % len,
                 (false, None) => len - 1,
-                (false, Some(i)) => (i + len - 1) % len,
+                // Stepping from a known cursor: use `is_down`, which is
+                // visually-flipped in reversed mode so the step lands on
+                // the correct neighbor.
+                (_, Some(i)) => {
+                    if is_down {
+                        (i + 1) % len
+                    } else {
+                        (i + len - 1) % len
+                    }
+                }
             };
 
             // Optional skip-worked mode: step past consecutive dupes
@@ -1134,6 +1154,7 @@ mod tests {
             serial_counter: None,
             show_passband_qrm: false,
             bandmap_skip_worked: false,
+            bandmap_high_at_top: false,
             bandmap_version: 0,
         }
     }
@@ -2684,6 +2705,97 @@ mod tests {
         );
     }
 
+    /// With `bandmap_high_at_top = true`, the bandmap displays highest
+    /// freq at the top. Pressing BandmapDown means "visually down" =
+    /// toward lower freq, so from a cleared cursor it should land on
+    /// the lower-freq spot (K5ZD), not the higher one (W1AW).
+    #[test]
+    fn bandmap_nav_reversed_down_steps_to_lower_freq() {
+        let mut st = mk_state();
+        st.bandmap_high_at_top = true;
+        add_spot(&mut st, "K5ZD", 14_025_000, "CW");
+        add_spot(&mut st, "W1AW", 14_027_000, "CW");
+        rig_status(&mut st, 1, 14_024_000, "CW", Some(500));
+        st.bandmap_cursors.clear();
+        let contest = contest_from_id("cqww").unwrap();
+        let macros = Macros::default();
+        reduce(
+            &mut st, contest.as_ref(), &macros,
+            AppEvent::BandmapDown { radio: 1 },
+        );
+        assert!(
+            matches!(
+                st.bandmap_cursors.get(&1),
+                Some(BandmapCursor::On { call, .. }) if call == "K5ZD"
+            ),
+            "reversed BandmapDown should land on the lower-freq spot; got {:?}",
+            st.bandmap_cursors.get(&1)
+        );
+    }
+
+    /// Symmetric to the above: with the flag on, BandmapUp should land
+    /// on the higher-freq spot (visually up = toward the top of the
+    /// reversed display).
+    #[test]
+    fn bandmap_nav_reversed_up_steps_to_higher_freq() {
+        let mut st = mk_state();
+        st.bandmap_high_at_top = true;
+        add_spot(&mut st, "K5ZD", 14_025_000, "CW");
+        add_spot(&mut st, "W1AW", 14_027_000, "CW");
+        rig_status(&mut st, 1, 14_024_000, "CW", Some(500));
+        st.bandmap_cursors.clear();
+        let contest = contest_from_id("cqww").unwrap();
+        let macros = Macros::default();
+        reduce(
+            &mut st, contest.as_ref(), &macros,
+            AppEvent::BandmapUp { radio: 1 },
+        );
+        assert!(
+            matches!(
+                st.bandmap_cursors.get(&1),
+                Some(BandmapCursor::On { call, .. }) if call == "W1AW"
+            ),
+            "reversed BandmapUp should land on the higher-freq spot; got {:?}",
+            st.bandmap_cursors.get(&1)
+        );
+    }
+
+    /// Reversed display + skip-worked: the skip loop must walk in the
+    /// visually-correct direction (visually down = lower freq). Anchor
+    /// the cursor on W1AW (visually at the top in reversed mode), then
+    /// press Down. With K5ZD a dupe, the step should land on K1ABC,
+    /// having skipped past K5ZD.
+    #[test]
+    fn bandmap_nav_reversed_with_skip_worked() {
+        struct K5ZDDupe;
+        impl DupeChecker for K5ZDDupe {
+            fn is_dupe(&self, call: &str, _: &str, _: &str) -> bool { call == "K5ZD" }
+        }
+        let mut st = mk_state();
+        st.bandmap_high_at_top = true;
+        st.bandmap_skip_worked = true;
+        add_spot(&mut st, "K1ABC", 14_023_000, "CW");
+        add_spot(&mut st, "K5ZD", 14_025_000, "CW");
+        add_spot(&mut st, "W1AW", 14_027_000, "CW");
+        // Park the rig on W1AW so the cursor anchors there.
+        rig_status(&mut st, 1, 14_027_000, "CW", Some(500));
+        let contest = contest_from_id("cqww").unwrap();
+        let macros = Macros::default();
+        crate::reducer::reduce(
+            &mut st, contest.as_ref(), &macros,
+            &K5ZDDupe, &NoMultChecker, &NoCallHistory, &NoContestHistory, &NoScp,
+            AppEvent::BandmapDown { radio: 1 },
+        );
+        assert!(
+            matches!(
+                st.bandmap_cursors.get(&1),
+                Some(BandmapCursor::On { call, .. }) if call == "K1ABC"
+            ),
+            "reversed+skip BandmapDown from W1AW should skip K5ZD and land on K1ABC; got {:?}",
+            st.bandmap_cursors.get(&1)
+        );
+    }
+
     // ---- Contest-history autopopulate tests --------------------------
 
     /// Stubbed ContestHistoryLookup for reducer-level tests. Pre-wired
@@ -2966,6 +3078,7 @@ mod tests {
             serial_counter: None,
             show_passband_qrm: false,
             bandmap_skip_worked: false,
+            bandmap_high_at_top: false,
             bandmap_version: 0,
         }
     }

@@ -57,6 +57,7 @@ pub fn view<'a, M: 'a + Clone + Send + Sync + 'static>(
         band_high_hz: band_high,
         cursor_hz,
         zoom: zoom.clamp(MIN_ZOOM, 1.0),
+        high_at_top: state.bandmap_high_at_top,
         on_click,
         on_zoom,
     })
@@ -112,6 +113,7 @@ struct BandmapProgram<'a, M> {
     band_high_hz: u64,
     cursor_hz: u64,
     zoom: f32,
+    high_at_top: bool,
     on_click: fn(Option<String>, u64) -> M,
     on_zoom: fn(f32) -> M,
 }
@@ -193,8 +195,13 @@ impl<'a, M> canvas::Program<M> for BandmapProgram<'a, M> {
                     }
                     let (vlow, vhigh) = self.visible_range();
                     let band_span = (vhigh - vlow).max(1) as f32;
-                    let raw = vlow
-                        + ((pos.y.clamp(0.0, bounds.height) / bounds.height) * band_span) as u64;
+                    let frac = pos.y.clamp(0.0, bounds.height) / bounds.height;
+                    let offset = (frac * band_span) as u64;
+                    let raw = if self.high_at_top {
+                        vhigh.saturating_sub(offset)
+                    } else {
+                        vlow + offset
+                    };
                     let snapped = snap_to_spot_with_call(self.spots, raw);
                     let (call, target) = match snapped {
                         Some((call, freq)) => (Some(call), freq),
@@ -224,8 +231,13 @@ impl<'a, M> canvas::Program<M> for BandmapProgram<'a, M> {
         let (vlow, vhigh) = self.visible_range();
         let visible_span = vhigh - vlow;
         let span_f = visible_span.max(1) as f32;
+        let high_at_top = self.high_at_top;
         let y_for = |hz: u64| -> f32 {
-            let offset = hz.saturating_sub(vlow) as f32;
+            let offset = if high_at_top {
+                vhigh.saturating_sub(hz)
+            } else {
+                hz.saturating_sub(vlow)
+            } as f32;
             (offset / span_f) * h
         };
 

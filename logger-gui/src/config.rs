@@ -63,6 +63,8 @@ pub struct StableConfig {
     pub show_passband_qrm: bool,
     #[serde(default)]
     pub bandmap_skip_worked: bool,
+    #[serde(default)]
+    pub bandmap_high_at_top: bool,
     #[serde(default = "default_true")]
     pub esm_enabled: bool,
     #[serde(default)]
@@ -114,6 +116,7 @@ pub struct SessionBits {
     pub default_cw_speed: u8,
     pub show_passband_qrm: bool,
     pub bandmap_skip_worked: bool,
+    pub bandmap_high_at_top: bool,
     pub esm_enabled: bool,
     pub block_dupes: bool,
 }
@@ -193,6 +196,7 @@ fn load_pair(cli: &Cli, config_path: &PathBuf, contest_path: &PathBuf) -> Result
         default_cw_speed,
         show_passband_qrm: stable.show_passband_qrm,
         bandmap_skip_worked: stable.bandmap_skip_worked,
+        bandmap_high_at_top: stable.bandmap_high_at_top,
         esm_enabled: stable.esm_enabled,
         block_dupes: stable.block_dupes,
     };

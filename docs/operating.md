@@ -215,6 +215,14 @@ automatically skip already-worked stations. If every spot in the
 current band+mode is a dupe, the nav key becomes a no-op — nothing
 moves, a useful "I've swept this list" signal.
 
+### Reversed display
+
+Set `bandmap_high_at_top = true` in `config.toml` to flip the bandmap
+so the highest frequency appears at the top of the panel. Ctrl-↑/↓
+keep their visual semantics — Ctrl-↓ always moves the highlight
+visually downward in the panel, which now corresponds to lower
+frequencies.
+
 ## Status bar
 
 Left side shows your call + contest name, and either a `MULT` or

@@ -63,6 +63,8 @@ pub struct SessionConfig {
     /// When true, bandmap nav (Ctrl-↑/↓, Ctrl-Alt-↑/↓) skips over spots
     /// already worked on the target radio's band+mode. Default: false.
     pub bandmap_skip_worked: bool,
+    /// When true, the bandmap renders with highest freq at the top. Default: false.
+    pub bandmap_high_at_top: bool,
     /// Enable Enter Sends Message (ESM). When false, Enter only logs (no
     /// CW is sent automatically); operators send CW via the F-key macros.
     /// Default: true.
@@ -204,6 +206,7 @@ pub fn bootstrap(config: SessionConfig) -> Result<Session> {
         serial_counter: None,
         show_passband_qrm: config.show_passband_qrm,
         bandmap_skip_worked: config.bandmap_skip_worked,
+        bandmap_high_at_top: config.bandmap_high_at_top,
         bandmap_version: 0,
     };
 

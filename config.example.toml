@@ -105,6 +105,12 @@
 # dupe, the key is a no-op (no cursor change, no rig retune).
 #bandmap_skip_worked = true
 
+# Reverse the bandmap orientation: highest frequency at the top, descending
+# to the lowest. Default: false (low at top). The Ctrl-↑/↓ semantics
+# follow the visual orientation — Ctrl-↓ always moves the highlight
+# visually downward in the panel regardless of which freq that represents.
+#bandmap_high_at_top = true
+
 # ---------------------------------------------------------------------------
 # Rig control (optional — omit entire section to run without)
 #

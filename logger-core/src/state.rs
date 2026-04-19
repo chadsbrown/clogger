@@ -140,6 +140,12 @@ pub struct AppState {
     /// (no cursor change, no RigSet). Off by default to preserve
     /// existing muscle memory.
     pub bandmap_skip_worked: bool,
+    /// When true, the bandmap renders with highest frequency at the top
+    /// (descending). The internal spot list remains ascending — the flag
+    /// flips only the visual orientation and inverts the nav-key semantics
+    /// so Ctrl-↓ still means "visually down" for the operator. Off by
+    /// default.
+    pub bandmap_high_at_top: bool,
     /// Monotonic counter that increments on every bandmap mutation (spot
     /// received or withdrawn). Consumers — notably the TUI `BandmapCache` —
     /// compare stored versions against this to detect when cached filtered
