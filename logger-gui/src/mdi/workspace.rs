@@ -1,9 +1,11 @@
 use iced::widget::{button, column, container, mouse_area, row, stack, text, Space};
 use iced::{
-    event, mouse, window, Border, Color, Element, Event, Length, Point, Size, Subscription, Theme,
+    event, mouse, window, Border, Color, Element, Event, Length, Point, Shadow, Size,
+    Subscription, Theme, Vector,
 };
 
 use super::positioned::Positioned;
+use crate::panes::style;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DragKind {
@@ -413,7 +415,7 @@ where
     M: 'a + Clone,
 {
     let title_text = container(text(pane.title.clone()).size(13))
-        .padding([2, 8])
+        .padding([2, 10])
         .width(Length::Fill)
         .height(TITLE_H)
         .style(move |t: &Theme| {
@@ -425,6 +427,19 @@ where
             container::Style {
                 background: Some(pal.color.into()),
                 text_color: Some(pal.text),
+                border: Border {
+                    color: Color::TRANSPARENT,
+                    width: 0.0,
+                    // Round only the top corners — the title bar lives on
+                    // top of the pane frame and the bottom lines up with
+                    // the frame body.
+                    radius: iced::border::Radius {
+                        top_left: style::RADIUS_FRAME - 1.0,
+                        top_right: style::RADIUS_FRAME - 1.0,
+                        bottom_left: 0.0,
+                        bottom_right: 0.0,
+                    },
+                },
                 ..container::Style::default()
             }
         });
@@ -476,13 +491,6 @@ where
 
     let footer = row![Space::new(Length::Fill, RESIZE), resize_handle];
 
-    let border_color = if focused {
-        Color::from_rgb(0.45, 0.55, 0.85)
-    } else {
-        Color::from_rgb(0.35, 0.35, 0.35)
-    };
-    let border_width = if focused { 1.5 } else { 1.0 };
-
     container(column![title_bar, body_area, footer].spacing(0))
         .width(Length::Fill)
         .height(Length::Fill)
@@ -490,10 +498,23 @@ where
             let pal = t.extended_palette().background.base;
             container::Style {
                 background: Some(pal.color.into()),
+                shadow: if focused {
+                    Shadow {
+                        color: style::shadow_color(t),
+                        offset: Vector::new(0.0, 3.0),
+                        blur_radius: 10.0,
+                    }
+                } else {
+                    Shadow::default()
+                },
                 border: Border {
-                    color: border_color,
-                    width: border_width,
-                    radius: 3.0.into(),
+                    color: if focused {
+                        style::focused_border_color(t)
+                    } else {
+                        style::border_color(t)
+                    },
+                    width: if focused { 1.5 } else { 1.0 },
+                    radius: style::RADIUS_FRAME.into(),
                 },
                 ..container::Style::default()
             }

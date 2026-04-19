@@ -32,6 +32,11 @@ struct Layout {
     /// padding, borders) scales together.
     #[serde(default)]
     font_scale: Option<f32>,
+    /// Persisted iced theme name (e.g. "Dracula", "Nord", "Dark").
+    /// Deserialized by matching against `iced::Theme::ALL` at startup.
+    /// `None` in older layout files means "fall back to Dark".
+    #[serde(default)]
+    theme: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -71,7 +76,7 @@ pub fn layout_path() -> Option<PathBuf> {
     Some(p)
 }
 
-pub fn save(ws: &Workspace, font_scale: f32) {
+pub fn save(ws: &Workspace, font_scale: f32, theme_name: &str) {
     let Some(path) = layout_path() else {
         tracing::warn!(
             "cannot save gui layout: no config dir available (platform missing $HOME / $APPDATA?)"
@@ -97,6 +102,7 @@ pub fn save(ws: &Workspace, font_scale: f32) {
         // Persist 1.0 explicitly rather than null so the file is
         // self-describing once saved.
         font_scale: Some(font_scale),
+        theme: Some(theme_name.to_string()),
     };
     let json = match serde_json::to_string_pretty(&layout) {
         Ok(j) => j,
@@ -136,6 +142,15 @@ pub fn load_font_scale() -> Option<f32> {
     let json = fs::read_to_string(&path).ok()?;
     let layout: Layout = serde_json::from_str(&json).ok()?;
     layout.font_scale
+}
+
+/// Read the saved theme name, e.g. `"Dracula"`. Caller resolves against
+/// `iced::Theme::ALL` to produce an actual `Theme`.
+pub fn load_theme_name() -> Option<String> {
+    let path = layout_path()?;
+    let json = fs::read_to_string(&path).ok()?;
+    let layout: Layout = serde_json::from_str(&json).ok()?;
+    layout.theme
 }
 
 pub fn load(ws: &mut Workspace) {

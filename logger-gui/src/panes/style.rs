@@ -1,13 +1,40 @@
 //! Theme-aware color helpers. Panes call these instead of hardcoding RGB
-//! so Light mode actually looks readable. Semantic colors (dupe red, mult
-//! yellow, mult-new green, rig-cursor orange) stay fixed — those have
-//! meaning the operator learns.
+//! so every iced theme (not just Dark/Light — also Dracula, Nord,
+//! Catppuccin, Solarized, etc.) actually looks readable. Semantic colors
+//! (dupe red, mult yellow, mult-new green, rig-cursor orange) stay fixed
+//! — those have meaning the operator learns.
 
 use iced::widget::text;
 use iced::{Color, Theme};
 
+// --- Unified text sizes (in logical pixels; the global font_scale
+// multiplies these via iced's scale_factor). Constants for a consistent
+// typographic hierarchy; not all are currently referenced in-tree but
+// they're part of the public vocabulary for future pane work.
+#[allow(dead_code)]
+pub const TEXT_TINY: u16 = 10;
+pub const TEXT_LABEL: u16 = 11;
+pub const TEXT_BODY: u16 = 13;
+#[allow(dead_code)]
+pub const TEXT_VALUE: u16 = 14;
+pub const TEXT_HEADER: u16 = 15;
+
+// --- Shape constants for a more modern feel. ---
+pub const RADIUS_FRAME: f32 = 6.0;
+#[allow(dead_code)]
+pub const RADIUS_INPUT: f32 = 4.0;
+pub const RADIUS_CHIP: f32 = 3.0;
+
+/// Luminance-based "is this a light-ish theme?" detector. Returns `true`
+/// when the theme's base background luminance is above 0.5. Works across
+/// every iced built-in (SolarizedLight, GruvboxLight, CatppuccinLatte,
+/// TokyoNightLight, KanagawaLotus, ...) plus any user-supplied custom
+/// themes — a simple `matches!(t, Theme::Light)` would miss them all.
 pub fn is_light(t: &Theme) -> bool {
-    matches!(t, Theme::Light)
+    let bg = t.extended_palette().background.base.color;
+    // Rec. 709 relative luminance.
+    let l = 0.2126 * bg.r + 0.7152 * bg.g + 0.0722 * bg.b;
+    l > 0.5
 }
 
 // --- Raw colors ---
@@ -53,15 +80,36 @@ pub fn danger_color(t: &Theme) -> Color {
 }
 
 pub fn border_color(t: &Theme) -> Color {
-    if is_light(t) {
-        Color::from_rgb(0.72, 0.72, 0.76)
-    } else {
-        Color::from_rgb(0.3, 0.3, 0.34)
-    }
+    // Derived from the palette so theme-specific surface tones carry
+    // through (e.g. Gruvbox's warm grays, Nord's cool grays). The blend
+    // stays subtle enough to read as a border, not a second-tier
+    // emphasis.
+    let pal = t.extended_palette().background.strong;
+    lerp(pal.color, pal.text, 0.18)
 }
 
 pub fn focused_border_color(t: &Theme) -> Color {
     accent_color(t)
+}
+
+/// Subtle drop-shadow color for the focused pane. Alpha-blended so it
+/// reads as depth rather than a second border in both light and dark
+/// themes.
+pub fn shadow_color(t: &Theme) -> Color {
+    if is_light(t) {
+        Color::from_rgba(0.0, 0.0, 0.0, 0.12)
+    } else {
+        Color::from_rgba(0.0, 0.0, 0.0, 0.45)
+    }
+}
+
+fn lerp(a: Color, b: Color, t: f32) -> Color {
+    Color::from_rgba(
+        a.r + (b.r - a.r) * t,
+        a.g + (b.g - a.g) * t,
+        a.b + (b.b - a.b) * t,
+        a.a + (b.a - a.a) * t,
+    )
 }
 
 // --- Semantic (intentionally theme-independent) ---

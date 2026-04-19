@@ -15,7 +15,6 @@ use logger_runtime::{CondXSnapshot, KeyerEvent, ScoreboardStatus, Session};
 
 use bridge::AdapterHandles;
 
-const CW_HISTORY_MAX: usize = 50;
 
 /// Stash the parsed config between `main()` and `init()` (which iced calls
 /// inside its tokio runtime).
@@ -25,10 +24,12 @@ struct App {
     workspace: mdi::Workspace,
     session: Session,
     handles: AdapterHandles,
-    /// CW echo buffers, per-radio. Populated either from CwSend dispatch
-    /// (when no live keyer echo) or from KeyerEvent::CharacterSent (when
-    /// `cw_echo = true`). Used by the CW preview pane.
-    cw_history: Vec<(RadioId, String)>,
+    /// CW echo buffer per radio, rendered inline under each radio's entry
+    /// fields. When `cw_echo = true` in the keyer config, this is filled
+    /// character-by-character from `KeyerEvent::CharacterSent`; otherwise
+    /// `Effect::CwSend` pre-populates with the stripped macro text so the
+    /// operator sees what's being keyed even without live echo.
+    echo_per_radio: std::collections::HashMap<RadioId, String>,
     /// Latest CondX snapshot, when condx polling is enabled.
     condx: Option<CondXSnapshot>,
     /// Which radio the keyer is currently keying (independent of entry
@@ -47,10 +48,9 @@ struct App {
     pane_rate: u32,
     pane_avail: u32,
     pane_macros: u32,
-    pane_cw: u32,
     pane_so2r: u32,
     pane_condx: u32,
-    dark_mode: bool,
+    theme: Theme,
     modal: Option<modals::Modal>,
     /// Sticky error banner. Set by `AppEvent::*Error` / `*Disconnected`;
     /// cleared by the user (✕ on the banner).
@@ -84,8 +84,7 @@ impl App {
             workspace.add("Rate", Point::new(840.0, 400.0), Size::new(320.0, 160.0));
             workspace.add("Available", Point::new(500.0, 640.0), Size::new(320.0, 220.0));
             workspace.add("Macros", Point::new(40.0, 580.0), Size::new(440.0, 200.0));
-            workspace.add("CW", Point::new(840.0, 580.0), Size::new(320.0, 180.0));
-            workspace.add("SO2R", Point::new(840.0, 780.0), Size::new(320.0, 180.0));
+            workspace.add("SO2R", Point::new(840.0, 580.0), Size::new(320.0, 180.0));
             workspace.add("CondX", Point::new(1180.0, 40.0), Size::new(280.0, 340.0));
         }
         let pane_entry = workspace.id_by_title("Entry").unwrap_or_else(|| {
@@ -116,11 +115,11 @@ impl App {
         let pane_macros = workspace.id_by_title("Macros").unwrap_or_else(|| {
             workspace.add("Macros", Point::new(40.0, 580.0), Size::new(440.0, 200.0))
         });
-        let pane_cw = workspace.id_by_title("CW").unwrap_or_else(|| {
-            workspace.add("CW", Point::new(840.0, 580.0), Size::new(320.0, 180.0))
-        });
+        // Drop the old standalone "CW" pane if a previous layout had one —
+        // echo now renders inline under each radio's entry.
+        workspace.panes.retain(|p| p.title != "CW");
         let pane_so2r = workspace.id_by_title("SO2R").unwrap_or_else(|| {
-            workspace.add("SO2R", Point::new(840.0, 780.0), Size::new(320.0, 180.0))
+            workspace.add("SO2R", Point::new(840.0, 580.0), Size::new(320.0, 180.0))
         });
         let pane_condx = workspace.id_by_title("CondX").unwrap_or_else(|| {
             workspace.add("CondX", Point::new(1180.0, 40.0), Size::new(280.0, 340.0))
@@ -131,7 +130,7 @@ impl App {
             workspace,
             session,
             handles: AdapterHandles::default(),
-            cw_history: Vec::new(),
+            echo_per_radio: std::collections::HashMap::new(),
             condx: None,
             tx_radio,
             bandmap_zoom,
@@ -143,10 +142,9 @@ impl App {
             pane_rate,
             pane_avail,
             pane_macros,
-            pane_cw,
             pane_so2r,
             pane_condx,
-            dark_mode: true,
+            theme: resolve_saved_theme().unwrap_or(Theme::Dark),
             modal: None,
             error_banner: None,
             adapters_ready: false,
@@ -155,15 +153,21 @@ impl App {
     }
 
     /// Capture observable side effects before they hit `dispatch` so
-    /// host-only state (like the CW preview buffer) reacts to them.
+    /// host-only state (like the inline CW echo buffers) reacts to them.
     fn observe_effects(&mut self, effects: &[Effect]) {
         for ef in effects {
             if let Effect::CwSend { radio, text } = ef {
                 self.tx_radio = *radio;
-                self.cw_history.push((*radio, text.clone()));
-                if self.cw_history.len() > CW_HISTORY_MAX {
-                    let drop = self.cw_history.len() - CW_HISTORY_MAX;
-                    self.cw_history.drain(0..drop);
+                if self.handles.cw_echo_enabled {
+                    // Live-echo mode: clear the buffer and let
+                    // `KeyerEvent::CharacterSent` fill it as the keyer
+                    // actually sends characters over the wire.
+                    self.echo_per_radio.insert(*radio, String::new());
+                } else {
+                    // No live echo — pre-populate with the full stripped
+                    // text so the operator still sees what's being keyed.
+                    self.echo_per_radio
+                        .insert(*radio, strip_speed_markers(text));
                 }
             }
         }
@@ -197,7 +201,7 @@ enum Message {
         radio: RadioId,
         zoom: f32,
     },
-    ToggleTheme,
+    SetTheme(Theme),
     ToggleSo2rRxMode,
     OpenModal(modals::Modal),
     CloseModal,
@@ -223,7 +227,11 @@ fn update(state: &mut App, msg: Message) {
     match msg {
         Message::Mdi(m) => {
             state.workspace.update(m);
-            mdi::save(&state.workspace, state.font_scale);
+            mdi::save(
+                &state.workspace,
+                state.font_scale,
+                &state.theme.to_string(),
+            );
         }
         Message::Tick => {
             let now = chrono::Utc::now().timestamp_millis();
@@ -276,7 +284,14 @@ fn update(state: &mut App, msg: Message) {
         }
         Message::OpenModal(m) => state.modal = Some(m),
         Message::CloseModal => state.modal = None,
-        Message::ToggleTheme => state.dark_mode = !state.dark_mode,
+        Message::SetTheme(t) => {
+            state.theme = t;
+            mdi::save(
+                &state.workspace,
+                state.font_scale,
+                &state.theme.to_string(),
+            );
+        }
         Message::BandmapClicked { radio, call, freq_hz } => {
             // Bring entry focus to whichever radio's bandmap was clicked
             // (SO2R ergonomic — clicking a spot on R2 should also focus R2).
@@ -359,14 +374,14 @@ fn update(state: &mut App, msg: Message) {
         },
         Message::KeyerEvent(ev) => match ev {
             KeyerEvent::CharacterSent(c) => {
-                if let Some((radio, last)) = state.cw_history.last_mut() {
-                    last.push(c);
-                    let _ = radio;
-                } else {
-                    state
-                        .cw_history
-                        .push((state.session.state.focused_radio, c.to_string()));
-                }
+                // The keyer task routes TX to `tx_radio`; append the echoed
+                // character to that radio's buffer. observe_effects already
+                // cleared the buffer at the start of this send.
+                state
+                    .echo_per_radio
+                    .entry(state.tx_radio)
+                    .or_default()
+                    .push(c);
             }
             KeyerEvent::Connected => {
                 state.handles.keyer_connected = true;
@@ -394,16 +409,28 @@ fn update(state: &mut App, msg: Message) {
         Message::FontScaleUp => {
             state.font_scale =
                 (state.font_scale + FONT_SCALE_STEP).clamp(FONT_SCALE_MIN, FONT_SCALE_MAX);
-            mdi::save(&state.workspace, state.font_scale);
+            mdi::save(
+                &state.workspace,
+                state.font_scale,
+                &state.theme.to_string(),
+            );
         }
         Message::FontScaleDown => {
             state.font_scale =
                 (state.font_scale - FONT_SCALE_STEP).clamp(FONT_SCALE_MIN, FONT_SCALE_MAX);
-            mdi::save(&state.workspace, state.font_scale);
+            mdi::save(
+                &state.workspace,
+                state.font_scale,
+                &state.theme.to_string(),
+            );
         }
         Message::FontScaleReset => {
             state.font_scale = 1.0;
-            mdi::save(&state.workspace, state.font_scale);
+            mdi::save(
+                &state.workspace,
+                state.font_scale,
+                &state.theme.to_string(),
+            );
         }
     }
 }
@@ -438,6 +465,9 @@ fn view(state: &App) -> Element<'_, Message> {
         .into();
         let content: Element<Message> = match modal {
             modals::Modal::Help => modals::help::view(Message::CloseModal),
+            modals::Modal::ThemePicker => {
+                modals::theme::view(&state.theme, Message::SetTheme, Message::CloseModal)
+            }
         };
         stack![main, backdrop, content].into()
     } else {
@@ -480,7 +510,11 @@ fn error_banner_view(msg: String) -> Element<'static, Message> {
 
 fn body_for<'a>(state: &'a App, pane: &'a mdi::Pane) -> Element<'a, Message> {
     if pane.id == state.pane_entry {
-        panes::entry::view(&state.session.state, state.show_r2())
+        panes::entry::view(
+            &state.session.state,
+            state.show_r2(),
+            &state.echo_per_radio,
+        )
     } else if pane.id == state.pane_bandmap_r1 {
         let zoom = state.bandmap_zoom.get(&1).copied().unwrap_or(1.0);
         panes::bandmap::view(
@@ -511,8 +545,6 @@ fn body_for<'a>(state: &'a App, pane: &'a mdi::Pane) -> Element<'a, Message> {
         panes::available::view(&state.session.state, &state.session.log_adapter)
     } else if pane.id == state.pane_macros {
         panes::macros::view(&state.session.macros)
-    } else if pane.id == state.pane_cw {
-        panes::cw::view(&state.cw_history)
     } else if pane.id == state.pane_so2r {
         panes::so2r::view(
             state.session.state.focused_radio,
@@ -592,7 +624,6 @@ fn status_bar(state: &App) -> Element<'_, Message> {
         focused_freq
     );
 
-    let theme_glyph = if state.dark_mode { "☀" } else { "☾" };
     let icon_btn_style = |t: &Theme, status: iced::widget::button::Status| {
         let pal = t.extended_palette().background.weak;
         let bg = match status {
@@ -610,9 +641,12 @@ fn status_bar(state: &App) -> Element<'_, Message> {
             ..iced::widget::button::Style::default()
         }
     };
-    let theme_btn = iced::widget::button(text(theme_glyph).size(12))
+    // Palette glyph — opens the theme picker modal. Single entry point
+    // instead of the old binary dark/light toggle, since iced ships ~20
+    // themes and we want them all reachable.
+    let theme_btn = iced::widget::button(text("🎨").size(12))
         .padding([0, 6])
-        .on_press(Message::ToggleTheme)
+        .on_press(Message::OpenModal(modals::Modal::ThemePicker))
         .style(icon_btn_style);
     let help_btn = iced::widget::button(text("?").size(12))
         .padding([0, 6])
@@ -870,11 +904,32 @@ fn init() -> (App, iced::Task<Message>) {
 }
 
 fn theme_for(state: &App) -> Theme {
-    if state.dark_mode {
-        Theme::Dark
-    } else {
-        Theme::Light
+    state.theme.clone()
+}
+
+/// Strip `{NN}` WPM-change markers from macro-expanded CW text so the
+/// inline echo line shows what the operator hears, not the keyer protocol.
+/// Prosigns like `<AR>` use angle brackets and are preserved.
+fn strip_speed_markers(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut in_marker = false;
+    for c in s.chars() {
+        match c {
+            '{' => in_marker = true,
+            '}' if in_marker => in_marker = false,
+            _ if !in_marker => out.push(c),
+            _ => {}
+        }
     }
+    out
+}
+
+/// Look up the saved theme by name against `iced::Theme::ALL`. Returns
+/// `None` on first run (no saved theme) OR if the saved name no longer
+/// exists in this iced version (we gracefully fall back to Dark).
+fn resolve_saved_theme() -> Option<Theme> {
+    let name = mdi::load_theme_name()?;
+    Theme::ALL.iter().find(|t| t.to_string() == name).cloned()
 }
 
 fn main() -> anyhow::Result<()> {

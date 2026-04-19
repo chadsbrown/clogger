@@ -2,6 +2,12 @@
 //! per radio, matching the "run box" layout contest operators expect. Each
 //! field's pixel width comes from the contest spec's `field.width` (in
 //! character columns), translated through a monospace font.
+//!
+//! A small CW-echo line sits directly under each radio's field row so the
+//! operator sees what the keyer is keying for *that* radio, inline with
+//! the exchange — no separate CW pane needed.
+
+use std::collections::HashMap;
 
 use iced::widget::{column, container, row, text, Space};
 use iced::{Border, Color, Element, Font, Length, Theme};
@@ -19,11 +25,15 @@ const BOX_HPAD: f32 = 12.0;
 /// single-char fields (like PREC) still have a visible box.
 const MIN_BOX_PX: f32 = 42.0;
 
-pub fn view<'a, M: 'a>(state: &'a AppState, show_r2: bool) -> Element<'a, M> {
+pub fn view<'a, M: 'a>(
+    state: &'a AppState,
+    show_r2: bool,
+    echoes: &'a HashMap<RadioId, String>,
+) -> Element<'a, M> {
     let mut sections: Vec<Element<M>> = Vec::with_capacity(2);
-    sections.push(render_radio(state, 1));
+    sections.push(render_radio(state, 1, echoes.get(&1).map(|s| s.as_str())));
     if show_r2 {
-        sections.push(render_radio(state, 2));
+        sections.push(render_radio(state, 2, echoes.get(&2).map(|s| s.as_str())));
     }
     container(column(sections).spacing(8))
         .padding(6)
@@ -32,7 +42,11 @@ pub fn view<'a, M: 'a>(state: &'a AppState, show_r2: bool) -> Element<'a, M> {
         .into()
 }
 
-fn render_radio<'a, M: 'a>(state: &'a AppState, radio_id: RadioId) -> Element<'a, M> {
+fn render_radio<'a, M: 'a>(
+    state: &'a AppState,
+    radio_id: RadioId,
+    echo: Option<&'a str>,
+) -> Element<'a, M> {
     let is_active = state.focused_radio == radio_id;
     let entry = state.entries.get(&radio_id);
     let radio = state.radios.get(&radio_id);
@@ -140,25 +154,36 @@ fn render_radio<'a, M: 'a>(state: &'a AppState, radio_id: RadioId) -> Element<'a
         }
     }
 
-    let status_row = row(status_bits)
-        .spacing(6)
-        .align_y(iced::alignment::Vertical::Center);
+    // Both the badges row and the SCP row are conditional by content, so
+    // they need fixed-height containers — otherwise appearance/absence
+    // changes on R1 would push R2 up and down as the operator types.
+    let status_row = container(
+        row(status_bits)
+            .spacing(6)
+            .align_y(iced::alignment::Vertical::Center),
+    )
+    .width(Length::Fill)
+    .height(Length::Fixed(22.0));
 
-    let scp_row = entry
-        .filter(|e| !e.scp_matches.is_empty())
-        .map(|e| scp_row_view(&e.scp_matches));
+    let scp_slot = scp_row_view(
+        entry
+            .map(|e| e.scp_matches.as_slice())
+            .unwrap_or(&[] as &[String]),
+    );
 
-    let mut body_children: Vec<Element<M>> = vec![
+    let echo_row = echo_line_view(echo, radio_id);
+
+    let body_children: Vec<Element<M>> = vec![
         header.into(),
         Space::with_height(4).into(),
         fields_row,
         Space::with_height(4).into(),
+        echo_row,
+        Space::with_height(4).into(),
         status_row.into(),
+        Space::with_height(4).into(),
+        scp_slot,
     ];
-    if let Some(scp) = scp_row {
-        body_children.push(Space::with_height(4).into());
-        body_children.push(scp);
-    }
 
     container(column(body_children))
         .padding(6)
@@ -178,10 +203,56 @@ fn render_radio<'a, M: 'a>(state: &'a AppState, radio_id: RadioId) -> Element<'a
         .into()
 }
 
+/// One-line inline CW-echo display for a specific radio. Lives directly
+/// under the field row so the operator sees *this* radio's keyer output
+/// without looking away from the entry. Fixed height so the status row
+/// below doesn't jump when echo appears/clears.
+fn echo_line_view<'a, M: 'a>(echo: Option<&'a str>, radio_id: RadioId) -> Element<'a, M> {
+    let body = echo
+        .map(|s| s.to_string())
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| "—".to_string());
+    let is_placeholder = body == "—";
+
+    let label = text(format!("R{radio_id} CW"))
+        .size(style::TEXT_TINY)
+        .style(style::muted)
+        .width(Length::Fixed(48.0));
+    let echo_text = text(body)
+        .size(style::TEXT_VALUE)
+        .font(Font::MONOSPACE)
+        .style(move |t: &Theme| {
+            if is_placeholder {
+                style::very_muted(t)
+            } else {
+                style::body(t)
+            }
+        });
+
+    container(
+        row![label, echo_text]
+            .spacing(6)
+            .align_y(iced::alignment::Vertical::Center),
+    )
+    .padding([3, 8])
+    .width(Length::Fill)
+    .height(Length::Fixed(24.0))
+    .style(|t: &Theme| container::Style {
+        background: Some(t.extended_palette().background.weak.color.into()),
+        border: Border {
+            color: style::border_color(t),
+            width: 1.0,
+            radius: style::RADIUS_INPUT.into(),
+        },
+        ..container::Style::default()
+    })
+    .into()
+}
+
 fn scp_row_view<'a, M: 'a>(matches: &'a [String]) -> Element<'a, M> {
     let take = matches.len().min(10);
     let mut chips: Vec<Element<M>> = Vec::with_capacity(take + 1);
-    chips.push(text("SCP").size(10).style(style::muted).into());
+    chips.push(text("SCP").size(style::TEXT_TINY).style(style::muted).into());
     for m in matches.iter().take(take) {
         chips.push(
             container(
@@ -196,14 +267,25 @@ fn scp_row_view<'a, M: 'a>(matches: &'a [String]) -> Element<'a, M> {
                 border: Border {
                     color: Color::TRANSPARENT,
                     width: 0.0,
-                    radius: 2.0.into(),
+                    radius: style::RADIUS_CHIP.into(),
                 },
                 ..container::Style::default()
             })
             .into(),
         );
     }
-    row(chips).spacing(4).wrap().into()
+    // Fixed height so the R2 block below doesn't jump when the operator
+    // types a call that starts / stops producing SCP suggestions. Height
+    // fits one wrapped row comfortably; extra matches wrap into it rather
+    // than pushing everything else down.
+    container(
+        row(chips)
+            .spacing(4)
+            .align_y(iced::alignment::Vertical::Center),
+    )
+    .width(Length::Fill)
+    .height(Length::Fixed(22.0))
+    .into()
 }
 
 fn badge<'a, M: 'a>(label: &'static str, bg: Color) -> Element<'a, M> {
