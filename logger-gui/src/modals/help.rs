@@ -17,6 +17,8 @@ const BINDINGS: &[(&str, &str)] = &[
     ("PageUp / PageDown", "±2 WPM CW speed on focused radio"),
     ("F1 – F9", "Send macro"),
     ("Ctrl-Alt-F1 – F12", "Secondary macro"),
+    ("Ctrl-+ / Ctrl--", "Increase / decrease global UI scale"),
+    ("Ctrl-0", "Reset UI scale to 100%"),
     ("Click spot", "Tune focused radio to that spot's frequency"),
     ("Drag title bar", "Move pane"),
     ("Drag ◢ corner", "Resize pane"),

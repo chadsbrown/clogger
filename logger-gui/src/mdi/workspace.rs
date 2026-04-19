@@ -44,6 +44,10 @@ pub struct Workspace {
     drag: Option<DragState>,
     cursor: Point,
     window: Size,
+    /// Top-left of the OS window in screen coordinates. Only populated
+    /// from `Event::Window::Moved`; initially `None` so we don't overwrite
+    /// saved state with zero before the first Moved event fires.
+    window_pos: Option<Point>,
     focused: Option<u32>,
 }
 
@@ -57,6 +61,7 @@ pub enum Message {
     CursorMoved(Point),
     MouseReleased,
     WindowResized(Size),
+    WindowMoved(Point),
 }
 
 const MIN_W: f32 = 140.0;
@@ -223,7 +228,34 @@ impl Workspace {
                     pane.pos = Self::clamp_pos(size, pane.pos, pane.size);
                 }
             }
+            Message::WindowMoved(pos) => {
+                self.window_pos = Some(pos);
+            }
         }
+    }
+
+    /// Current OS-window geometry, for persistence. Returns `None` until
+    /// at least one `WindowMoved` or `WindowResized` event has been seen.
+    pub fn saved_window(&self) -> Option<crate::mdi::WindowState> {
+        // Size must be non-zero — iced may report (0,0) between sizing
+        // events on some platforms; don't persist garbage.
+        if self.window.width <= 0.0 || self.window.height <= 0.0 {
+            return None;
+        }
+        let pos = self.window_pos?;
+        Some(crate::mdi::WindowState {
+            x: pos.x,
+            y: pos.y,
+            w: self.window.width,
+            h: self.window.height,
+        })
+    }
+
+    /// Seed window geometry from a restored layout so `saved_window` has
+    /// something to return even before the first live window event.
+    pub fn set_saved_window(&mut self, state: crate::mdi::WindowState) {
+        self.window = Size::new(state.w, state.h);
+        self.window_pos = Some(Point::new(state.x, state.y));
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
@@ -235,6 +267,7 @@ impl Workspace {
                 Some(Message::MouseReleased)
             }
             Event::Window(window::Event::Resized(size)) => Some(Message::WindowResized(size)),
+            Event::Window(window::Event::Moved(pos)) => Some(Message::WindowMoved(pos)),
             _ => None,
         })
     }

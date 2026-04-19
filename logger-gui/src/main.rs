@@ -34,6 +34,11 @@ struct App {
     /// Which radio the keyer is currently keying (independent of entry
     /// focus). Updated from `Effect::CwSend` in `observe_effects`.
     tx_radio: RadioId,
+    /// Per-radio bandmap zoom factor. Lives on the host rather than inside
+    /// the Canvas's `Program::State` because iced's widget-tree diff ties
+    /// canvas state to tree position — any pane click that bumps z-order
+    /// rebuilds the tree and would otherwise reset zoom to 1.0.
+    bandmap_zoom: std::collections::HashMap<RadioId, f32>,
     pane_entry: u32,
     pane_bandmap_r1: u32,
     pane_bandmap_r2: u32,
@@ -56,7 +61,15 @@ struct App {
     /// registered after this flips — otherwise they'd activate before the
     /// receivers exist, see `None`, and park in `pending` forever.
     adapters_ready: bool,
+    /// Global UI scale factor. Applied via `iced::application::scale_factor`,
+    /// so every widget — text, padding, borders, the bandmap canvas — grows
+    /// or shrinks together. Persisted alongside the layout.
+    font_scale: f32,
 }
+
+const FONT_SCALE_MIN: f32 = 0.6;
+const FONT_SCALE_MAX: f32 = 2.0;
+const FONT_SCALE_STEP: f32 = 0.1;
 
 impl App {
     fn new(session: Session) -> Self {
@@ -113,6 +126,7 @@ impl App {
             workspace.add("CondX", Point::new(1180.0, 40.0), Size::new(280.0, 340.0))
         });
         let tx_radio = session.state.focused_radio;
+        let bandmap_zoom = std::collections::HashMap::new();
         Self {
             workspace,
             session,
@@ -120,6 +134,7 @@ impl App {
             cw_history: Vec::new(),
             condx: None,
             tx_radio,
+            bandmap_zoom,
             pane_entry,
             pane_bandmap_r1,
             pane_bandmap_r2,
@@ -135,6 +150,7 @@ impl App {
             modal: None,
             error_banner: None,
             adapters_ready: false,
+            font_scale: mdi::load_font_scale().unwrap_or(1.0).clamp(FONT_SCALE_MIN, FONT_SCALE_MAX),
         }
     }
 
@@ -175,6 +191,12 @@ enum Message {
         call: Option<String>,
         freq_hz: u64,
     },
+    /// Scroll-wheel zoom on a bandmap canvas. Radio-keyed so R1 and R2
+    /// retain independent zoom levels.
+    BandmapZoom {
+        radio: RadioId,
+        zoom: f32,
+    },
     ToggleTheme,
     ToggleSo2rRxMode,
     OpenModal(modals::Modal),
@@ -184,6 +206,9 @@ enum Message {
     CondxSnapshot(CondXSnapshot),
     ScoreboardStatus(ScoreboardStatus),
     DismissError,
+    FontScaleUp,
+    FontScaleDown,
+    FontScaleReset,
 }
 
 /// Wrapper because `Result<AdapterHandles, anyhow::Error>` isn't Clone
@@ -198,7 +223,7 @@ fn update(state: &mut App, msg: Message) {
     match msg {
         Message::Mdi(m) => {
             state.workspace.update(m);
-            mdi::save(&state.workspace);
+            mdi::save(&state.workspace, state.font_scale);
         }
         Message::Tick => {
             let now = chrono::Utc::now().timestamp_millis();
@@ -291,6 +316,9 @@ fn update(state: &mut App, msg: Message) {
                 }
             }
         }
+        Message::BandmapZoom { radio, zoom } => {
+            state.bandmap_zoom.insert(radio, zoom);
+        }
         Message::ToggleSo2rRxMode => {
             use logger_core::So2rRxMode;
             // Mono → Stereo, Stereo|ReverseStereo → Mono (matches TUI).
@@ -362,6 +390,20 @@ fn update(state: &mut App, msg: Message) {
         }
         Message::DismissError => {
             state.error_banner = None;
+        }
+        Message::FontScaleUp => {
+            state.font_scale =
+                (state.font_scale + FONT_SCALE_STEP).clamp(FONT_SCALE_MIN, FONT_SCALE_MAX);
+            mdi::save(&state.workspace, state.font_scale);
+        }
+        Message::FontScaleDown => {
+            state.font_scale =
+                (state.font_scale - FONT_SCALE_STEP).clamp(FONT_SCALE_MIN, FONT_SCALE_MAX);
+            mdi::save(&state.workspace, state.font_scale);
+        }
+        Message::FontScaleReset => {
+            state.font_scale = 1.0;
+            mdi::save(&state.workspace, state.font_scale);
         }
     }
 }
@@ -440,18 +482,24 @@ fn body_for<'a>(state: &'a App, pane: &'a mdi::Pane) -> Element<'a, Message> {
     if pane.id == state.pane_entry {
         panes::entry::view(&state.session.state, state.show_r2())
     } else if pane.id == state.pane_bandmap_r1 {
+        let zoom = state.bandmap_zoom.get(&1).copied().unwrap_or(1.0);
         panes::bandmap::view(
             &state.session.state,
             &state.session.log_adapter,
             1,
+            zoom,
             bandmap_r1_clicked,
+            bandmap_r1_zoom,
         )
     } else if pane.id == state.pane_bandmap_r2 {
+        let zoom = state.bandmap_zoom.get(&2).copied().unwrap_or(1.0);
         panes::bandmap::view(
             &state.session.state,
             &state.session.log_adapter,
             2,
+            zoom,
             bandmap_r2_clicked,
+            bandmap_r2_zoom,
         )
     } else if pane.id == state.pane_log {
         panes::log::view(&state.session.log_adapter)
@@ -492,6 +540,14 @@ fn bandmap_r2_clicked(call: Option<String>, freq: u64) -> Message {
         call,
         freq_hz: freq,
     }
+}
+
+fn bandmap_r1_zoom(zoom: f32) -> Message {
+    Message::BandmapZoom { radio: 1, zoom }
+}
+
+fn bandmap_r2_zoom(zoom: f32) -> Message {
+    Message::BandmapZoom { radio: 2, zoom }
 }
 
 /// Update in-memory radio state for clicks that hit no real rig adapter,
@@ -562,6 +618,14 @@ fn status_bar(state: &App) -> Element<'_, Message> {
         .padding([0, 6])
         .on_press(Message::OpenModal(modals::Modal::Help))
         .style(icon_btn_style);
+    let font_down = iced::widget::button(text("A−").size(12))
+        .padding([0, 6])
+        .on_press(Message::FontScaleDown)
+        .style(icon_btn_style);
+    let font_up = iced::widget::button(text("A+").size(12))
+        .padding([0, 6])
+        .on_press(Message::FontScaleUp)
+        .style(icon_btn_style);
 
     // RIG status: if any rig is configured, render one indicator per rig
     // (green=connected, red=configured-but-disconnected). Otherwise placeholder.
@@ -618,7 +682,11 @@ fn status_bar(state: &App) -> Element<'_, Message> {
     for ind in indicators {
         bar = bar.push(ind);
     }
-    bar = bar.push(theme_btn).push(help_btn);
+    bar = bar
+        .push(font_down)
+        .push(font_up)
+        .push(theme_btn)
+        .push(help_btn);
 
     container(bar)
         .padding([4, 10])
@@ -704,6 +772,19 @@ fn keyboard_subscription() -> Subscription<Message> {
             text,
             ..
         }) => {
+            // Ctrl-modifier shortcuts that should never reach the reducer.
+            // Match on the Key (which is layout-aware and stable across
+            // shift state) rather than the produced text.
+            if modifiers.control() || modifiers.command() {
+                if let keyboard::Key::Character(s) = &key {
+                    match s.as_str() {
+                        "+" | "=" => return Some(Message::FontScaleUp),
+                        "-" | "_" => return Some(Message::FontScaleDown),
+                        "0" => return Some(Message::FontScaleReset),
+                        _ => {}
+                    }
+                }
+            }
             // Backtick → SO2R RX-mode toggle. Intercept before the reducer
             // sees it so the entry box doesn't collect a stray `.
             if text.as_deref() == Some("`") {
@@ -817,9 +898,35 @@ fn main() -> anyhow::Result<()> {
     PENDING_CONFIG.get_or_init(|| Mutex::new(None));
     *PENDING_CONFIG.get().unwrap().lock().unwrap() = maybe_cfg;
 
+    // Restore saved OS-window geometry before iced brings up the window,
+    // so the operator's preferred size and position are honored on first
+    // paint (instead of flashing at a default size then jumping).
+    let saved_window = mdi::load_window_state();
+    match mdi::layout_path() {
+        Some(p) => tracing::info!(path = %p.display(), "gui layout file"),
+        None => tracing::warn!(
+            "no platform config directory found; layout will not persist this session"
+        ),
+    }
+    let window_settings = iced::window::Settings {
+        size: saved_window
+            .map(|w| iced::Size::new(w.w.max(400.0), w.h.max(300.0)))
+            .unwrap_or_else(|| iced::Size::new(1280.0, 820.0)),
+        position: saved_window
+            .map(|w| iced::window::Position::Specific(iced::Point::new(w.x, w.y)))
+            .unwrap_or(iced::window::Position::Default),
+        ..Default::default()
+    };
+
     iced::application("Clogger", update, view)
         .subscription(subscription)
         .theme(theme_for)
+        .scale_factor(scale_factor_for)
+        .window(window_settings)
         .run_with(init)
         .map_err(|e| anyhow::anyhow!("iced exited: {e}"))
+}
+
+fn scale_factor_for(state: &App) -> f64 {
+    state.font_scale as f64
 }
