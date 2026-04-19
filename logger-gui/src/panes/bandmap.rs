@@ -329,7 +329,7 @@ impl<'a, M> canvas::Program<M> for BandmapProgram<'a, M> {
                         style::very_muted_color(theme),
                     )
                 } else if self.mults.contains(&p.spot.call) {
-                    (style::MULT_COLOR, style::MULT_COLOR)
+                    (style::mult_color(theme), style::mult_color(theme))
                 } else {
                     (style::new_spot_color(theme), text_color)
                 };
@@ -384,7 +384,7 @@ impl<'a, M> canvas::Program<M> for BandmapProgram<'a, M> {
                 &Path::line(Point::new(AXIS_X, y), Point::new(w, y)),
                 Stroke::default()
                     .with_width(1.5)
-                    .with_color(style::CURSOR_COLOR),
+                    .with_color(style::cursor_color(theme)),
             );
         }
 

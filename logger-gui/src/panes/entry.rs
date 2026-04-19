@@ -141,13 +141,13 @@ fn render_radio<'a, M: 'a>(
     let mut status_bits: Vec<Element<M>> = Vec::new();
     if let Some(entry) = entry {
         if entry.is_dupe {
-            status_bits.push(badge(" DUPE ", style::DUPE_BADGE).into());
+            status_bits.push(badge(" DUPE ", style::dupe_badge).into());
         }
         if entry.is_new_mult {
-            status_bits.push(badge(" MULT ", style::MULT_BADGE).into());
+            status_bits.push(badge(" MULT ", style::mult_color).into());
         }
         if entry.is_passband_qrm {
-            status_bits.push(badge(" QRM ", style::QRM_BADGE).into());
+            status_bits.push(badge(" QRM ", style::qrm_badge).into());
         }
         if let Some(sn) = entry.assigned_serial {
             status_bits.push(text(format!("# {sn}")).size(12.0).style(style::body).into());
@@ -219,11 +219,11 @@ fn echo_line_view<'a, M: 'a>(echo: Option<&'a str>) -> Element<'a, M> {
     .into()
 }
 
-fn badge<'a, M: 'a>(label: &'static str, bg: Color) -> Element<'a, M> {
+fn badge<'a, M: 'a>(label: &'static str, bg: fn(&Theme) -> Color) -> Element<'a, M> {
     container(text(label).size(11.0).color(Color::WHITE))
         .padding([1, 4])
-        .style(move |_t: &Theme| container::Style {
-            background: Some(bg.into()),
+        .style(move |t: &Theme| container::Style {
+            background: Some(bg(t).into()),
             border: Border {
                 color: Color::TRANSPARENT,
                 width: 0.0,

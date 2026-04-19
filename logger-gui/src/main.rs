@@ -587,8 +587,8 @@ fn error_banner_view(msg: String) -> Element<'static, Message> {
     )
     .padding([4, 12])
     .width(Length::Fill)
-    .style(|_t| iced::widget::container::Style {
-        background: Some(Background::Color(panes::style::ERROR_BANNER)),
+    .style(|t: &Theme| iced::widget::container::Style {
+        background: Some(Background::Color(panes::style::error_banner(t))),
         text_color: Some(Color::WHITE),
         ..iced::widget::container::Style::default()
     })

@@ -50,7 +50,7 @@ pub fn view<'a, M: 'a>(state: &'a AppState, log: &'a LogAdapter) -> Element<'a, 
                     .size(12.0)
                     .style(move |t: &Theme| if mult_is_present {
                         iced::widget::text::Style {
-                            color: Some(style::MULT_COLOR),
+                            color: Some(style::mult_color(t)),
                         }
                     } else {
                         style::muted(t)

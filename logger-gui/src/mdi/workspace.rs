@@ -430,12 +430,12 @@ where
                 border: Border {
                     color: Color::TRANSPARENT,
                     width: 0.0,
-                    // Round only the top corners — the title bar lives on
-                    // top of the pane frame and the bottom lines up with
-                    // the frame body.
+                    // Round only the top-left — the top-right meets the
+                    // close button flush, and rounding it there would let
+                    // the frame's background color bleed through the seam.
                     radius: iced::border::Radius {
                         top_left: style::RADIUS_FRAME - 1.0,
-                        top_right: style::RADIUS_FRAME - 1.0,
+                        top_right: 0.0,
                         bottom_left: 0.0,
                         bottom_right: 0.0,
                     },
