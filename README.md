@@ -1,6 +1,6 @@
 # clogger
 
-![clogger screenshot](docs/clogger-20260418.png)
+![clogger screenshot](docs/clogger-20260418-2.png)
 
 A contest logger by N9UNX.
 
