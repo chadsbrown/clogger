@@ -98,6 +98,17 @@ pub enum AppEvent {
     EsmTrigger,
     BandmapUp { radio: RadioId },
     BandmapDown { radio: RadioId },
+    /// Operator selected a specific spot (e.g. by clicking it on a GUI
+    /// bandmap, or via a future "next-mult" hotkey). Mirrors the tail of
+    /// `BandmapUp`/`BandmapDown` — sets the bandmap cursor on this call,
+    /// populates the CALL field, switches to S&P, and tunes the rig.
+    /// `call` is what gets typed into the entry box; `freq_hz` is the rig
+    /// QSY target.
+    BandmapSelect {
+        radio: RadioId,
+        call: String,
+        freq_hz: u64,
+    },
     /// Nudge the focused radio's CW sending speed by `delta` WPM. Positive
     /// speeds up, negative slows down. Clamped to a sensible contest range
     /// by the reducer. Bound to PageUp/PageDown in the terminal adapter,

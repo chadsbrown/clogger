@@ -83,6 +83,9 @@ pub struct StableConfig {
     /// Default: false.
     #[serde(default)]
     pub bandmap_skip_worked: bool,
+    /// Render the bandmap with highest frequency at the top. Default: false.
+    #[serde(default)]
+    pub bandmap_high_at_top: bool,
     /// Enable Enter Sends Message (ESM). Default: true. Set to false if you
     /// prefer to send CW only via F-key macros and have Enter just log.
     #[serde(default = "default_esm_enabled")]
@@ -151,6 +154,7 @@ pub struct Config {
     pub bandmap: BandmapMode,
     pub show_passband_qrm: bool,
     pub bandmap_skip_worked: bool,
+    pub bandmap_high_at_top: bool,
     pub esm_enabled: bool,
     pub block_dupes: bool,
     pub theme: Option<String>,
@@ -184,6 +188,7 @@ impl Config {
             bandmap: stable.bandmap,
             show_passband_qrm: stable.show_passband_qrm,
             bandmap_skip_worked: stable.bandmap_skip_worked,
+            bandmap_high_at_top: stable.bandmap_high_at_top,
             esm_enabled: stable.esm_enabled,
             block_dupes: stable.block_dupes,
             theme: stable.theme,

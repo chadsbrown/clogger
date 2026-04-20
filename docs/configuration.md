@@ -48,6 +48,7 @@ points — they include commented-out examples of every section.
 | `bandmap` | enum | `dual` | `dual` (R1 + R2 stacked), `r1`, `r2` |
 | `show_passband_qrm` | bool | false | Show `QRM` badge in Run mode when a bandmap spot is within the focused radio's receive passband |
 | `bandmap_skip_worked` | bool | false | Ctrl-↑/↓ (and Ctrl-Alt-↑/↓ for R2) skip already-worked stations |
+| `bandmap_high_at_top` | bool | false | Reverse bandmap orientation (highest freq at top); Ctrl-↑/↓ follow visual direction |
 | `esm_enabled` | bool | true | Enter-sends-message flow (see [Operating](operating.md)) |
 | `block_dupes` | bool | false | Refuse to log/send via Enter when the entry call is a known dupe on current band/mode |
 

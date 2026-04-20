@@ -218,7 +218,7 @@ pub struct ScoreboardEndpoint {
 // Hardware
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct RigConfig {
     /// Which radio this rig represents (1 or 2). Defaults to 1.
     #[serde(default = "default_radio_id")]

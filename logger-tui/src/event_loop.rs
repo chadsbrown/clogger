@@ -516,8 +516,10 @@ fn needs_analytics_recompute(event: &logger_core::AppEvent) -> bool {
         | AppEvent::EsmTrigger => true,
         // Radio focus changes which band's analytics are shown
         AppEvent::FocusRadio { .. } | AppEvent::SwapRadios => true,
-        // Bandmap cursor navigation
-        AppEvent::BandmapUp { .. } | AppEvent::BandmapDown { .. } => true,
+        // Bandmap cursor navigation / spot selection
+        AppEvent::BandmapUp { .. }
+        | AppEvent::BandmapDown { .. }
+        | AppEvent::BandmapSelect { .. } => true,
         // RigStatus handled by freq/mode comparison in caller
         AppEvent::RigStatus { .. } => false,
         // Timer, disconnect, op-mode, operator changes don't affect analytics.

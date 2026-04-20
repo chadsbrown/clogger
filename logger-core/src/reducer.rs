@@ -447,7 +447,16 @@ pub fn reduce(
         AppEvent::QuickLog => quick_log(st, contest, macros),
         AppEvent::EsmTrigger => handle_esm(st, contest, macros),
         AppEvent::BandmapUp { radio: target } | AppEvent::BandmapDown { radio: target } => {
-            let is_down = matches!(ev, AppEvent::BandmapDown { .. });
+            let raw_is_down = matches!(ev, AppEvent::BandmapDown { .. });
+            // When the bandmap renders high-freq-at-top, the operator's
+            // "visually down" is a lower frequency. The cursor-step math
+            // (Some / Between branches and the skip-worked loop) needs the
+            // flipped direction so the step lands visually below/above the
+            // anchor. The no-cursor case stays on `raw_is_down`: the
+            // existing convention (Down→lowest, Up→highest) already aligns
+            // visually in reversed mode (lowest is at the bottom, highest
+            // at the top) and matches operator muscle memory.
+            let is_down = if st.bandmap_high_at_top { !raw_is_down } else { raw_is_down };
 
             let radio_state = st.radios.get(&target).filter(|r| r.freq_hz > 0);
             let band = radio_state
@@ -481,11 +490,22 @@ pub fn reduce(
                 }
                 None => None,
             };
-            let first_idx = match (is_down, prev_idx) {
+            let first_idx = match (raw_is_down, prev_idx) {
+                // No cursor: use the raw key direction so muscle memory
+                // ("Down → lowest", "Up → highest") is preserved across
+                // both display orientations.
                 (true, None) => 0,
-                (true, Some(i)) => (i + 1) % len,
                 (false, None) => len - 1,
-                (false, Some(i)) => (i + len - 1) % len,
+                // Stepping from a known cursor: use `is_down`, which is
+                // visually-flipped in reversed mode so the step lands on
+                // the correct neighbor.
+                (_, Some(i)) => {
+                    if is_down {
+                        (i + 1) % len
+                    } else {
+                        (i + len - 1) % len
+                    }
+                }
             };
 
             // Optional skip-worked mode: step past consecutive dupes
@@ -527,45 +547,16 @@ pub fn reduce(
             let freq_hz = spot.freq_hz;
             let call = spot.call.clone();
 
-            st.bandmap_cursors.insert(
-                target,
-                BandmapCursor::On { call: call.clone(), freq_hz },
-            );
-
-            // Temporarily swap focus to target radio so helpers operate on it
-            let original_focus = st.focused_radio;
-            st.focused_radio = target;
-            {
-                let entry = st.focused_entry_mut();
-                entry.mode = OpMode::Sp;
-
-                if let Some(field) = entry.fields.iter_mut().find(|f| f.field_id == 1) {
-                    field.cursor = call.len();
-                    field.value = call;
-                }
-
-                entry.focus = 0;
-                entry.scp_cycle_index = None;
-
-                // Guard against logging a QSO with blank RST when the
-                // entry was previously wiped (e.g. F12 before this fix, or
-                // a manual RST delete). `apply_default_rst` only fills
-                // empty fields, so it's a no-op in the normal case.
-                let mode = st
-                    .radios
-                    .get(&target)
-                    .map(|r| normalize_mode(r.mode.as_str()))
-                    .unwrap_or("CW");
-                let entry = st.focused_entry_mut();
-                crate::entry::esm::apply_default_rst(entry, contest, mode);
-            }
-
-            recompute_feedback(st, dupe_checker, mult_checker);
-            apply_history_only(st, contest, call_history, contest_history);
-            revalidate_after_edit(st, contest);
-            st.focused_radio = original_focus;
-
-            vec![Effect::RigSet { radio: target, freq_hz }]
+            select_bandmap_spot(
+                st, target, call, freq_hz, contest, dupe_checker, mult_checker,
+                call_history, contest_history,
+            )
+        }
+        AppEvent::BandmapSelect { radio: target, call, freq_hz } => {
+            select_bandmap_spot(
+                st, target, call, freq_hz, contest, dupe_checker, mult_checker,
+                call_history, contest_history,
+            )
         }
         AppEvent::CwSpeedAdjust { delta } => {
             // Range is the conservative contest-CW window. Widen if a user
@@ -635,6 +626,59 @@ fn try_frequency_entry(st: &mut AppState) -> Option<Vec<Effect>> {
     }
 
     Some(vec![Effect::RigSet { radio, freq_hz }])
+}
+
+/// Select a specific bandmap spot for `target` radio: pin the cursor to it,
+/// populate the CALL field, switch to S&P, autofill from history, and emit
+/// a `RigSet` for the spot's frequency. Shared by `BandmapUp/Down` (which
+/// pick a spot relative to the current cursor) and `BandmapSelect` (which
+/// is given the call+freq directly — e.g. from a GUI bandmap click).
+fn select_bandmap_spot(
+    st: &mut AppState,
+    target: RadioId,
+    call: String,
+    freq_hz: u64,
+    contest: &dyn ContestEntry,
+    dupe_checker: &dyn DupeChecker,
+    mult_checker: &dyn MultChecker,
+    call_history: &dyn CallHistoryLookup,
+    contest_history: &dyn ContestHistoryLookup,
+) -> Vec<Effect> {
+    st.bandmap_cursors.insert(
+        target,
+        BandmapCursor::On {
+            call: call.clone(),
+            freq_hz,
+        },
+    );
+
+    let original_focus = st.focused_radio;
+    st.focused_radio = target;
+    {
+        let entry = st.focused_entry_mut();
+        entry.mode = OpMode::Sp;
+        if let Some(field) = entry.fields.iter_mut().find(|f| f.field_id == 1) {
+            field.cursor = call.len();
+            field.value = call;
+        }
+        entry.focus = 0;
+        entry.scp_cycle_index = None;
+
+        let mode = st
+            .radios
+            .get(&target)
+            .map(|r| normalize_mode(r.mode.as_str()))
+            .unwrap_or("CW");
+        let entry = st.focused_entry_mut();
+        crate::entry::esm::apply_default_rst(entry, contest, mode);
+    }
+
+    recompute_feedback(st, dupe_checker, mult_checker);
+    apply_history_only(st, contest, call_history, contest_history);
+    revalidate_after_edit(st, contest);
+    st.focused_radio = original_focus;
+
+    vec![Effect::RigSet { radio: target, freq_hz }]
 }
 
 fn revalidate_after_edit(st: &mut AppState, contest: &dyn ContestEntry) {
@@ -723,6 +767,18 @@ fn snap_bandmap_cursor_to_freq(st: &mut AppState, radio: RadioId) {
     let spots = filtered_bandmap_spots(&st.bandmap, band, mode);
     if spots.is_empty() {
         return;
+    }
+
+    // Preserve the caller's call-anchored cursor when the rig's new freq
+    // already matches the anchor and the anchored call is still present.
+    // Without this short-circuit, `partition_point` below collapses a
+    // cluster of co-located spots to its first member — breaking Ctrl+Up
+    // navigation through spots at the same frequency (and click-to-select
+    // when multiple spots share a freq).
+    if let Some(BandmapCursor::On { call, freq_hz }) = st.bandmap_cursors.get(&radio) {
+        if *freq_hz == target && spots.iter().any(|s| &s.call == call) {
+            return;
+        }
     }
 
     let pos = spots.partition_point(|s| s.freq_hz < target);
@@ -1098,6 +1154,7 @@ mod tests {
             serial_counter: None,
             show_passband_qrm: false,
             bandmap_skip_worked: false,
+            bandmap_high_at_top: false,
             bandmap_version: 0,
         }
     }
@@ -2555,6 +2612,190 @@ mod tests {
         ));
     }
 
+    /// Three spots at the exact same frequency, plus one bracketing spot
+    /// above. Walking Up from the bracketing spot should visit each
+    /// co-located call in turn, not collapse to the first-at-freq.
+    /// Regression test for a bug where `snap_bandmap_cursor_to_freq`
+    /// ran after every cross-freq BandmapUp and overwrote the anchored
+    /// cursor with `spots[partition_point]` (always the lowest-indexed
+    /// spot at target freq).
+    #[test]
+    fn bandmap_up_walks_through_co_located_spots() {
+        let mut st = mk_state();
+        add_spot(&mut st, "A1A", 14_000_000, "CW");
+        add_spot(&mut st, "B2B", 14_000_000, "CW");
+        add_spot(&mut st, "C3C", 14_000_000, "CW");
+        add_spot(&mut st, "R9R", 14_010_000, "CW");
+        rig_status(&mut st, 1, 14_010_000, "CW", Some(500));
+        // Cursor now On(R9R).
+        assert!(matches!(
+            st.bandmap_cursors.get(&1),
+            Some(BandmapCursor::On { call, .. }) if call == "R9R"
+        ));
+
+        let contest = contest_from_id("cqww").unwrap();
+        let macros = Macros::default();
+
+        // First Up: cursor moves to C3C; rig follows to 14_000_000.
+        // The reducer's BandmapUp sets the cursor On(C3C), and the
+        // RigStatus fire-back at the new freq must not re-snap to A1A.
+        reduce(
+            &mut st, contest.as_ref(), &macros,
+            AppEvent::BandmapUp { radio: 1 },
+        );
+        rig_status(&mut st, 1, 14_000_000, "CW", Some(500));
+        assert!(
+            matches!(
+                st.bandmap_cursors.get(&1),
+                Some(BandmapCursor::On { call, .. }) if call == "C3C"
+            ),
+            "first Up should land on C3C (the highest-indexed co-located spot), not snap to A1A; got {:?}",
+            st.bandmap_cursors.get(&1)
+        );
+
+        // Second Up: C3C → B2B. Rig freq unchanged, so no snap.
+        reduce(
+            &mut st, contest.as_ref(), &macros,
+            AppEvent::BandmapUp { radio: 1 },
+        );
+        assert!(matches!(
+            st.bandmap_cursors.get(&1),
+            Some(BandmapCursor::On { call, .. }) if call == "B2B"
+        ));
+
+        // Third Up: B2B → A1A.
+        reduce(
+            &mut st, contest.as_ref(), &macros,
+            AppEvent::BandmapUp { radio: 1 },
+        );
+        assert!(matches!(
+            st.bandmap_cursors.get(&1),
+            Some(BandmapCursor::On { call, .. }) if call == "A1A"
+        ));
+    }
+
+    /// Direct check on the snap short-circuit: with the cursor already
+    /// pinned to the middle spot of a co-located cluster, a `RigStatus`
+    /// event that moves the rig freq *to* that cluster's frequency must
+    /// leave the cursor alone rather than snapping to the first-at-freq.
+    #[test]
+    fn bandmap_snap_preserves_middle_of_cluster() {
+        let mut st = mk_state();
+        add_spot(&mut st, "A1A", 14_000_000, "CW");
+        add_spot(&mut st, "B2B", 14_000_000, "CW");
+        add_spot(&mut st, "C3C", 14_000_000, "CW");
+        // Start the rig away from the cluster so the subsequent
+        // rig_status is a genuine freq change (snap will run).
+        rig_status(&mut st, 1, 14_010_000, "CW", Some(500));
+        // Pin the cursor on B2B, the middle of the cluster.
+        st.bandmap_cursors.insert(
+            1,
+            BandmapCursor::On { call: "B2B".to_string(), freq_hz: 14_000_000 },
+        );
+        // Rig moves to the cluster freq. Without the short-circuit,
+        // snap would pick A1A (partition_point's first-at-freq).
+        rig_status(&mut st, 1, 14_000_000, "CW", Some(500));
+        assert!(
+            matches!(
+                st.bandmap_cursors.get(&1),
+                Some(BandmapCursor::On { call, .. }) if call == "B2B"
+            ),
+            "snap must preserve a valid call-anchor at target freq; got {:?}",
+            st.bandmap_cursors.get(&1)
+        );
+    }
+
+    /// With `bandmap_high_at_top = true`, the bandmap displays highest
+    /// freq at the top. Pressing BandmapDown means "visually down" =
+    /// toward lower freq, so from a cleared cursor it should land on
+    /// the lower-freq spot (K5ZD), not the higher one (W1AW).
+    #[test]
+    fn bandmap_nav_reversed_down_steps_to_lower_freq() {
+        let mut st = mk_state();
+        st.bandmap_high_at_top = true;
+        add_spot(&mut st, "K5ZD", 14_025_000, "CW");
+        add_spot(&mut st, "W1AW", 14_027_000, "CW");
+        rig_status(&mut st, 1, 14_024_000, "CW", Some(500));
+        st.bandmap_cursors.clear();
+        let contest = contest_from_id("cqww").unwrap();
+        let macros = Macros::default();
+        reduce(
+            &mut st, contest.as_ref(), &macros,
+            AppEvent::BandmapDown { radio: 1 },
+        );
+        assert!(
+            matches!(
+                st.bandmap_cursors.get(&1),
+                Some(BandmapCursor::On { call, .. }) if call == "K5ZD"
+            ),
+            "reversed BandmapDown should land on the lower-freq spot; got {:?}",
+            st.bandmap_cursors.get(&1)
+        );
+    }
+
+    /// Symmetric to the above: with the flag on, BandmapUp should land
+    /// on the higher-freq spot (visually up = toward the top of the
+    /// reversed display).
+    #[test]
+    fn bandmap_nav_reversed_up_steps_to_higher_freq() {
+        let mut st = mk_state();
+        st.bandmap_high_at_top = true;
+        add_spot(&mut st, "K5ZD", 14_025_000, "CW");
+        add_spot(&mut st, "W1AW", 14_027_000, "CW");
+        rig_status(&mut st, 1, 14_024_000, "CW", Some(500));
+        st.bandmap_cursors.clear();
+        let contest = contest_from_id("cqww").unwrap();
+        let macros = Macros::default();
+        reduce(
+            &mut st, contest.as_ref(), &macros,
+            AppEvent::BandmapUp { radio: 1 },
+        );
+        assert!(
+            matches!(
+                st.bandmap_cursors.get(&1),
+                Some(BandmapCursor::On { call, .. }) if call == "W1AW"
+            ),
+            "reversed BandmapUp should land on the higher-freq spot; got {:?}",
+            st.bandmap_cursors.get(&1)
+        );
+    }
+
+    /// Reversed display + skip-worked: the skip loop must walk in the
+    /// visually-correct direction (visually down = lower freq). Anchor
+    /// the cursor on W1AW (visually at the top in reversed mode), then
+    /// press Down. With K5ZD a dupe, the step should land on K1ABC,
+    /// having skipped past K5ZD.
+    #[test]
+    fn bandmap_nav_reversed_with_skip_worked() {
+        struct K5ZDDupe;
+        impl DupeChecker for K5ZDDupe {
+            fn is_dupe(&self, call: &str, _: &str, _: &str) -> bool { call == "K5ZD" }
+        }
+        let mut st = mk_state();
+        st.bandmap_high_at_top = true;
+        st.bandmap_skip_worked = true;
+        add_spot(&mut st, "K1ABC", 14_023_000, "CW");
+        add_spot(&mut st, "K5ZD", 14_025_000, "CW");
+        add_spot(&mut st, "W1AW", 14_027_000, "CW");
+        // Park the rig on W1AW so the cursor anchors there.
+        rig_status(&mut st, 1, 14_027_000, "CW", Some(500));
+        let contest = contest_from_id("cqww").unwrap();
+        let macros = Macros::default();
+        crate::reducer::reduce(
+            &mut st, contest.as_ref(), &macros,
+            &K5ZDDupe, &NoMultChecker, &NoCallHistory, &NoContestHistory, &NoScp,
+            AppEvent::BandmapDown { radio: 1 },
+        );
+        assert!(
+            matches!(
+                st.bandmap_cursors.get(&1),
+                Some(BandmapCursor::On { call, .. }) if call == "K1ABC"
+            ),
+            "reversed+skip BandmapDown from W1AW should skip K5ZD and land on K1ABC; got {:?}",
+            st.bandmap_cursors.get(&1)
+        );
+    }
+
     // ---- Contest-history autopopulate tests --------------------------
 
     /// Stubbed ContestHistoryLookup for reducer-level tests. Pre-wired
@@ -2837,6 +3078,7 @@ mod tests {
             serial_counter: None,
             show_passband_qrm: false,
             bandmap_skip_worked: false,
+            bandmap_high_at_top: false,
             bandmap_version: 0,
         }
     }

@@ -1,5 +1,5 @@
 [workspace]
-members = ["logger-core", "logger-runtime", "logger-cli", "logger-tui"]
+members = ["logger-core", "logger-runtime", "logger-cli", "logger-tui", "logger-gui"]
 resolver = "2"
 
 # ---------------------------------------------------------------------------
