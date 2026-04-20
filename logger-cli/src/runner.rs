@@ -844,6 +844,8 @@ mod tests {
             "cqww_call_history_operator_override.json",
             "cqww_serial_number.json",
             "mst_run_two_step.json",
+            "mst_f2_repeat_after_log.json",
+            "so2r_f2_repeat_per_radio.json",
             "so2r_preserve_entry_across_swap.json",
             "so2r_independent_op_mode.json",
             "so2r_concurrent_inflight_qsos.json",
