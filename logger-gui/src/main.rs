@@ -574,22 +574,25 @@ fn view(state: &App) -> Element<'_, Message> {
 
 fn error_banner_view(msg: String) -> Element<'static, Message> {
     use iced::widget::{button, container, row, text, Space};
-    use iced::{Background, Border, Color, Length};
+    use iced::{Background, Border, Length};
     container(
         row![
-            text("⚠")
-                .size(14.0)
-                .color(Color::WHITE),
-            text(msg).size(12.0).color(Color::WHITE),
+            text("⚠").size(14.0),
+            text(msg).size(12.0),
             Space::new().width(Length::Fill),
-            button(text("✕").size(12.0).color(Color::WHITE))
+            button(text("✕").size(12.0))
                 .padding([0, 8])
                 .on_press(Message::DismissError)
-                .style(|_t, _status| iced::widget::button::Style {
-                    background: Some(Background::Color(Color::from_rgba(1.0, 1.0, 1.0, 0.15))),
-                    text_color: Color::WHITE,
-                    border: Border::default(),
-                    ..iced::widget::button::Style::default()
+                .style(|t: &Theme, _status| {
+                    let pair = panes::style::error_banner_pair(t);
+                    let mut overlay = pair.text;
+                    overlay.a = 0.15;
+                    iced::widget::button::Style {
+                        background: Some(Background::Color(overlay)),
+                        text_color: pair.text,
+                        border: Border::default(),
+                        ..iced::widget::button::Style::default()
+                    }
                 }),
         ]
         .spacing(8)
@@ -597,10 +600,13 @@ fn error_banner_view(msg: String) -> Element<'static, Message> {
     )
     .padding([4, 12])
     .width(Length::Fill)
-    .style(|t: &Theme| iced::widget::container::Style {
-        background: Some(Background::Color(panes::style::error_banner(t))),
-        text_color: Some(Color::WHITE),
-        ..iced::widget::container::Style::default()
+    .style(|t: &Theme| {
+        let pair = panes::style::error_banner_pair(t);
+        iced::widget::container::Style {
+            background: Some(Background::Color(pair.color)),
+            text_color: Some(pair.text),
+            ..iced::widget::container::Style::default()
+        }
     })
     .into()
 }
@@ -810,9 +816,9 @@ fn status_bar(state: &App) -> Element<'_, Message> {
     ));
 
     let mut bar = row![
-        text(label).size(12.0).color(Color::from_rgb(0.85, 0.85, 0.9)),
+        text(label).size(12.0),
         Space::new().width(Length::Fill),
-        text(utc).size(12.0).color(Color::from_rgb(0.95, 0.95, 0.7)),
+        text(utc).size(12.0),
         Space::new().width(Length::Fill),
     ]
     .spacing(8)
@@ -861,24 +867,24 @@ fn indicator<'a>(label: &'static str, state: IndicatorState) -> Element<'a, Mess
 fn indicator_owned<'a>(label: String, state: IndicatorState) -> Element<'a, Message> {
     use iced::widget::{container, text};
     use iced::{Border, Color, Theme};
-    let (bg, fg) = match state {
-        IndicatorState::Idle => (
-            Color::from_rgb(0.2, 0.2, 0.22),
-            Color::from_rgb(0.5, 0.5, 0.55),
-        ),
-        IndicatorState::Ok => (Color::from_rgb(0.18, 0.5, 0.22), Color::WHITE),
-        IndicatorState::Error => (Color::from_rgb(0.55, 0.2, 0.2), Color::WHITE),
-    };
-    container(text(label).size(10.0).color(fg))
+    container(text(label).size(10.0))
         .padding([1, 6])
-        .style(move |_t: &Theme| container::Style {
-            background: Some(bg.into()),
-            border: Border {
-                color: Color::TRANSPARENT,
-                width: 0.0,
-                radius: 2.0.into(),
-            },
-            ..container::Style::default()
+        .style(move |t: &Theme| {
+            let pair = match state {
+                IndicatorState::Idle => t.extended_palette().background.weak,
+                IndicatorState::Ok => t.extended_palette().success.base,
+                IndicatorState::Error => t.extended_palette().danger.base,
+            };
+            container::Style {
+                background: Some(pair.color.into()),
+                text_color: Some(pair.text),
+                border: Border {
+                    color: Color::TRANSPARENT,
+                    width: 0.0,
+                    radius: 2.0.into(),
+                },
+                ..container::Style::default()
+            }
         })
         .into()
 }
