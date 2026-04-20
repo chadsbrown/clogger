@@ -17,6 +17,7 @@ pub mod rig_adapter;
 pub mod scoring;
 pub mod scp;
 pub mod scoreboard_adapter;
+pub mod rtc_adapter;
 pub mod so2r_adapter;
 pub mod so2r_task;
 
@@ -26,12 +27,12 @@ pub use cty::CtyDb;
 pub use scp::ScpDb;
 pub use config::{
     CabrilloConfig, CategoryConfig, CategoryConfigMode, ScoreboardEndpoint,
-    DxFeedConfig, DxFeedSourceConfig, KeyerConfig, RigConfig, So2rConfig,
+    DxFeedConfig, DxFeedSourceConfig, KeyerConfig, RigConfig, RtcConfig, So2rConfig,
 };
 pub use dxfeed_adapter::spawn_dxfeed_adapter;
 pub use keyer_adapter::{abort_cw, connect_keyer, send_cw};
 pub use keyer_task::{KeyerCmd, spawn_keyer_task};
-pub use log_adapter::{LogAdapter, decode_exchange_pairs};
+pub use log_adapter::{LogAdapter, LogSnapshot, decode_exchange_pairs};
 pub use persist_task::spawn_persist_task;
 pub use rig_adapter::{RigCmd, spawn_rig_adapter};
 pub use so2r_task::{So2rCmd, spawn_so2r_task};
@@ -44,8 +45,7 @@ pub use scoring::{BandScore, BreakdownRow, ScoreBreakdown, ScoreSummary, scorer_
 /// contest-engine dep.
 pub use contest_engine::spec::Value as ConfigValue;
 pub use scoreboard_adapter::{
-    ScoreboardConfig, ScoreboardHandle, ScoreboardSnapshot, ScoreboardStatus,
-    spawn_scoreboard_adapter,
+    ScoreboardConfig, ScoreboardSnapshot, ScoreboardStatus, spawn_scoreboard_adapter,
 };
 
 // Re-export qsolog types needed by consumers of LogAdapter

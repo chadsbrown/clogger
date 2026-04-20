@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use logger_core::{ContestHistoryLookup, DupeChecker, MultChecker, QsoDraft};
@@ -9,11 +10,30 @@ use qsolog::{
     qso::{ExchangeBlob, QsoDraft as StoreDraft, QsoFlags, QsoRecord},
     types::{Band, Mode, QsoId},
 };
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tracing::info;
 
 use crate::contest_history::ContestHistoryIndex;
 use crate::scoring::{ContestScorer, ScoreBreakdown, ScoreSummary};
+
+/// A point-in-time view of the log, published by `LogAdapter` on every
+/// mutation. Consumers (scoreboard uploader, RTC adapter) subscribe via
+/// `watch::Receiver<Arc<LogSnapshot>>` and react without needing
+/// synchronous access to the adapter itself. Cloning is cheap: the
+/// ordered records are shared via `Arc<[QsoRecord]>`; `ScoreBreakdown`
+/// is wrapped in `Arc` for the same reason.
+#[derive(Debug, Clone)]
+pub struct LogSnapshot {
+    /// All QSOs in insertion order, including voided records (their
+    /// `flags.is_void` bit is set). Consumers filter as needed.
+    pub records: Arc<[QsoRecord]>,
+    /// Per-(band, mode) score breakdown at the moment of this snapshot.
+    pub score_breakdown: Arc<ScoreBreakdown>,
+    /// Monotonic counter bumped on every mutation. Useful for "did
+    /// anything change since last tick?" checks without comparing
+    /// records.
+    pub score_epoch: u64,
+}
 
 /// Persistence strategy for a `LogAdapter`.
 ///
@@ -51,6 +71,12 @@ pub struct LogAdapter {
     /// fields when the operator re-works a known station. Updated
     /// alongside the scorer on insert/undo/redo.
     contest_history: ContestHistoryIndex,
+    /// Optional snapshot publisher. When set, every mutation
+    /// (insert/undo/redo) pushes a fresh `LogSnapshot` so that
+    /// bootstrap-hosted adapters (scoreboard, RTC) can react without
+    /// being driven by the UI event loop. `None` for CLI golden tests
+    /// and any caller that doesn't want the allocation overhead.
+    change_tx: Option<watch::Sender<Arc<LogSnapshot>>>,
 }
 
 impl LogAdapter {
@@ -62,7 +88,35 @@ impl LogAdapter {
             contest_instance_id,
             score_epoch: 0,
             contest_history: ContestHistoryIndex::new(),
+            change_tx: None,
         }
+    }
+
+    /// Attach a `watch` publisher. After this call every mutation
+    /// (insert/undo/redo) also sends a fresh `LogSnapshot` to
+    /// subscribers. An initial snapshot is sent immediately so
+    /// consumers starting after a DB load see current state. Returns
+    /// `self` so bootstrap can chain: `adapter = adapter.with_change_publisher(tx);`.
+    pub fn with_change_publisher(mut self, tx: watch::Sender<Arc<LogSnapshot>>) -> Self {
+        self.change_tx = Some(tx);
+        self.publish_snapshot();
+        self
+    }
+
+    /// Build and push a snapshot to the watch sender, if configured.
+    /// Called after each mutation. Cheap when no sender is attached.
+    fn publish_snapshot(&self) {
+        let Some(tx) = &self.change_tx else { return };
+        let records: Arc<[QsoRecord]> = self.ordered_records().into();
+        let snapshot = Arc::new(LogSnapshot {
+            records,
+            score_breakdown: Arc::new(self.scorer.score_breakdown()),
+            score_epoch: self.score_epoch,
+        });
+        // Watch senders fail to send only when every receiver has been
+        // dropped — e.g. the scoreboard adapter shut down. Not an error;
+        // just means nobody's listening.
+        let _ = tx.send(snapshot);
     }
 
     /// Open a SQLite log and load its state, using **synchronous** writes.
@@ -87,6 +141,7 @@ impl LogAdapter {
             contest_instance_id,
             score_epoch: 0,
             contest_history: ContestHistoryIndex::new(),
+            change_tx: None,
         };
         // Populate scorer state from the loaded log
         let records = adapter.ordered_records();
@@ -123,6 +178,7 @@ impl LogAdapter {
             contest_instance_id,
             score_epoch: 0,
             contest_history: ContestHistoryIndex::new(),
+            change_tx: None,
         };
         let records = adapter.ordered_records();
         adapter.scorer.rebuild(&records);
@@ -171,6 +227,7 @@ impl LogAdapter {
             }
         }
         self.score_epoch = self.score_epoch.wrapping_add(1);
+        self.publish_snapshot();
 
         Ok(id)
     }
@@ -192,6 +249,7 @@ impl LogAdapter {
         self.scorer.rebuild(&records);
         self.contest_history.rebuild(&records);
         self.score_epoch = self.score_epoch.wrapping_add(1);
+        self.publish_snapshot();
         Ok(())
     }
 
@@ -204,6 +262,7 @@ impl LogAdapter {
         self.scorer.rebuild(&records);
         self.contest_history.rebuild(&records);
         self.score_epoch = self.score_epoch.wrapping_add(1);
+        self.publish_snapshot();
         Ok(())
     }
 

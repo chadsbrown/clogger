@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use contest_engine::spec::Value;
+
 use crate::entry::state::EntryState;
 
 pub type RadioId = u8;
@@ -125,6 +127,13 @@ pub struct AppState {
     pub my_zone: u8,
     pub rst_sent: String,
     pub my_exchange: HashMap<String, String>,
+    /// Typed station config map, parallel to the contest-engine scorer's
+    /// `config` HashMap. Used at log time to resolve sent-exchange fields
+    /// with `SentValue::Config(key)` against station config (e.g.
+    /// `my_name`, `my_cq_zone`, `my_is_fl`). Keys are lowercase (matching
+    /// contest-engine spec config_fields); values preserve typing
+    /// (Bool/Int/Text) so sent-variant predicates can be evaluated.
+    pub station_config: HashMap<String, Value>,
     pub bandmap_cursors: HashMap<RadioId, BandmapCursor>,
     pub default_cw_speed: u8,
     pub serial_counter: Option<u32>,

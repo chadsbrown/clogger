@@ -22,6 +22,13 @@ pub struct SpecContestMeta {
     pub uses_serial: bool,
     /// Maps CategoryMode to Cabrillo contest ID string.
     pub cabrillo_id_fn: fn(CategoryMode) -> Option<&'static str>,
+    /// Maps CategoryMode to the RTC (Real Time Contest) server's contest
+    /// identifier, if the RTC server accepts uploads for this contest.
+    /// Returns `None` for contests the RTC server doesn't support; the RTC
+    /// adapter skips posting when this is `None`. This is intentionally
+    /// separate from `cabrillo_id_fn` — the RTC server uses its own naming
+    /// convention (e.g. "CW-Ops" for CWT, where Cabrillo uses "CW-OPS").
+    pub rtc_id_fn: fn(CategoryMode) -> Option<&'static str>,
     /// Exchange schema ID for QsoDraft (matches qsolog convention).
     pub exchange_schema_id: u16,
     /// Whether the operating mode auto-toggles (RUN↔S&P) after logging a QSO.
@@ -41,6 +48,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
             CategoryMode::SSB => Some("CQ-WW-SSB"),
             CategoryMode::Mixed => None,
         },
+        rtc_id_fn: no_rtc,
         exchange_schema_id: 1,
         auto_toggle_mode: false,
     },
@@ -52,6 +60,9 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         history_mapping: &[("Name", 2), ("Exch1", 3)],
         uses_serial: false,
         cabrillo_id_fn: |_| Some("CW-OPS"),
+        // RTC server spec example uses "CW-Ops" as the contest identifier
+        // for CWT postings (distinct from the Cabrillo "CW-OPS" naming).
+        rtc_id_fn: |_| Some("CW-Ops"),
         exchange_schema_id: 3,
         auto_toggle_mode: false,
     },
@@ -67,6 +78,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
             CategoryMode::SSB => Some("NAQP-SSB"),
             CategoryMode::Mixed => None,
         },
+        rtc_id_fn: no_rtc,
         exchange_schema_id: 5,
         auto_toggle_mode: false,
     },
@@ -82,6 +94,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
             CategoryMode::SSB => Some("ARRL-DX-SSB"),
             CategoryMode::Mixed => None,
         },
+        rtc_id_fn: no_rtc,
         exchange_schema_id: 6,
         auto_toggle_mode: false,
     },
@@ -93,6 +106,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         history_mapping: &[("Name", 2)],
         uses_serial: true,
         cabrillo_id_fn: |_| Some("ICWC-MST"),
+        rtc_id_fn: no_rtc,
         exchange_schema_id: 4,
         auto_toggle_mode: false,
     },
@@ -107,6 +121,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
             CategoryMode::CW => Some("NCCC-SPRINT"),
             _ => None,
         },
+        rtc_id_fn: no_rtc,
         exchange_schema_id: 7,
         auto_toggle_mode: true,
     },
@@ -122,6 +137,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
             CategoryMode::SSB => Some("ARRL-SS-SSB"),
             CategoryMode::Mixed => None,
         },
+        rtc_id_fn: no_rtc,
         exchange_schema_id: 2,
         auto_toggle_mode: false,
     },
@@ -138,6 +154,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         history_mapping: &[("Exch1", 3)],
         uses_serial: false,
         cabrillo_id_fn: |_| Some("FL-QSO-PARTY"),
+        rtc_id_fn: no_rtc,
         exchange_schema_id: 8,
         auto_toggle_mode: false,
     },
@@ -149,6 +166,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         history_mapping: &[("Exch1", 3)],
         uses_serial: false,
         cabrillo_id_fn: |_| Some("GA-QSO-PARTY"),
+        rtc_id_fn: no_rtc,
         exchange_schema_id: 9,
         auto_toggle_mode: false,
     },
@@ -160,6 +178,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         history_mapping: &[("Exch1", 3)],
         uses_serial: false,
         cabrillo_id_fn: |_| Some("IN-QSO-PARTY"),
+        rtc_id_fn: no_rtc,
         exchange_schema_id: 10,
         auto_toggle_mode: false,
     },
@@ -171,6 +190,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         history_mapping: &[("Exch1", 3)],
         uses_serial: false,
         cabrillo_id_fn: |_| Some("MI-QSO-PARTY"),
+        rtc_id_fn: no_rtc,
         exchange_schema_id: 11,
         auto_toggle_mode: false,
     },
@@ -182,6 +202,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         history_mapping: &[("Exch1", 3)],
         uses_serial: false,
         cabrillo_id_fn: |_| Some("MO-QSO-PARTY"),
+        rtc_id_fn: no_rtc,
         exchange_schema_id: 12,
         auto_toggle_mode: false,
     },
@@ -193,6 +214,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         history_mapping: &[("Exch1", 3)],
         uses_serial: false,
         cabrillo_id_fn: |_| Some("ND-QSO-PARTY"),
+        rtc_id_fn: no_rtc,
         exchange_schema_id: 13,
         auto_toggle_mode: false,
     },
@@ -205,6 +227,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         uses_serial: false,
         // New England QP uses the bare "NEQP" contest ID, not "NE-QSO-PARTY".
         cabrillo_id_fn: |_| Some("NEQP"),
+        rtc_id_fn: no_rtc,
         exchange_schema_id: 14,
         auto_toggle_mode: false,
     },
@@ -220,6 +243,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
             CategoryMode::CW => Some("NH-QSO-PARTY"),
             _ => None,
         },
+        rtc_id_fn: no_rtc,
         exchange_schema_id: 15,
         auto_toggle_mode: false,
     },
@@ -231,6 +255,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         history_mapping: &[("Exch1", 3)],
         uses_serial: false,
         cabrillo_id_fn: |_| Some("NM-QSO-PARTY"),
+        rtc_id_fn: no_rtc,
         exchange_schema_id: 16,
         auto_toggle_mode: false,
     },
@@ -242,6 +267,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         history_mapping: &[("Exch1", 3)],
         uses_serial: false,
         cabrillo_id_fn: |_| Some("NE-QSO-PARTY"),
+        rtc_id_fn: no_rtc,
         exchange_schema_id: 17,
         auto_toggle_mode: false,
     },
@@ -253,6 +279,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         history_mapping: &[("Exch1", 3)],
         uses_serial: false,
         cabrillo_id_fn: |_| Some("ON-QSO-PARTY"),
+        rtc_id_fn: no_rtc,
         exchange_schema_id: 18,
         auto_toggle_mode: false,
     },
@@ -264,6 +291,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         history_mapping: &[("Exch1", 3)],
         uses_serial: false,
         cabrillo_id_fn: |_| Some("QC-QSO-PARTY"),
+        rtc_id_fn: no_rtc,
         exchange_schema_id: 19,
         auto_toggle_mode: false,
     },
@@ -275,6 +303,7 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         history_mapping: &[("Exch1", 3)],
         uses_serial: false,
         cabrillo_id_fn: |_| Some("DE-QSO-PARTY"),
+        rtc_id_fn: no_rtc,
         exchange_schema_id: 20,
         auto_toggle_mode: false,
     },
@@ -287,6 +316,14 @@ pub fn find_spec_contest(id: &str) -> Option<&'static SpecContestMeta> {
         _ => &id_lower,
     };
     SPEC_CONTESTS.iter().find(|m| m.contest_id == effective_id)
+}
+
+/// Default `rtc_id_fn` value for contests the RTC server doesn't
+/// (yet) accept — returning `None` causes the RTC adapter to skip
+/// posting. Individual contests opt in by overriding `rtc_id_fn` with
+/// their confirmed RTC identifier.
+fn no_rtc(_: CategoryMode) -> Option<&'static str> {
+    None
 }
 
 fn default_macros() -> Macros {

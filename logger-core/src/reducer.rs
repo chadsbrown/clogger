@@ -688,6 +688,7 @@ fn revalidate_after_edit(st: &mut AppState, contest: &dyn ContestEntry) {
         rst_sent: st.rst_sent.clone(),
         rig: st.radios.get(&st.focused_radio).cloned(),
         serial: st.focused_entry().assigned_serial,
+        station_config: st.station_config.clone(),
     };
     let validation = contest.validate_entry(st.focused_entry(), &ctx);
 
@@ -1149,6 +1150,7 @@ mod tests {
             my_zone: 4,
             rst_sent: "599".to_string(),
             my_exchange: HashMap::new(),
+            station_config: HashMap::new(),
             bandmap_cursors: HashMap::new(),
             default_cw_speed: 28,
             serial_counter: None,
@@ -3073,6 +3075,7 @@ mod tests {
             my_zone: 4,
             rst_sent: "599".to_string(),
             my_exchange: HashMap::new(),
+            station_config: HashMap::new(),
             bandmap_cursors: HashMap::new(),
             default_cw_speed: 25,
             serial_counter: None,

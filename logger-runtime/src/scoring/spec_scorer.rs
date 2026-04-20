@@ -558,12 +558,14 @@ fn raw_exchange_for_record(rec: &QsoRecord) -> Option<String> {
     if pairs.is_empty() {
         return None;
     }
-    // Exclude the sent serial — it's appended by ESM but is not part of the
-    // received exchange that the contest-engine scores against.
+    // Exclude the sent serial and any persisted sent-exchange fields
+    // (keys prefixed with `sent_`, appended by ESM for Cabrillo / RTC
+    // fidelity) — they are not part of the received exchange that
+    // contest-engine scores against.
     Some(
         pairs
             .into_iter()
-            .filter(|(k, _)| k != "serial")
+            .filter(|(k, _)| k != "serial" && !k.starts_with("sent_"))
             .map(|(_, v)| v)
             .collect::<Vec<_>>()
             .join(" "),

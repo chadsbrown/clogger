@@ -70,6 +70,7 @@ pub struct StableConfig {
     pub cabrillo: logger_runtime::CabrilloConfig,
     #[serde(default)]
     pub scoreboard: ScoreboardSection,
+    pub rtc: Option<logger_runtime::RtcConfig>,
     #[serde(default)]
     pub bandmap: BandmapMode,
     /// Show the passband QRM warning. When true, a `QRM` badge appears while
@@ -151,6 +152,7 @@ pub struct Config {
     pub category: Option<logger_runtime::CategoryConfig>,
     pub cabrillo: logger_runtime::CabrilloConfig,
     pub scoreboard: ScoreboardSection,
+    pub rtc: Option<logger_runtime::RtcConfig>,
     pub bandmap: BandmapMode,
     pub show_passband_qrm: bool,
     pub bandmap_skip_worked: bool,
@@ -185,6 +187,7 @@ impl Config {
             category: contest.category,
             cabrillo: stable.cabrillo,
             scoreboard: stable.scoreboard,
+            rtc: stable.rtc,
             bandmap: stable.bandmap,
             show_passband_qrm: stable.show_passband_qrm,
             bandmap_skip_worked: stable.bandmap_skip_worked,

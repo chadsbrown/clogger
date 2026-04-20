@@ -283,6 +283,36 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
     logger_core::apply_default_rst(&mut entry2, contest.as_ref(), "CW");
     entries.insert(1, entry1);
     entries.insert(2, entry2);
+    let my_call = "N0CALL".to_string();
+    let my_zone: u8 = 4;
+    let my_exchange: HashMap<String, String> = script
+        .my_exchange
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+
+    // Build typed config map for contest-engine: my_cq_zone + back-compat
+    // my_name/my_xchg/my_loc + station_config typed passthrough. Built
+    // before AppState so the same map can be cloned into
+    // `AppState.station_config` for log-time sent-exchange resolution.
+    let mut scorer_config: HashMap<String, ConfigValue> = HashMap::new();
+    scorer_config.insert(
+        "my_cq_zone".to_string(),
+        ConfigValue::Int(i64::from(my_zone)),
+    );
+    for (k, v) in &my_exchange {
+        scorer_config.insert(
+            format!("my_{}", k.to_ascii_lowercase()),
+            ConfigValue::Text(v.clone()),
+        );
+    }
+    for (k, v) in &script.station_config {
+        let Some(cv) = json_to_config_value(v) else {
+            bail!("station_config[{}]: unsupported JSON type (must be bool, integer, or string)", k);
+        };
+        scorer_config.insert(k.clone(), cv);
+    }
+
     let mut st = AppState {
         now_ms: 0,
         focused_radio: 1,
@@ -291,10 +321,11 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
         entries,
         bandmap: Vec::new(),
         last_logged: None,
-        my_call: "N0CALL".to_string(),
-        my_zone: 4,
+        my_call,
+        my_zone,
         rst_sent: "599".to_string(),
-        my_exchange: script.my_exchange.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+        my_exchange,
+        station_config: scorer_config.clone(),
         bandmap_cursors: HashMap::new(),
         default_cw_speed: 28,
         serial_counter: None,
@@ -308,26 +339,6 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
     }
 
     let mut keyer = FakeKeyer::default();
-
-    // Build typed config map for contest-engine: my_cq_zone + back-compat
-    // my_name/my_xchg/my_loc + station_config typed passthrough.
-    let mut scorer_config: HashMap<String, ConfigValue> = HashMap::new();
-    scorer_config.insert(
-        "my_cq_zone".to_string(),
-        ConfigValue::Int(i64::from(st.my_zone)),
-    );
-    for (k, v) in &st.my_exchange {
-        scorer_config.insert(
-            format!("my_{}", k.to_ascii_lowercase()),
-            ConfigValue::Text(v.clone()),
-        );
-    }
-    for (k, v) in &script.station_config {
-        let Some(cv) = json_to_config_value(v) else {
-            bail!("station_config[{}]: unsupported JSON type (must be bool, integer, or string)", k);
-        };
-        scorer_config.insert(k.clone(), cv);
-    }
 
     let call_history: std::sync::Arc<dyn CallHistoryLookup> = if script.call_history.is_empty() {
         std::sync::Arc::new(NoCallHistory)
@@ -857,6 +868,7 @@ mod tests {
             "nmqp_power_class_out_of_state.json",
             "flqp_rover_county_log.json",
             "moqp_rover_county_log.json",
+            "sent_exchange_persisted.json",
         ];
 
         for script in scripts {

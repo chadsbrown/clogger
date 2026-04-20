@@ -9,11 +9,13 @@ use logger_core::{
     ScpLookup, apply_default_rst, contest_from_id,
 };
 use serde::Deserialize;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tracing::warn;
 
+use crate::config::RtcSpawnConfig;
 use crate::cty::CtyDb;
 use crate::log_adapter::LogAdapter;
+use crate::scoreboard_adapter::{ScoreboardConfig, ScoreboardStatus, spawn_scoreboard_adapter};
 
 #[derive(Debug, Deserialize, Default)]
 pub struct MacroOverrides {
@@ -78,6 +80,18 @@ pub struct SessionConfig {
     /// Required: the TUI must pass its `app_tx` so per-device tasks can
     /// surface errors back to the main event loop.
     pub app_tx: mpsc::Sender<AppEvent>,
+    /// Bundled scoreboard adapter configuration (endpoints, interval,
+    /// and the contest/station identity the uploader needs). `None`
+    /// disables scoreboard posting. When present, bootstrap spawns the
+    /// adapter and wires it to the log-change publisher — UIs don't
+    /// need to touch scoreboard again after this.
+    pub scoreboard: Option<ScoreboardConfig>,
+    /// Bundled RTC spawn configuration. `None` disables RTC posting.
+    /// UIs should pass `Some(..)` only when both the user enabled RTC
+    /// in config AND the current contest has an `rtc_id` mapped —
+    /// otherwise pass `None` and (optionally) log an "RTC not supported
+    /// for this contest" notice at the UI layer.
+    pub rtc: Option<RtcSpawnConfig>,
 }
 
 pub struct Session {
@@ -98,6 +112,14 @@ pub struct Session {
     /// `geo.*` filter rules (continent/zone/entity). Not used elsewhere
     /// yet; future callers (e.g. bandmap entity display) can take a clone.
     pub cty: Option<Arc<CtyDb>>,
+    /// Status receiver from the scoreboard adapter when scoreboard is
+    /// enabled. UIs may read this to render a status indicator. `None`
+    /// when scoreboard is disabled.
+    pub scoreboard_status_rx: Option<watch::Receiver<ScoreboardStatus>>,
+    /// Status receiver from the RTC adapter when RTC is enabled.
+    /// UIs may read this to render a status indicator. `None` when RTC
+    /// is disabled or the current contest has no rtc_id.
+    pub rtc_status_rx: Option<watch::Receiver<crate::rtc_adapter::RtcStatus>>,
 }
 
 pub fn bootstrap(config: SessionConfig) -> Result<Session> {
@@ -160,6 +182,10 @@ pub fn bootstrap(config: SessionConfig) -> Result<Session> {
     let call_history = load_call_history(config.call_history_path.as_deref());
     let cty = load_cty(config.cty_path.as_deref())?;
 
+    // Clone for AppState.station_config so esm.rs can resolve sent-exchange
+    // fields against the same typed config the scorer uses. The scorer keeps
+    // its own copy for predicate evaluation during scoring.
+    let state_station_config = scorer_config.clone();
     let scorer = crate::scoring::scorer_for_contest(
         contest.as_ref(),
         scorer_config,
@@ -201,6 +227,12 @@ pub fn bootstrap(config: SessionConfig) -> Result<Session> {
         my_zone: config.my_zone,
         rst_sent: config.rst_sent,
         my_exchange,
+        // Typed station config used at log time to resolve sent-exchange
+        // fields against their config sources (e.g. `sent_zone` →
+        // my_cq_zone, `sent_name` → my_name). Same typed map the scorer
+        // consumes, cloned so the log-time resolver sees exactly what
+        // contest-engine sees.
+        station_config: state_station_config,
         bandmap_cursors: HashMap::new(),
         default_cw_speed: config.default_cw_speed,
         serial_counter: None,
@@ -211,7 +243,7 @@ pub fn bootstrap(config: SessionConfig) -> Result<Session> {
     };
 
     let contest_instance_id = contest.contest_instance_id();
-    let log_adapter = if let Some(db_path) = &config.db_path {
+    let mut log_adapter = if let Some(db_path) = &config.db_path {
         // Persistence runs in a dedicated task; LogAdapter sends ops over
         // an mpsc channel instead of blocking the event loop on disk I/O.
         LogAdapter::open_db_async(scorer, contest_instance_id, db_path, config.app_tx.clone())?
@@ -227,6 +259,33 @@ pub fn bootstrap(config: SessionConfig) -> Result<Session> {
         state.serial_counter = Some(start);
     }
 
+    // Wire up the log-change publisher + bootstrap-hosted adapters
+    // (scoreboard and RTC). Both subscribe to the same `watch` channel
+    // that `LogAdapter` pushes a fresh `LogSnapshot` onto after every
+    // mutation — the UI event loop stays out of the data path entirely.
+    let (scoreboard_status_rx, rtc_status_rx) =
+        if config.scoreboard.is_some() || config.rtc.is_some() {
+            // Seed with the current state so adapters that tick before
+            // the first mutation still see a real snapshot.
+            let initial = std::sync::Arc::new(crate::log_adapter::LogSnapshot {
+                records: log_adapter.ordered_records().into(),
+                score_breakdown: std::sync::Arc::new(log_adapter.score_breakdown()),
+                score_epoch: log_adapter.score_epoch(),
+            });
+            let (log_tx, log_rx) = watch::channel(initial);
+            log_adapter = log_adapter.with_change_publisher(log_tx);
+
+            let scoreboard_status_rx = config
+                .scoreboard
+                .map(|cfg| spawn_scoreboard_adapter(cfg, log_rx.clone()));
+            let rtc_status_rx = config
+                .rtc
+                .map(|cfg| crate::rtc_adapter::spawn_rtc_adapter(cfg, log_rx));
+            (scoreboard_status_rx, rtc_status_rx)
+        } else {
+            (None, None)
+        };
+
     let scp = load_scp(config.scp_path.as_deref());
 
     Ok(Session {
@@ -237,6 +296,8 @@ pub fn bootstrap(config: SessionConfig) -> Result<Session> {
         call_history,
         scp,
         cty,
+        scoreboard_status_rx,
+        rtc_status_rx,
     })
 }
 

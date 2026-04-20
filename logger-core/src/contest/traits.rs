@@ -1,3 +1,7 @@
+use std::collections::HashMap;
+
+use contest_engine::spec::Value;
+
 use crate::{
     entry::{spec::EntryFormSpec, state::EntryState, validation::EntryValidation},
     state::{Macros, QsoDraft, RadioState},
@@ -19,6 +23,10 @@ pub struct EntryContext {
     pub rst_sent: String,
     pub rig: Option<RadioState>,
     pub serial: Option<u32>,
+    /// Typed station config, used by `sent_exchange_pairs` to resolve
+    /// `SentValue::Config(key)` and to evaluate conditional sent-variant
+    /// `when` predicates (e.g. `my_is_fl = true` for state-QP in-state ops).
+    pub station_config: HashMap<String, Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,6 +78,15 @@ pub trait ContestEntry {
         None
     }
 
+    /// The RTC (Real Time Contest) server's contest identifier for this
+    /// contest and mode category. Returns None when the RTC server
+    /// doesn't accept uploads for this contest — the RTC adapter then
+    /// skips posting. Distinct from `cabrillo_id`: the RTC server uses
+    /// its own naming (e.g. "CW-Ops" where Cabrillo uses "CW-OPS").
+    fn rtc_id(&self, _mode: CategoryMode) -> Option<&'static str> {
+        None
+    }
+
     /// Whether the operating mode should auto-toggle (RUN↔S&P) after logging a QSO.
     /// Used by Sprint-style contests where the run station must QSY after each contact.
     fn auto_toggle_mode(&self) -> bool {
@@ -87,5 +104,15 @@ pub trait ContestEntry {
     /// matching variant's `sent_rst_value`.
     fn default_rst(&self, _mode: &str) -> Option<String> {
         None
+    }
+
+    /// Resolved sent-exchange fields at log time, as `(sent_<field_id>,
+    /// value)` pairs suitable for appending to `QsoDraft.exchange_pairs`.
+    /// Does *not* include the sent serial (which is handled separately via
+    /// the `serial` key from `assigned_serial`). Does *not* filter out
+    /// signal reports — consumers decide per-format whether to drop RST.
+    /// Default impl returns empty.
+    fn sent_exchange_pairs(&self, _ctx: &EntryContext) -> Vec<(String, String)> {
+        Vec::new()
     }
 }

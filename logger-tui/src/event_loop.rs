@@ -10,9 +10,9 @@ use crossterm::{
 use logger_core::{AppState, CallHistoryLookup, ContestEntry, Effect, Macros, RadioId, ScpLookup, reduce};
 use logger_runtime::LogAdapter;
 use ratatui::backend::CrosstermBackend;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::{broadcast, mpsc, watch};
 use logger_runtime::{
-    CategoryConfig, KeyerEvent, ScoreboardHandle, ScoreboardSnapshot,
+    KeyerEvent,
     ScoreboardStatus,
 };
 
@@ -39,7 +39,7 @@ pub async fn run(
     so2r_tx: Option<mpsc::Sender<logger_runtime::So2rCmd>>,
     so2r_default_rx_mode: logger_core::So2rRxMode,
     mut condx_rx: Option<mpsc::Receiver<logger_runtime::CondXSnapshot>>,
-    scoreboard: Option<(ScoreboardHandle, &'static str, String, CategoryConfig)>,
+    scoreboard_status_rx: Option<watch::Receiver<ScoreboardStatus>>,
     theme: crate::theme::Theme,
 ) -> Result<()> {
     // RX mode is a runtime knob — the config provides an initial value, and
@@ -63,13 +63,6 @@ pub async fn run(
     crossterm::execute!(io::stdout(), EnterAlternateScreen, cs)?;
     let backend = CrosstermBackend::new(io::stdout());
     let mut terminal = ratatui::Terminal::new(backend)?;
-
-    // Decompose the scoreboard tuple if present
-    let (scoreboard_handle, scoreboard_cabrillo_id, scoreboard_call, scoreboard_category) =
-        match scoreboard {
-            Some((handle, cab_id, call, cat)) => (Some(handle), Some(cab_id), Some(call), Some(cat)),
-            None => (None, None, None, None),
-        };
 
     let initial_score = log_adapter.score_summary();
     let mut tui_state = TuiState {
@@ -98,11 +91,6 @@ pub async fn run(
 
     let mut render_interval = tokio::time::interval(Duration::from_millis(50)); // 20 FPS
     let mut timer_interval = tokio::time::interval(Duration::from_secs(1));
-
-    // Track the last score epoch we shipped a scoreboard snapshot for.
-    // Initialized to a sentinel so the first event always sends. See
-    // `LogAdapter::score_epoch` for bump semantics.
-    let mut last_sent_score_epoch: u64 = u64::MAX;
 
     let result = loop {
         tokio::select! {
@@ -239,30 +227,12 @@ pub async fn run(
                         // Score is always cheap (cached read).
                         tui_state.score = log_adapter.score_summary();
 
-                        // Update scoreboard snapshot — only rebuild the
-                        // expensive `score_breakdown()` when the log
-                        // adapter's score epoch has advanced since the
-                        // last snapshot we sent. Most events (keystrokes,
-                        // rig status updates, spot arrivals) don't touch
-                        // the score state; on those, we skip entirely.
-                        if let (Some(handle), Some(cab_id), Some(call), Some(cat)) = (
-                            &scoreboard_handle,
-                            scoreboard_cabrillo_id,
-                            &scoreboard_call,
-                            &scoreboard_category,
-                        ) {
-                            let current_epoch = log_adapter.score_epoch();
-                            if current_epoch != last_sent_score_epoch {
-                                let _ = handle.snapshot_tx.send(Some(ScoreboardSnapshot {
-                                    cabrillo_id: cab_id,
-                                    call: call.clone(),
-                                    ops: call.clone(),
-                                    category: cat.clone(),
-                                    breakdown: log_adapter.score_breakdown(),
-                                }));
-                                last_sent_score_epoch = current_epoch;
-                            }
-                        }
+                        // (Scoreboard snapshot push previously lived here.
+                        // It's now owned by the runtime layer: LogAdapter
+                        // publishes a LogSnapshot on every mutation, and
+                        // the bootstrap-hosted scoreboard/RTC adapters
+                        // subscribe directly. The event loop no longer
+                        // participates in that data path.)
 
                         // Analytics is expensive — only recompute when state
                         // that affects it has actually changed.
@@ -339,7 +309,7 @@ pub async fn run(
                 // Score is cheap; analytics skipped on timer ticks.
                 tui_state.score = log_adapter.score_summary();
             }
-            status = recv_scoreboard_status(&scoreboard_handle) => {
+            status = recv_scoreboard_status(&scoreboard_status_rx) => {
                 tui_state.scoreboard_status = status;
             }
             snapshot = recv_condx(&mut condx_rx) => {
@@ -612,10 +582,12 @@ async fn recv_condx(
     }
 }
 
-async fn recv_scoreboard_status(handle: &Option<ScoreboardHandle>) -> ScoreboardStatus {
-    match handle {
-        Some(h) => {
-            let mut rx = h.status_rx.clone();
+async fn recv_scoreboard_status(
+    rx: &Option<watch::Receiver<ScoreboardStatus>>,
+) -> ScoreboardStatus {
+    match rx {
+        Some(rx) => {
+            let mut rx = rx.clone();
             match rx.changed().await {
                 Ok(()) => *rx.borrow(),
                 Err(_) => std::future::pending().await,

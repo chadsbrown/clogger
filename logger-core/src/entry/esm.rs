@@ -137,6 +137,17 @@ fn log_and_clear(
                         .push(("serial".to_string(), serial.to_string()));
                 }
             }
+            // Append every sent-exchange field resolved against the live
+            // station config, so the log record preserves what we actually
+            // sent (needed for Cabrillo log checking and RTC posting).
+            // Emits keys like `sent_zone`, `sent_name`, `sent_prec`, etc.,
+            // per the contest-engine spec's sent_variants field ids.
+            let sent_pairs = contest.sent_exchange_pairs(&ctx);
+            if !sent_pairs.is_empty() {
+                for draft in &mut drafts {
+                    draft.exchange_pairs.extend(sent_pairs.iter().cloned());
+                }
+            }
             let exch_text = compose_call_exchange(st, macros);
             let tu_text = if send_tu {
                 Some(expand_macro(&macros.f3, st))
@@ -247,5 +258,6 @@ fn entry_ctx(st: &AppState) -> EntryContext {
         rst_sent: st.rst_sent.clone(),
         rig: st.radios.get(&st.focused_radio).cloned(),
         serial: st.focused_entry().assigned_serial,
+        station_config: st.station_config.clone(),
     }
 }

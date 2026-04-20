@@ -281,8 +281,9 @@ fn update(state: &mut App, msg: Message) -> iced::Task<Message> {
             {
                 bridge::dispatch(&mut state.session, effects, &state.handles);
             }
-            // Push a fresh scoreboard snapshot if the score has moved.
-            bridge::refresh_scoreboard_snapshot(&state.session, &mut state.handles);
+            // Scoreboard/RTC pushes previously happened here. Now that
+            // LogAdapter publishes snapshots directly to the
+            // bootstrap-hosted adapters, there's nothing to do here.
         }
         Message::Domain(ev) => {
             // Modal swallows Esc so a key-press focused on modal dismissal
@@ -982,32 +983,25 @@ fn init() -> (App, iced::Task<Message>) {
     let scp = std::sync::Arc::clone(&session.scp);
     let cty = session.cty.clone();
     let initial_focused = session.state.focused_radio;
-    // Pre-compute the scoreboard cabrillo_id here (synchronously, while we
-    // still have the contest ref) because `dyn ContestEntry` isn't `Sync`
-    // and can't cross the `spawn_adapters` await point.
-    let scoreboard_cabrillo_id = adapter_bits.as_ref().and_then(|bits| {
-        if bits.scoreboard.endpoints.is_empty() {
-            return None;
-        }
-        let cat = bits.category.as_ref()?;
-        session.contest.cabrillo_id(cat.mode.to_category_mode())
-    });
+    // Pull the scoreboard / RTC status receivers off the session so
+    // the GUI can drive its status-bar indicator. Bootstrap spawned
+    // the adapters already; we just consume their reported status.
+    let mut session = session;
+    let scoreboard_status_rx = session.scoreboard_status_rx.take();
+    let _rtc_status_rx = session.rtc_status_rx.take(); // wired in Phase 4 follow-up
+    // Stash the scoreboard status receiver into the static slot
+    // `scoreboard_events` drains from. Mirrors where the old spawn
+    // code used to populate it inside `spawn_adapters`.
+    if let Some(rx) = scoreboard_status_rx {
+        let _ = bridge::set_scoreboard_status_rx(rx);
+    }
     let mut app = App::new(session, app_tx.clone());
     app.rig_configs = rig_configs;
 
     let task = if let Some(bits) = adapter_bits {
         iced::Task::perform(
             async move {
-                match bridge::spawn_adapters(
-                    bits,
-                    app_tx,
-                    scp,
-                    cty,
-                    initial_focused,
-                    scoreboard_cabrillo_id,
-                )
-                .await
-                {
+                match bridge::spawn_adapters(bits, app_tx, scp, cty, initial_focused).await {
                     Ok(h) => AdapterHandlesResult::Ok(std::sync::Arc::new(std::sync::Mutex::new(
                         Some(h),
                     ))),

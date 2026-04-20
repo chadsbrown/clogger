@@ -1,4 +1,9 @@
-use contest_engine::spec::{ContestSpec, DomainRef, ExchangeField, FieldType, Mode, SentValue, embedded};
+use std::collections::HashMap;
+
+use contest_engine::spec::{
+    ContestSpec, DomainRef, ExchangeField, FieldType, Mode, Operand, Predicate, Scope, SentValue,
+    Value, embedded,
+};
 
 use crate::{
     entry::{
@@ -240,6 +245,10 @@ impl ContestEntry for SpecDrivenContest {
         (self.meta.cabrillo_id_fn)(mode)
     }
 
+    fn rtc_id(&self, mode: CategoryMode) -> Option<&'static str> {
+        (self.meta.rtc_id_fn)(mode)
+    }
+
     fn auto_toggle_mode(&self) -> bool {
         self.meta.auto_toggle_mode
     }
@@ -284,6 +293,105 @@ impl ContestEntry for SpecDrivenContest {
             "SSB" => Some("59".to_string()),
             _ => Some("599".to_string()),
         }
+    }
+
+    fn sent_exchange_pairs(&self, ctx: &EntryContext) -> Vec<(String, String)> {
+        // Pick the first matching sent variant. State QPs use a `when`
+        // predicate on CONFIG-scope fields (e.g. `my_is_fl = true`) to
+        // pick in-state vs out-of-state variants; everything else uses
+        // `when: null`.
+        let variant = self
+            .spec
+            .exchange
+            .sent_variants
+            .iter()
+            .find(|v| match &v.when {
+                None => true,
+                Some(pred) => eval_config_predicate(pred, &ctx.station_config),
+            });
+        let Some(variant) = variant else {
+            return Vec::new();
+        };
+
+        let mut out = Vec::with_capacity(variant.fields.len());
+        for field in &variant.fields {
+            let raw = match &field.value {
+                SentValue::Const(v) => v.clone(),
+                SentValue::Config(key) => match ctx.station_config.get(key) {
+                    Some(v) => value_to_text(v),
+                    None => String::new(),
+                },
+            };
+            let value = if field.normalize_upper_trim {
+                raw.trim().to_ascii_uppercase()
+            } else {
+                raw
+            };
+            out.push((format!("sent_{}", field.id), value));
+        }
+        out
+    }
+}
+
+/// Stringify a typed config value the same way contest-engine's
+/// `Value::as_text` does internally. Exposed here because that method is
+/// private.
+fn value_to_text(v: &Value) -> String {
+    match v {
+        Value::Text(s) => s.clone(),
+        Value::Int(i) => i.to_string(),
+        Value::Bool(b) => b.to_string(),
+    }
+}
+
+/// Minimal predicate evaluator used only for sent-variant `when` selection
+/// at log time. Only `CONFIG`-scope field references are resolved —
+/// `SOURCE`/`DEST`/`RCVD`/`SENT`/`SESSION` would require the scorer's
+/// resolver and aren't used in any real sent_variants in the contest-engine
+/// spec set. If they ever are, this function falls back to `false`
+/// conservatively (no variant match → empty sent exchange → visible in
+/// tests).
+fn eval_config_predicate(pred: &Predicate, config: &HashMap<String, Value>) -> bool {
+    match pred {
+        Predicate::Eq(a, b) => operand_eq(a, b, config),
+        Predicate::Ne(a, b) => !operand_eq(a, b, config),
+        Predicate::And(preds) => preds.iter().all(|p| eval_config_predicate(p, config)),
+        Predicate::Or(preds) => preds.iter().any(|p| eval_config_predicate(p, config)),
+        Predicate::Not(p) => !eval_config_predicate(p, config),
+        Predicate::Between(field, lo, hi) => {
+            let Some(v) = resolve_operand(&Operand::Field(field.clone()), config) else {
+                return false;
+            };
+            match v {
+                Value::Int(i) => i >= *lo && i <= *hi,
+                _ => false,
+            }
+        }
+        Predicate::In(field, items) => {
+            let Some(v) = resolve_operand(&Operand::Field(field.clone()), config) else {
+                return false;
+            };
+            items.iter().any(|s| *s == value_to_text(&v))
+        }
+        // Not resolvable at log time without a cty lookup + QSO context.
+        Predicate::DestCallIn(_) => false,
+    }
+}
+
+fn operand_eq(a: &Operand, b: &Operand, config: &HashMap<String, Value>) -> bool {
+    match (resolve_operand(a, config), resolve_operand(b, config)) {
+        (Some(av), Some(bv)) => av == bv,
+        _ => false,
+    }
+}
+
+fn resolve_operand(op: &Operand, config: &HashMap<String, Value>) -> Option<Value> {
+    match op {
+        Operand::Value(v) => Some(v.clone()),
+        Operand::Field(fr) => match fr.scope {
+            Scope::Config => config.get(&fr.key).cloned(),
+            _ => None,
+        },
     }
 }
 

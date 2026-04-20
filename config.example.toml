@@ -302,3 +302,49 @@
 #[[scoreboard.endpoints]]
 #url = "https://contestonlinescore.com/post/"
 #password = "your-password-here"
+
+# ---------------------------------------------------------------------------
+# Real Time Contest (RTC) posting (optional). Posts one XML envelope every
+# 2 minutes to the HamScore RTC endpoint with new / changed QSOs. Adapter
+# is only spawned when the current contest has an `rtc_id` mapped (see
+# logger-core/src/contest/registry.rs) — contests the RTC server doesn't
+# accept are silently skipped.
+#
+# Spec: https://contestonlinescore.com (RTC 2.4-xml, January 2025)
+#
+# The 2-minute cadence is fixed by the spec and not configurable.
+#
+# All QTH fields are explicit — clogger does not infer location from your
+# callsign. This matters for portable / DX operations where your zone /
+# section / grid is NOT the one your callsign implies. When `enabled = true`
+# all required fields must be set; clogger refuses to start otherwise.
+# ---------------------------------------------------------------------------
+#[rtc]
+#enabled = true
+#
+# RTC service password (assigned by HamScore). Username = your callsign.
+#password = "your-rtc-password"
+#
+# Optional endpoint override. Defaults to https://hamscore.com/postxml/ .
+#url = "https://hamscore.com/postxml/"
+#
+# Optional User-Agent. Defaults to "clogger/<version>".
+#user_agent = "clogger/0.1"
+#
+# DXCC country prefix of the operating location.
+#dxcc_country = "K"
+#
+# CQ zone number (1..=40) of the operating location.
+#cq_zone = 4
+#
+# IARU zone number of the operating location.
+#iaru_zone = 7
+#
+# ARRL section (e.g. "IL", "QC"). Leave empty for DX stations.
+#arrl_section = "IL"
+#
+# USA state or Canadian province abbreviation. Leave empty for DX.
+#state_or_province = "IL"
+#
+# Six-character Maidenhead grid (e.g. "EN50VE"). Required.
+#grid6 = "EN50VE"

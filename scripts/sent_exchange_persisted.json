@@ -1,0 +1,31 @@
+{
+  "contest": "cwt",
+  "my_exchange": {
+    "NAME": "CHAD",
+    "XCHG": "2187"
+  },
+  "events": [
+    { "type": "RigStatus", "radio": 1, "freq_hz": 14025000, "mode": "CW", "is_ptt": false },
+    { "type": "SetMode", "mode": "Run" },
+    { "type": "Text", "s": "K1ABC" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "JIM" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "1234" },
+    { "type": "Key", "key": "Enter" },
+    { "type": "Key", "key": "Enter" }
+  ],
+  "expectations": {
+    "qsos": [
+      {
+        "call": "K1ABC",
+        "exchange": {
+          "name": "JIM",
+          "xchg": "1234",
+          "sent_name": "CHAD",
+          "sent_xchg": "2187"
+        }
+      }
+    ]
+  }
+}

@@ -187,6 +187,17 @@ async fn main() -> Result<()> {
         station_config.insert(key.clone(), cv);
     }
 
+    // Compose scoreboard + RTC adapter bundles before bootstrap so the
+    // runtime layer owns the adapter lifecycle. The UI no longer spawns
+    // these directly. Each is Option<_>: None disables the feature.
+    let db_path_for_rtc = cli
+        .db
+        .as_ref()
+        .or(config.db_path.as_ref())
+        .cloned();
+    let scoreboard = compose_scoreboard_bundle(&config)?;
+    let rtc = compose_rtc_bundle(&config, db_path_for_rtc.as_deref())?;
+
     let session = logger_runtime::bootstrap(logger_runtime::SessionConfig {
         contest_id: config.contest.clone(),
         my_call: config.my_call.clone(),
@@ -208,6 +219,8 @@ async fn main() -> Result<()> {
         esm_enabled: config.esm_enabled,
         block_dupes: config.block_dupes,
         app_tx: app_tx.clone(),
+        scoreboard,
+        rtc,
     })?;
 
     // Spawn rig adapters (one per configured rig, indexed by radio_id).
@@ -355,35 +368,13 @@ async fn main() -> Result<()> {
         )
     });
 
-    // Optionally spawn scoreboard adapter
+    // Scoreboard + RTC adapters were composed and spawned by bootstrap.
+    // Here we just record whether scoreboard was configured (for the
+    // connection footer) and take the status receiver off the session
+    // to hand to the event loop.
     let scoreboard_configured = !config.scoreboard.endpoints.is_empty();
-    let scoreboard_handle = if scoreboard_configured {
-        let category = config
-            .category
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("[category] is required when [[scoreboard.endpoints]] is configured"))?;
-        let cabrillo_id = session
-            .contest
-            .cabrillo_id(category.mode.to_category_mode())
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "contest '{}' has no Cabrillo ID for mode '{}'",
-                    config.contest,
-                    category.mode.as_str()
-                )
-            })?;
-        Some((
-            logger_runtime::spawn_scoreboard_adapter(logger_runtime::ScoreboardConfig {
-                endpoints: config.scoreboard.endpoints,
-                interval_secs: config.scoreboard.interval_secs,
-            }),
-            cabrillo_id,
-            config.my_call.clone(),
-            category.clone(),
-        ))
-    } else {
-        None
-    };
+    let mut session = session;
+    let scoreboard_status_rx = session.scoreboard_status_rx.take();
 
     // Bridge: AppEvent → TerminalEvent::App
     let bridge_tx = tui_tx.clone();
@@ -428,7 +419,7 @@ async fn main() -> Result<()> {
         so2r_tx,
         so2r_default_rx_mode,
         condx_rx,
-        scoreboard_handle,
+        scoreboard_status_rx,
         loaded_theme,
     )
     .await
@@ -447,4 +438,94 @@ pub struct ConnectionStatus {
     pub scoreboard_configured: bool,
     pub condx_configured: bool,
     pub bandmap_mode: config::BandmapMode,
+}
+
+/// Compose the scoreboard adapter spawn bundle from the loaded config,
+/// resolving the Cabrillo contest id from the contest registry. Returns
+/// `None` if scoreboard is not configured (no endpoints). Errors when
+/// scoreboard is configured but required metadata is missing or the
+/// contest doesn't support the requested mode for Cabrillo.
+fn compose_scoreboard_bundle(
+    config: &config::Config,
+) -> anyhow::Result<Option<logger_runtime::ScoreboardConfig>> {
+    if config.scoreboard.endpoints.is_empty() {
+        return Ok(None);
+    }
+    let category = config.category.as_ref().ok_or_else(|| {
+        anyhow::anyhow!("[category] is required when [[scoreboard.endpoints]] is configured")
+    })?;
+    let contest = logger_core::contest_from_id(&config.contest)
+        .ok_or_else(|| anyhow::anyhow!("unknown contest: {}", config.contest))?;
+    let cabrillo_id = contest
+        .cabrillo_id(category.mode.to_category_mode())
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "contest '{}' has no Cabrillo ID for mode '{}'",
+                config.contest,
+                category.mode.as_str()
+            )
+        })?;
+    Ok(Some(logger_runtime::ScoreboardConfig {
+        endpoints: config.scoreboard.endpoints.clone(),
+        interval_secs: config.scoreboard.interval_secs,
+        cabrillo_id,
+        call: config.my_call.clone(),
+        ops: config.my_call.clone(),
+        category: category.clone(),
+    }))
+}
+
+/// Compose the RTC adapter spawn bundle. Returns `None` when:
+/// - no `[rtc]` section in the config,
+/// - `rtc.enabled = false`, or
+/// - the current contest has no RTC identifier mapped (the server
+///   doesn't accept uploads for it).
+///
+/// Validates the RtcConfig; errors if required QTH fields are empty.
+/// Requires a `db_path` (RTC's CFM-state sidecar is anchored there).
+fn compose_rtc_bundle(
+    config: &config::Config,
+    db_path: Option<&std::path::Path>,
+) -> anyhow::Result<Option<logger_runtime::config::RtcSpawnConfig>> {
+    let Some(rtc_cfg) = config.rtc.as_ref() else {
+        return Ok(None);
+    };
+    if !rtc_cfg.enabled {
+        return Ok(None);
+    }
+    rtc_cfg.validate().map_err(|e| anyhow::anyhow!(e))?;
+
+    let category = config.category.as_ref().ok_or_else(|| {
+        anyhow::anyhow!("[category] is required when [rtc] is enabled")
+    })?;
+    let contest = logger_core::contest_from_id(&config.contest)
+        .ok_or_else(|| anyhow::anyhow!("unknown contest: {}", config.contest))?;
+    let Some(contest_rtc_id) = contest.rtc_id(category.mode.to_category_mode()) else {
+        tracing::info!(
+            "RTC enabled but contest '{}' has no rtc_id for mode '{}' — skipping",
+            config.contest,
+            category.mode.as_str()
+        );
+        return Ok(None);
+    };
+
+    let db_path = db_path.ok_or_else(|| {
+        anyhow::anyhow!("[rtc] requires a db_path — RTC's CFM state is persisted alongside the log")
+    })?;
+    let mut sidecar_path = db_path.to_path_buf();
+    sidecar_path.set_extension("rtc-state.json");
+
+    let user_agent = rtc_cfg
+        .user_agent
+        .clone()
+        .unwrap_or_else(|| format!("clogger/{}", env!("CARGO_PKG_VERSION")));
+
+    Ok(Some(logger_runtime::config::RtcSpawnConfig {
+        http: rtc_cfg.clone(),
+        contest_rtc_id,
+        my_call: config.my_call.clone(),
+        contest_instance_id: contest.contest_instance_id(),
+        sidecar_path,
+        user_agent,
+    }))
 }

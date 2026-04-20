@@ -13,8 +13,8 @@ use anyhow::{Context, Result};
 use iced::{futures::sink::SinkExt, Subscription};
 use logger_core::{reduce, AppEvent, Effect, RadioId};
 use logger_runtime::{
-    bootstrap, CategoryConfig, CondXSnapshot, KeyerCmd, KeyerEvent, MacroOverrides, RigCmd,
-    ScoreboardConfig, ScoreboardStatus, Session, SessionConfig, So2rCmd, So2rSwitch,
+    bootstrap, CondXSnapshot, KeyerCmd, KeyerEvent, MacroOverrides, RigCmd, ScoreboardStatus,
+    Session, SessionConfig, So2rCmd, So2rSwitch,
 };
 use tokio::sync::{broadcast, mpsc, watch};
 
@@ -64,6 +64,8 @@ pub fn bootstrap_demo(app_tx: mpsc::Sender<AppEvent>) -> Result<Session> {
         esm_enabled: true,
         block_dupes: false,
         app_tx,
+        scoreboard: None,
+        rtc: None,
     };
     bootstrap(cfg)
 }
@@ -71,6 +73,11 @@ pub fn bootstrap_demo(app_tx: mpsc::Sender<AppEvent>) -> Result<Session> {
 /// Boot a real session from a parsed config.
 pub fn bootstrap_from_session(bits: SessionBits, app_tx: mpsc::Sender<AppEvent>) -> Result<Session> {
     let station_config = crate::config::station_to_config_values(&bits.station)?;
+    // Bootstrap owns scoreboard / RTC adapter lifecycle now; the GUI
+    // passes pre-composed bundles (or None) instead of spawning them
+    // itself later.
+    let scoreboard = bits.scoreboard.clone();
+    let rtc = bits.rtc.clone();
     let cfg = SessionConfig {
         contest_id: bits.contest,
         my_call: bits.my_call,
@@ -92,6 +99,8 @@ pub fn bootstrap_from_session(bits: SessionBits, app_tx: mpsc::Sender<AppEvent>)
         esm_enabled: bits.esm_enabled,
         block_dupes: bits.block_dupes,
         app_tx,
+        scoreboard,
+        rtc,
     };
     bootstrap(cfg)
 }
@@ -168,11 +177,6 @@ pub struct AdapterHandles {
     /// Last known scoreboard-adapter status. Updated by the scoreboard
     /// subscription; drives the SCRBD status-bar indicator.
     pub scoreboard_status: ScoreboardStatus,
-    pub scoreboard_snapshot_tx: Option<watch::Sender<Option<logger_runtime::ScoreboardSnapshot>>>,
-    pub scoreboard_cabrillo_id: Option<&'static str>,
-    pub scoreboard_call: Option<String>,
-    pub scoreboard_category: Option<CategoryConfig>,
-    pub last_sent_score_epoch: u64,
 }
 
 impl std::fmt::Debug for AdapterHandles {
@@ -207,29 +211,33 @@ impl Default for AdapterHandles {
             condx_configured: false,
             scoreboard_configured: false,
             scoreboard_status: ScoreboardStatus::Idle,
-            scoreboard_snapshot_tx: None,
-            scoreboard_cabrillo_id: None,
-            scoreboard_call: None,
-            scoreboard_category: None,
-            last_sent_score_epoch: u64::MAX,
         }
     }
 }
 
+/// Stash the scoreboard-status watch receiver into the static slot
+/// that `scoreboard_events` drains from. Called once at startup with
+/// the receiver taken off `Session`. Returns `Err(())` if already
+/// initialized — harmless in practice but kept as a signal so callers
+/// notice duplicate init.
+pub fn set_scoreboard_status_rx(rx: watch::Receiver<ScoreboardStatus>) -> std::result::Result<(), ()> {
+    SCOREBOARD_STATUS_RX
+        .set(Mutex::new(Some(rx)))
+        .map_err(|_| ())
+}
+
 /// Spawn every configured hardware adapter. Mirrors `logger-tui/src/main.rs`'s
 /// adapter setup section. Receivers for keyer-echo and condx are stashed in
-/// `KEYER_RX`/`CONDX_RX` for the dedicated subscriptions to consume.
-/// Spawn every configured hardware adapter. `scoreboard_cabrillo_id` is the
-/// pre-computed contest cabrillo id (from `contest.cabrillo_id(mode)`) — it
-/// has to be computed in `init` before this awaits anything, because
-/// `dyn ContestEntry` isn't `Sync` and can't cross an `await` point.
+/// `KEYER_RX`/`CONDX_RX` for the dedicated subscriptions to consume. The
+/// scoreboard and RTC uploaders no longer spawn here — they're owned by
+/// `logger_runtime::bootstrap`. We just record that scoreboard was
+/// configured for the footer badge.
 pub async fn spawn_adapters(
     bits: AdapterBits,
     app_tx: mpsc::Sender<AppEvent>,
     scp: Arc<dyn logger_core::ScpLookup>,
     cty: Option<Arc<logger_runtime::CtyDb>>,
     initial_focused_radio: RadioId,
-    scoreboard_cabrillo_id: Option<&'static str>,
 ) -> Result<AdapterHandles> {
     let mut handles = AdapterHandles::default();
 
@@ -339,62 +347,16 @@ pub async fn spawn_adapters(
         CONDX_RX.get_or_init(|| Mutex::new(Some(rx)));
     }
 
-    // --- Scoreboard uploader ---
-    handles.scoreboard_configured = !bits.scoreboard.endpoints.is_empty();
-    if handles.scoreboard_configured {
-        let category = bits.category.as_ref().ok_or_else(|| {
-            anyhow::anyhow!(
-                "[category] is required in the contest config when [[scoreboard.endpoints]] is set"
-            )
-        })?;
-        let cabrillo_id = scoreboard_cabrillo_id.ok_or_else(|| {
-            anyhow::anyhow!(
-                "contest '{}' has no Cabrillo ID for mode '{}'",
-                bits.contest,
-                category.mode.as_str()
-            )
-        })?;
-        let handle = logger_runtime::spawn_scoreboard_adapter(ScoreboardConfig {
-            endpoints: bits.scoreboard.endpoints,
-            interval_secs: bits.scoreboard.interval_secs,
-        });
-        SCOREBOARD_STATUS_RX.get_or_init(|| Mutex::new(Some(handle.status_rx)));
-        handles.scoreboard_snapshot_tx = Some(handle.snapshot_tx);
-        handles.scoreboard_cabrillo_id = Some(cabrillo_id);
-        handles.scoreboard_call = Some(bits.my_call);
-        handles.scoreboard_category = Some(category.clone());
-    }
+    // Scoreboard / RTC adapters were spawned inside `bootstrap` from
+    // the pre-composed bundles on `SessionBits`. All we do here is
+    // record that scoreboard was configured so the status footer
+    // shows the SCRBD badge. The status receiver is taken from
+    // `Session.scoreboard_status_rx` by `init()` and stashed in
+    // `SCOREBOARD_STATUS_RX` there (same place this code used to
+    // populate).
+    handles.scoreboard_configured = bits.scoreboard_configured;
 
     Ok(handles)
-}
-
-/// Push a scoreboard snapshot if the score epoch has advanced since the
-/// last push. Called by the GUI on every `Tick`.
-pub fn refresh_scoreboard_snapshot(session: &Session, handles: &mut AdapterHandles) {
-    let Some(tx) = handles.scoreboard_snapshot_tx.as_ref() else {
-        return;
-    };
-    let current_epoch = session.log_adapter.score_epoch();
-    if current_epoch == handles.last_sent_score_epoch {
-        return;
-    }
-    let (Some(cabrillo_id), Some(call), Some(category)) = (
-        handles.scoreboard_cabrillo_id,
-        handles.scoreboard_call.as_ref(),
-        handles.scoreboard_category.as_ref(),
-    ) else {
-        return;
-    };
-    let snapshot = logger_runtime::ScoreboardSnapshot {
-        cabrillo_id,
-        call: call.clone(),
-        ops: call.clone(),
-        category: category.clone(),
-        breakdown: session.log_adapter.score_breakdown(),
-    };
-    if tx.send(Some(snapshot)).is_ok() {
-        handles.last_sent_score_epoch = current_epoch;
-    }
 }
 
 /// Dispatch effects against whatever adapters are wired. Hardware-bound

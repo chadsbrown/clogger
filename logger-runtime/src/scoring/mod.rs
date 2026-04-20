@@ -35,6 +35,7 @@ impl Default for ScoreSummary {
 }
 
 /// A single row in the score breakdown, keyed by (band, mode).
+#[derive(Debug, Clone)]
 pub struct BreakdownRow {
     pub band: String,
     pub mode: String,
@@ -46,6 +47,7 @@ pub struct BreakdownRow {
 
 /// Per-(band, mode) score breakdown for scoreboard XML posting.
 /// Always includes at least a total row (band="total", mode="ALL").
+#[derive(Debug, Clone)]
 pub struct ScoreBreakdown {
     pub rows: Vec<BreakdownRow>,
     pub claimed_score: i64,

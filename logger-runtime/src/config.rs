@@ -215,6 +215,120 @@ pub struct ScoreboardEndpoint {
 }
 
 // ---------------------------------------------------------------------------
+// Real Time Contest (RTC)
+// ---------------------------------------------------------------------------
+
+/// Configuration for the Real Time Contest (RTC) uploader. When present
+/// and `enabled = true`, clogger posts every 2 minutes to the HamScore
+/// RTC endpoint with `<dynamicresults>` + any new/changed QSOs.
+///
+/// All QTH fields are explicit — the operator may be portable or DXing
+/// from outside their home zone, so we never infer location from the
+/// callsign. When `enabled = true` the loader rejects empty values for
+/// the required fields below.
+#[derive(Debug, Clone, Deserialize)]
+pub struct RtcConfig {
+    /// Master switch. When false, the adapter is not spawned.
+    pub enabled: bool,
+    /// RTC server endpoint. Default: the HamScore direct-upload URL per
+    /// the RTC 2.4-xml spec. The spec also lists a "recommended"
+    /// scoredistributor.net URL, but that's HTTP and the spec elsewhere
+    /// requires HTTPS, so we default to the direct HamScore URL.
+    #[serde(default = "default_rtc_url")]
+    pub url: String,
+    /// Password assigned by the RTC service (HTTP Basic auth;
+    /// username = station callsign).
+    pub password: String,
+    /// User-Agent header value. Defaults to `clogger/<cargo-pkg-version>`.
+    #[serde(default)]
+    pub user_agent: Option<String>,
+
+    /// DXCC country prefix (e.g. "K", "VE", "EA6").
+    pub dxcc_country: String,
+    /// CQ zone number (1-40).
+    pub cq_zone: u8,
+    /// IARU zone number.
+    pub iaru_zone: u8,
+    /// ARRL section (e.g. "IL", "QC"). May be empty for DX ops.
+    #[serde(default)]
+    pub arrl_section: String,
+    /// USA state or Canadian province abbreviation. May be empty for
+    /// DX ops that have neither.
+    #[serde(default)]
+    pub state_or_province: String,
+    /// Six-character Maidenhead grid locator (e.g. "EN50VE"). Required.
+    pub grid6: String,
+}
+
+fn default_rtc_url() -> String {
+    "https://hamscore.com/postxml/".to_string()
+}
+
+/// Bundled RTC spawn configuration used at bootstrap time. Composes the
+/// user-supplied `RtcConfig` with contest-dependent metadata (the
+/// per-contest RTC identifier, the contest instance id for QSO ID
+/// hashing) and the log's sidecar path. UIs resolve these from the
+/// selected contest before handing the bundle to `bootstrap()`.
+#[derive(Clone)]
+pub struct RtcSpawnConfig {
+    pub http: RtcConfig,
+    /// The RTC-server's contest identifier for the current contest and
+    /// mode (e.g. "CW-Ops"). Resolved from `ContestEntry::rtc_id(mode)`
+    /// by the UI; the adapter is only spawned when this is `Some` on
+    /// the UI side.
+    pub contest_rtc_id: &'static str,
+    /// The station callsign, used as HTTP Basic auth username and as
+    /// one input to the QSO ID hash.
+    pub my_call: String,
+    /// The contest_instance_id used in the qsolog store. Second input
+    /// to the QSO ID hash; disambiguates IDs across contests reusing
+    /// the same qso_id space.
+    pub contest_instance_id: u64,
+    /// Filesystem path for the RTC CFM-state sidecar. Typically
+    /// `<db_path>.rtc-state.json`. UIs synthesize from `db_path`.
+    pub sidecar_path: std::path::PathBuf,
+    /// User-Agent header. Caller should default to
+    /// `format!("clogger/{}", env!("CARGO_PKG_VERSION"))` when the
+    /// TOML field is unset.
+    pub user_agent: String,
+}
+
+impl RtcConfig {
+    /// Validate that all required fields are non-empty when the adapter
+    /// is enabled. Called by the UI config loaders; returns a
+    /// user-readable error message listing every missing field.
+    pub fn validate(&self) -> Result<(), String> {
+        if !self.enabled {
+            return Ok(());
+        }
+        let mut missing = Vec::new();
+        if self.url.trim().is_empty() {
+            missing.push("url");
+        }
+        if self.password.trim().is_empty() {
+            missing.push("password");
+        }
+        if self.dxcc_country.trim().is_empty() {
+            missing.push("dxcc_country");
+        }
+        if self.grid6.trim().is_empty() {
+            missing.push("grid6");
+        }
+        if self.cq_zone == 0 || self.cq_zone > 40 {
+            missing.push("cq_zone (must be 1..=40)");
+        }
+        if missing.is_empty() {
+            Ok(())
+        } else {
+            Err(format!(
+                "[rtc] missing or invalid required fields: {}",
+                missing.join(", ")
+            ))
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Hardware
 // ---------------------------------------------------------------------------
 

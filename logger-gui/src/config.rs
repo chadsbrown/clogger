@@ -59,6 +59,7 @@ pub struct StableConfig {
     pub condx: logger_runtime::CondXConfig,
     #[serde(default)]
     pub scoreboard: ScoreboardSection,
+    pub rtc: Option<logger_runtime::RtcConfig>,
     #[serde(default)]
     pub show_passband_qrm: bool,
     #[serde(default)]
@@ -99,7 +100,6 @@ pub struct ContestConfig {
 
 /// Fields consumed by `logger_runtime::bootstrap`. Moved out of `Config`
 /// once at startup; bootstrap takes ownership.
-#[derive(Debug)]
 pub struct SessionBits {
     pub my_call: String,
     pub my_zone: u8,
@@ -119,6 +119,12 @@ pub struct SessionBits {
     pub bandmap_high_at_top: bool,
     pub esm_enabled: bool,
     pub block_dupes: bool,
+    /// Pre-composed scoreboard spawn bundle. `None` when scoreboard is
+    /// not configured. Bootstrap spawns the adapter from this.
+    pub scoreboard: Option<logger_runtime::ScoreboardConfig>,
+    /// Pre-composed RTC spawn bundle. `None` when RTC is disabled or
+    /// the current contest has no `rtc_id`.
+    pub rtc: Option<logger_runtime::config::RtcSpawnConfig>,
 }
 
 /// Hardware adapter configuration. Held separately from `SessionBits` so
@@ -130,15 +136,16 @@ pub struct AdapterBits {
     pub dxfeed: Option<logger_runtime::DxFeedConfig>,
     pub so2r: Option<logger_runtime::So2rConfig>,
     pub condx: logger_runtime::CondXConfig,
-    pub scoreboard: ScoreboardSection,
-    pub category: Option<logger_runtime::CategoryConfig>,
     pub my_call: String,
     pub contest: String,
+    /// `true` when scoreboard has configured endpoints. Used purely
+    /// for the status-bar footer badge; the adapter itself is spawned
+    /// inside bootstrap from `SessionBits.scoreboard`.
+    pub scoreboard_configured: bool,
 }
 
 /// Combined runtime configuration. Split into parts before use so each
 /// half can be moved into the right consumer.
-#[derive(Debug)]
 pub struct Config {
     pub session: SessionBits,
     pub adapters: AdapterBits,
@@ -176,15 +183,40 @@ fn load_pair(cli: &Cli, config_path: &PathBuf, contest_path: &PathBuf) -> Result
         .or_else(|| stable.keyer.as_ref().map(|k| k.speed_wpm))
         .unwrap_or(28);
 
+    // Resolve the contest object once so we can look up cabrillo_id
+    // (for scoreboard) and rtc_id (for RTC) before handing ownership
+    // to bootstrap. Bootstrap will resolve the same contest_id again
+    // internally — cheap because contest-engine specs are embedded.
+    let contest_obj = logger_core::contest_from_id(&contest.contest)
+        .ok_or_else(|| anyhow::anyhow!("unknown contest: {}", contest.contest))?;
+
+    let db_path = cli.db.as_ref().or(contest.db_path.as_ref()).cloned();
+    let scoreboard_configured = !stable.scoreboard.endpoints.is_empty();
+    let scoreboard_bundle = compose_scoreboard(
+        &stable.scoreboard,
+        contest.category.as_ref(),
+        contest_obj.as_ref(),
+        &contest.contest,
+        &stable.my_call,
+    )?;
+    let rtc_bundle = compose_rtc(
+        stable.rtc.as_ref(),
+        contest.category.as_ref(),
+        contest_obj.as_ref(),
+        &contest.contest,
+        &stable.my_call,
+        db_path.as_deref(),
+    )?;
+
     let session = SessionBits {
-        my_call: stable.my_call,
+        my_call: stable.my_call.clone(),
         my_zone: stable.my_zone,
-        contest: contest.contest,
+        contest: contest.contest.clone(),
         rst_sent: stable.rst_sent,
         my_name: stable.my_name,
         my_xchg: contest.my_xchg,
         station: contest.station,
-        db_path: cli.db.as_ref().or(contest.db_path.as_ref()).cloned(),
+        db_path,
         call_history_file: cli
             .call_history
             .as_ref()
@@ -199,6 +231,8 @@ fn load_pair(cli: &Cli, config_path: &PathBuf, contest_path: &PathBuf) -> Result
         bandmap_high_at_top: stable.bandmap_high_at_top,
         esm_enabled: stable.esm_enabled,
         block_dupes: stable.block_dupes,
+        scoreboard: scoreboard_bundle,
+        rtc: rtc_bundle,
     };
 
     let adapters = AdapterBits {
@@ -207,13 +241,91 @@ fn load_pair(cli: &Cli, config_path: &PathBuf, contest_path: &PathBuf) -> Result
         dxfeed: stable.dxfeed,
         so2r: stable.so2r,
         condx: stable.condx,
-        scoreboard: stable.scoreboard,
-        category: contest.category,
         my_call: session.my_call.clone(),
         contest: session.contest.clone(),
+        scoreboard_configured,
     };
 
     Ok(Config { session, adapters })
+}
+
+fn compose_scoreboard(
+    section: &ScoreboardSection,
+    category: Option<&logger_runtime::CategoryConfig>,
+    contest: &dyn logger_core::ContestEntry,
+    contest_id: &str,
+    my_call: &str,
+) -> Result<Option<logger_runtime::ScoreboardConfig>> {
+    if section.endpoints.is_empty() {
+        return Ok(None);
+    }
+    let category = category.ok_or_else(|| {
+        anyhow::anyhow!("[category] is required when [[scoreboard.endpoints]] is configured")
+    })?;
+    let cabrillo_id = contest
+        .cabrillo_id(category.mode.to_category_mode())
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "contest '{}' has no Cabrillo ID for mode '{}'",
+                contest_id,
+                category.mode.as_str()
+            )
+        })?;
+    Ok(Some(logger_runtime::ScoreboardConfig {
+        endpoints: section.endpoints.clone(),
+        interval_secs: section.interval_secs,
+        cabrillo_id,
+        call: my_call.to_string(),
+        ops: my_call.to_string(),
+        category: category.clone(),
+    }))
+}
+
+fn compose_rtc(
+    rtc_cfg: Option<&logger_runtime::RtcConfig>,
+    category: Option<&logger_runtime::CategoryConfig>,
+    contest: &dyn logger_core::ContestEntry,
+    contest_id: &str,
+    my_call: &str,
+    db_path: Option<&std::path::Path>,
+) -> Result<Option<logger_runtime::config::RtcSpawnConfig>> {
+    let Some(rtc_cfg) = rtc_cfg else { return Ok(None) };
+    if !rtc_cfg.enabled {
+        return Ok(None);
+    }
+    rtc_cfg.validate().map_err(|e| anyhow::anyhow!(e))?;
+
+    let category = category.ok_or_else(|| {
+        anyhow::anyhow!("[category] is required when [rtc] is enabled")
+    })?;
+    let Some(contest_rtc_id) = contest.rtc_id(category.mode.to_category_mode()) else {
+        tracing::info!(
+            "RTC enabled but contest '{}' has no rtc_id for mode '{}' — skipping",
+            contest_id,
+            category.mode.as_str()
+        );
+        return Ok(None);
+    };
+
+    let db_path = db_path.ok_or_else(|| {
+        anyhow::anyhow!("[rtc] requires a db_path — RTC's CFM state is persisted alongside the log")
+    })?;
+    let mut sidecar_path = db_path.to_path_buf();
+    sidecar_path.set_extension("rtc-state.json");
+
+    let user_agent = rtc_cfg
+        .user_agent
+        .clone()
+        .unwrap_or_else(|| format!("clogger/{}", env!("CARGO_PKG_VERSION")));
+
+    Ok(Some(logger_runtime::config::RtcSpawnConfig {
+        http: rtc_cfg.clone(),
+        contest_rtc_id,
+        my_call: my_call.to_string(),
+        contest_instance_id: contest.contest_instance_id(),
+        sidecar_path,
+        user_agent,
+    }))
 }
 
 /// Convert the typed `[station]` table into contest-engine values.
