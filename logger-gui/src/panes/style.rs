@@ -4,6 +4,7 @@
 //! (dupe red, mult yellow, mult-new green, rig-cursor orange) stay fixed
 //! — those have meaning the operator learns.
 
+use iced::theme::palette::Pair;
 use iced::widget::text;
 use iced::{Color, Theme};
 
@@ -115,35 +116,40 @@ fn lerp(a: Color, b: Color, t: f32) -> Color {
 // --- Semantic (theme-derived) ---
 //
 // DUPE / QRM / ERROR come from the palette's `danger` slot (red in every
-// iced built-in). MULT has no corresponding slot in iced's `Palette` —
-// reusing `primary` would collide with focused-pane borders and header
-// accents — so it's hand-picked per built-in theme from that theme's
-// "yellow/gold" hue, with `primary.strong` as the fallback for custom
-// themes. CURSOR does the same with an orange/peach so it stays visually
-// distinct from MULT on the bandmap.
+// iced built-in). MULT uses the palette's `warning` slot — yellow/gold in
+// every built-in theme — so it reads as "heads up, act on this" rather
+// than the alarming red of DUPE. CURSOR uses `primary.strong` so it
+// stays palette-native and visually distinct from MULT.
+//
+// The `_pair` variants return the full `Pair` so callers painting a
+// filled surface (badge, banner) get the matching readable-text color
+// from the same palette slot.
 
-pub fn dupe_badge(t: &Theme) -> Color {
-    t.extended_palette().danger.base.color
+pub fn dupe_pair(t: &Theme) -> Pair {
+    t.extended_palette().danger.base
 }
 
-pub fn qrm_badge(t: &Theme) -> Color {
-    t.extended_palette().danger.weak.color
+pub fn qrm_pair(t: &Theme) -> Pair {
+    t.extended_palette().danger.weak
 }
 
-pub fn error_banner(t: &Theme) -> Color {
-    t.extended_palette().danger.strong.color
+pub fn mult_pair(t: &Theme) -> Pair {
+    t.extended_palette().warning.base
+}
+
+pub fn error_banner_pair(t: &Theme) -> Pair {
+    t.extended_palette().danger.strong
 }
 
 pub fn mult_color(t: &Theme) -> Color {
-    // Intentionally same as `qrm_badge` — both read as the theme's softer
-    // red. DUPE (danger.base) remains a step bolder, so the three badges
-    // still sort visually by severity even though MULT and QRM share a hue.
-    t.extended_palette().danger.weak.color
+    // Used as a foreground accent on the bandmap and in the Available pane.
+    // `warning.base.color` is typically yellow/gold in every built-in theme.
+    mult_pair(t).color
 }
 
 pub fn cursor_color(t: &Theme) -> Color {
     // The theme's primary accent — always palette-native and distinct
-    // from MULT (which derives from the danger slot).
+    // from MULT (which derives from the warning slot).
     t.extended_palette().primary.strong.color
 }
 
