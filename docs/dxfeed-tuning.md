@@ -338,7 +338,7 @@ spots are also gated. Your bandmap will be clean but sparse.
 - **Typos in field names** → clogger refuses to start
   (`deny_unknown_fields` catches misspelled TOML keys).
 - **Cluster unreachable** (network error, auth failure) → clogger starts
-  normally. Connection status appears in the TUI status bar. The
+  normally. Connection status appears in the status bar (GUI and TUI). The
   dxfeed task retries with exponential backoff.
 - **No `filter_file` or `[dxfeed.skimmer_quality]`** → dxfeed defaults
   apply (3-skimmer corroboration, busted-call rejection, no filter

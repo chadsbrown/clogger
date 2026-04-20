@@ -115,9 +115,10 @@ No changes needed.
 
 ### That's it
 
-The TUI picks up the new contest automatically when the user sets
-`contest = "your_contest"` in their TOML config. Form fields, validation,
-scoring, dupe checking, mult indicators, and ADIF export all work.
+Both front-ends (GUI and TUI) pick up the new contest automatically when
+the user sets `contest = "your_contest"` in their TOML config. Form fields,
+validation, scoring, dupe checking, mult indicators, and ADIF export all
+work.
 
 ### Field ID assignment
 
@@ -127,7 +128,8 @@ scoring, dupe checking, mult indicators, and ADIF export all work.
 
 ### Field width guidelines
 
-Widths in the registry control TUI column widths. Guidelines:
+Widths in the registry control TUI column widths (the GUI uses them as
+hints but lays out with proportional fonts). Guidelines:
 - CALL: 12 (handles most callsigns)
 - RST: 3
 - Zone/serial: width of the max value (e.g., zones 1-40 → 2)

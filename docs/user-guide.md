@@ -1,13 +1,15 @@
 # clogger User Guide
 
-clogger is a terminal contest logger built for one operator (N9UNX) and
-shared without support guarantees. This guide is for that operator, and
-for anyone curious enough to read the code.
+clogger is a contest logger built for one operator (N9UNX) and shared
+without support guarantees. It ships with two interchangeable front-ends
+— a graphical (iced) GUI and a terminal (ratatui) TUI — both driven by
+the same core state machine and the same config files. This guide is for
+that operator, and for anyone curious enough to read the code.
 
 ## Related documents
 
 - **[Configuration](configuration.md)** — every TOML field in `config.toml` and `contest.toml`, what it controls, and the defaults.
-- **[Operating](operating.md)** — keybindings, ESM flow, CW macros, SO2R, and the TUI panels.
+- **[Operating](operating.md)** — keybindings, ESM flow, CW macros, SO2R, and the panel layout.
 - **[Contests](contests.md)** — per-contest notes (exchange shape, mult types, quirks).
 - **[DX feed tuning](dxfeed-tuning.md)** — dxfeed skimmer quality engine + filter pipeline.
 - **[Adding contests](adding-contests.md)** — how spec-driven vs. code-driven contests are wired.
@@ -21,12 +23,15 @@ for anyone curious enough to read the code.
   dupe and multiplier state.
 - Scores and exports Cabrillo / ADIF.
 - Posts live score to Contest Online Scoreboard endpoints.
-- Runs as a TUI (terminal UI) — no GUI, no mouse. Keyboard only.
+- Ships as both a GUI (iced, with an MDI-style floating-pane layout and
+  a mouse-tunable panadapter bandmap) and a TUI (ratatui, keyboard
+  only). Both are keyboard-native and share the same config.
 
 ## First-run checklist
 
 1. **Build.** `cargo build --release` in the workspace root. The
-   binaries land in `target/release/logger-tui` and `logger-cli`.
+   binaries land in `target/release/logger-gui`, `target/release/logger-tui`,
+   and `target/release/logger-cli`.
 
 2. **Create `config.toml`.** Copy `config.example.toml` to a stable
    location (e.g. `~/clogger/config.toml`) and fill in:
@@ -53,8 +58,9 @@ for anyone curious enough to read the code.
      need it (e.g. `my_is_mi`, `my_county`, `my_power_class`).
    - Optional `[macros]`, `[category]`.
 
-4. **Launch.**
+4. **Launch.** Pick a front-end — both accept the same flags:
    ```
+   logger-gui --config ~/clogger/config.toml --contest ./miqp-2026.toml
    logger-tui --config ~/clogger/config.toml --contest ./miqp-2026.toml
    ```
 
@@ -78,6 +84,10 @@ clogger is a strict **reducer + effects** design:
 - **`logger-runtime`** implements the hardware adapters and
   persistence (SQLite, rig serial, WinKeyer, OTRSP, HTTP to DX cluster
   and scoreboard).
+
+- **`logger-gui`** is the iced front-end. Renders floating MDI panes,
+  a mouse-tunable panadapter bandmap, and consumes the same keyboard
+  semantics as the TUI.
 
 - **`logger-tui`** is the ratatui front-end. Reads keyboard, drives
   the event loop, renders panels.

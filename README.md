@@ -1,6 +1,8 @@
 # clogger
 
-![clogger screenshot](docs/clogger-20260418-2.png)
+![clogger TUI screenshot](docs/clogger-20260418-2.png)
+
+![clogger GUI screenshot](docs/clogger-gui-20260419.png)
 
 A contest logger by N9UNX.
 
@@ -21,11 +23,17 @@ promises about anything.
 
 ## Running it
 
-The workspace builds with `cargo build` and has three crates:
+The workspace builds with `cargo build` and has these crates:
 
-- `logger-tui` — terminal UI used during contests
+- `logger-gui` — graphical (iced) front-end used during contests
+- `logger-tui` — terminal (ratatui) front-end, the original front-end
 - `logger-cli` — headless golden-script runner used for testing
 - `logger-core` — pure state-machine library, no IO
+- `logger-runtime` — shared hardware adapters and persistence
+
+The GUI and TUI both sit on top of `logger-core` + `logger-runtime` and
+read the same `config.toml` / `contest.toml` files — pick whichever you
+prefer.
 
 Config is split into two files: a stable one (`config.toml`) for station
 identity, hardware, and scoreboard settings, and a per-contest one
@@ -36,6 +44,10 @@ To get started, copy both examples and fill them in:
 cp config.example.toml config.toml       # edit: callsign, rig, keyer, etc.
 cp contest.example.toml contest.toml     # edit: contest id, macros, etc.
 
+# GUI
+cargo run -p logger-gui -- --config config.toml --contest contest.toml
+
+# TUI
 cargo run -p logger-tui -- --config config.toml --contest contest.toml
 ```
 
@@ -43,7 +55,7 @@ cargo run -p logger-tui -- --config config.toml --contest contest.toml
 
 - **[User Guide](docs/user-guide.md)** — start here.
 - [Configuration reference](docs/configuration.md) — every TOML field.
-- [Operating](docs/operating.md) — keybindings, ESM, CW macros, SO2R, TUI panels.
+- [Operating](docs/operating.md) — keybindings, ESM, CW macros, SO2R, panel layout.
 - [Contests](docs/contests.md) — supported contests and per-contest config.
 - [DX feed tuning](docs/dxfeed-tuning.md) — skimmer quality engine + filter pipeline.
 - [Adding contests](docs/adding-contests.md) — spec-driven vs. code-driven contests.

@@ -1,12 +1,15 @@
 # Operating clogger
 
 This doc covers the runtime workflow: keybindings, ESM, CW macros,
-SO2R mechanics, and what each TUI panel shows.
+SO2R mechanics, and what each panel shows. Keybindings and ESM apply
+to both the GUI and the TUI — they share the same input semantics.
+The panel diagram below is the TUI's fixed layout; the GUI renders
+the same panels as floating, draggable, resizable MDI panes.
 
 See also: [Configuration](configuration.md),
 [Contests](contests.md), [DX feed tuning](dxfeed-tuning.md).
 
-## TUI layout
+## Panel layout (TUI)
 
 ```
 ┌──────────────┬──────────────────┬────────────────┐

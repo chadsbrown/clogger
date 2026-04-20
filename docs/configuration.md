@@ -9,9 +9,11 @@ clogger reads **two** TOML files at startup:
   exchange, database path, CW macros, Cabrillo category. Switch files
   when you switch contests.
 
-Both files are passed on the command line:
+Both files are passed on the command line. The GUI and TUI front-ends
+accept the same flags:
 
 ```
+logger-gui --config /path/to/config.toml --contest /path/to/contest.toml
 logger-tui --config /path/to/config.toml --contest /path/to/contest.toml
 ```
 
