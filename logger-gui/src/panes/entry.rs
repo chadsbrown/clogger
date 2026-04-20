@@ -101,18 +101,9 @@ fn render_radio<'a, M: 'a>(
 
             let empty = field.value.is_empty();
             let value_style = move |t: &Theme| container::Style {
-                background: Some(
-                    if is_focused_field {
-                        t.extended_palette().primary.weak.color
-                    } else {
-                        t.extended_palette().background.base.color
-                    }
-                    .into(),
-                ),
+                background: Some(t.extended_palette().background.base.color.into()),
                 text_color: Some(if empty && !is_focused_field {
                     style::very_muted_color(t)
-                } else if is_focused_field {
-                    t.extended_palette().primary.weak.text
                 } else {
                     style::text_color(t)
                 }),
