@@ -106,7 +106,11 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         history_mapping: &[("Name", 2)],
         uses_serial: true,
         cabrillo_id_fn: |_| Some("ICWC-MST"),
-        rtc_id_fn: no_rtc,
+        // Matches the Cabrillo identifier; unconfirmed against
+        // HamScore's accepted list. If the server rejects with
+        // "Contest not supported", the RTC badge flips to gray
+        // `Unsupported` — try "MST" or contact the server admin.
+        rtc_id_fn: |_| Some("ICWC-MST"),
         exchange_schema_id: 4,
         auto_toggle_mode: false,
     },
