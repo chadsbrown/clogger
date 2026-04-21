@@ -84,6 +84,24 @@ pub fn render(frame: &mut Frame, area: Rect, st: &AppState, tui: &TuiState) {
         right_spans.push(Span::styled("SCRBD", Style::default().fg(color)));
     }
 
+    // RTC: tri-state — yellow=idle/no-changes, green=ok, red=failing,
+    // gray=unsupported (server rejected the contest). Only rendered
+    // when RTC is actually active — when the current contest has no
+    // `rtc_id` the adapter isn't spawned and the badge is hidden.
+    if tui.rtc_configured {
+        if !right_spans.is_empty() {
+            right_spans.push(Span::raw(" "));
+        }
+        use logger_runtime::rtc_adapter::RtcStatus;
+        let color = match tui.rtc_status {
+            RtcStatus::Idle | RtcStatus::NoChanges => theme.status_idle.fg.unwrap_or(Color::Yellow),
+            RtcStatus::Ok => theme.status_connected.fg.unwrap_or(Color::Green),
+            RtcStatus::Failing => theme.status_disconnected.fg.unwrap_or(Color::Red),
+            RtcStatus::Unsupported => Color::Gray,
+        };
+        right_spans.push(Span::styled("RTC", Style::default().fg(color)));
+    }
+
     // UTC clock in the center of the status bar
     let total_secs = (st.now_ms / 1000) as u64;
     let h = (total_secs / 3600) % 24;

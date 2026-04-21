@@ -243,6 +243,7 @@ enum Message {
     KeyerEvent(KeyerEvent),
     CondxSnapshot(CondXSnapshot),
     ScoreboardStatus(ScoreboardStatus),
+    RtcStatus(logger_runtime::rtc_adapter::RtcStatus),
     DismissError,
     FontScaleUp,
     FontScaleDown,
@@ -459,6 +460,23 @@ fn update(state: &mut App, msg: Message) -> iced::Task<Message> {
             if matches!(s, ScoreboardStatus::Failing) {
                 state.error_banner =
                     Some("SCOREBOARD: posting failing — check endpoints".to_string());
+            }
+        }
+        Message::RtcStatus(s) => {
+            state.handles.rtc_status = s;
+            use logger_runtime::rtc_adapter::RtcStatus;
+            match s {
+                RtcStatus::Failing => {
+                    state.error_banner =
+                        Some("RTC: posting failing — check endpoint / credentials".to_string());
+                }
+                RtcStatus::Unsupported => {
+                    state.error_banner = Some(
+                        "RTC: server reports this contest as unsupported — contact admin"
+                            .to_string(),
+                    );
+                }
+                _ => {}
             }
         }
         Message::DismissError => {
@@ -816,6 +834,22 @@ fn status_bar(state: &App) -> Element<'_, Message> {
         },
     ));
 
+    // RTC upload status: same tri-state pattern as SCRBD. Hidden when
+    // the adapter wasn't spawned (RTC disabled or contest has no
+    // `rtc_id`) — there's no "disabled-but-relevant" state the way
+    // scoreboard has, so we simply skip the badge.
+    if state.handles.rtc_configured {
+        use logger_runtime::rtc_adapter::RtcStatus;
+        indicators.push(indicator(
+            "RTC",
+            match state.handles.rtc_status {
+                RtcStatus::Ok => IndicatorState::Ok,
+                RtcStatus::Failing | RtcStatus::Unsupported => IndicatorState::Error,
+                RtcStatus::Idle | RtcStatus::NoChanges => IndicatorState::Idle,
+            },
+        ));
+    }
+
     let mut bar = row![
         text(label).size(12.0),
         Space::new().width(Length::Fill),
@@ -906,6 +940,7 @@ fn subscription(state: &App) -> Subscription<Message> {
         subs.push(bridge::condx_events().map(Message::CondxSnapshot));
         subs.push(bridge::keyer_events().map(Message::KeyerEvent));
         subs.push(bridge::scoreboard_events().map(Message::ScoreboardStatus));
+        subs.push(bridge::rtc_events().map(Message::RtcStatus));
     }
     Subscription::batch(subs)
 }
@@ -988,15 +1023,20 @@ fn init() -> (App, iced::Task<Message>) {
     // the adapters already; we just consume their reported status.
     let mut session = session;
     let scoreboard_status_rx = session.scoreboard_status_rx.take();
-    let _rtc_status_rx = session.rtc_status_rx.take(); // wired in Phase 4 follow-up
-    // Stash the scoreboard status receiver into the static slot
-    // `scoreboard_events` drains from. Mirrors where the old spawn
-    // code used to populate it inside `spawn_adapters`.
+    let rtc_status_rx = session.rtc_status_rx.take();
+    // Stash the status receivers into their static slots so the
+    // iced subscriptions can drain them. Mirrors where the old spawn
+    // code used to populate them inside `spawn_adapters`.
+    let rtc_was_spawned = rtc_status_rx.is_some();
     if let Some(rx) = scoreboard_status_rx {
         let _ = bridge::set_scoreboard_status_rx(rx);
     }
+    if let Some(rx) = rtc_status_rx {
+        let _ = bridge::set_rtc_status_rx(rx);
+    }
     let mut app = App::new(session, app_tx.clone());
     app.rig_configs = rig_configs;
+    app.handles.rtc_configured = rtc_was_spawned;
 
     let task = if let Some(bits) = adapter_bits {
         iced::Task::perform(

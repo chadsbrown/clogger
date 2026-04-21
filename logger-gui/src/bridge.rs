@@ -33,6 +33,12 @@ static KEYER_RX: OnceLock<Mutex<Option<broadcast::Receiver<KeyerEvent>>>> = Once
 static SCOREBOARD_STATUS_RX: OnceLock<Mutex<Option<watch::Receiver<ScoreboardStatus>>>> =
     OnceLock::new();
 
+/// RTC-status watch receiver, drained by `rtc_events`. Only populated
+/// when `[rtc]` is enabled and the current contest has an `rtc_id`.
+static RTC_STATUS_RX: OnceLock<
+    Mutex<Option<watch::Receiver<logger_runtime::rtc_adapter::RtcStatus>>>,
+> = OnceLock::new();
+
 /// Make a fresh `AppEvent` channel and stash the receiver in `APP_RX`.
 /// Called once from `init`.
 pub fn make_app_channel() -> mpsc::Sender<AppEvent> {
@@ -177,6 +183,11 @@ pub struct AdapterHandles {
     /// Last known scoreboard-adapter status. Updated by the scoreboard
     /// subscription; drives the SCRBD status-bar indicator.
     pub scoreboard_status: ScoreboardStatus,
+    /// `true` when RTC is enabled AND the contest maps to an `rtc_id`
+    /// (i.e. the adapter actually spawned). Drives the RTC badge.
+    pub rtc_configured: bool,
+    /// Last known RTC-adapter status. Updated by the RTC subscription.
+    pub rtc_status: logger_runtime::rtc_adapter::RtcStatus,
 }
 
 impl std::fmt::Debug for AdapterHandles {
@@ -211,6 +222,8 @@ impl Default for AdapterHandles {
             condx_configured: false,
             scoreboard_configured: false,
             scoreboard_status: ScoreboardStatus::Idle,
+            rtc_configured: false,
+            rtc_status: logger_runtime::rtc_adapter::RtcStatus::Idle,
         }
     }
 }
@@ -224,6 +237,13 @@ pub fn set_scoreboard_status_rx(rx: watch::Receiver<ScoreboardStatus>) -> std::r
     SCOREBOARD_STATUS_RX
         .set(Mutex::new(Some(rx)))
         .map_err(|_| ())
+}
+
+/// RTC analogue of `set_scoreboard_status_rx`.
+pub fn set_rtc_status_rx(
+    rx: watch::Receiver<logger_runtime::rtc_adapter::RtcStatus>,
+) -> std::result::Result<(), ()> {
+    RTC_STATUS_RX.set(Mutex::new(Some(rx))).map_err(|_| ())
 }
 
 /// Spawn every configured hardware adapter. Mirrors `logger-tui/src/main.rs`'s
@@ -509,6 +529,37 @@ fn condx_events_stream() -> impl iced::futures::Stream<Item = CondXSnapshot> {
 /// spawned.
 pub fn scoreboard_events() -> Subscription<ScoreboardStatus> {
     Subscription::run(scoreboard_events_stream)
+}
+
+/// RTC-status subscription. Mirrors scoreboard_events. Emits on every
+/// status change; pending forever when the RTC adapter wasn't spawned
+/// (so the iced runtime doesn't poll anything).
+pub fn rtc_events() -> Subscription<logger_runtime::rtc_adapter::RtcStatus> {
+    Subscription::run(rtc_events_stream)
+}
+
+fn rtc_events_stream() -> impl iced::futures::Stream<Item = logger_runtime::rtc_adapter::RtcStatus>
+{
+    iced::stream::channel(8, async |mut output| {
+        let Some(rx_slot) = RTC_STATUS_RX.get() else {
+            std::future::pending::<()>().await;
+            return;
+        };
+        let Some(mut rx) = rx_slot.lock().ok().and_then(|mut g| g.take()) else {
+            std::future::pending::<()>().await;
+            return;
+        };
+        let initial = *rx.borrow();
+        if output.send(initial).await.is_err() {
+            return;
+        }
+        while rx.changed().await.is_ok() {
+            let v = *rx.borrow();
+            if output.send(v).await.is_err() {
+                break;
+            }
+        }
+    })
 }
 
 fn scoreboard_events_stream() -> impl iced::futures::Stream<Item = ScoreboardStatus> {

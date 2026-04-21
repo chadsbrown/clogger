@@ -76,6 +76,10 @@ pub struct TuiState {
     pub dxfeed_configured: bool,
     pub so2r_configured: bool,
     pub scoreboard_configured: bool,
+    /// `true` when RTC posting is enabled *and* the current contest has
+    /// an `rtc_id` mapped (server accepts it). Drives the RTC status
+    /// badge in the status bar.
+    pub rtc_configured: bool,
     /// Per-radio rig connection state, keyed by configured radio_id.
     /// Empty when no rigs are configured. BTreeMap gives deterministic
     /// render order in the status bar (RIG1 before RIG2).
@@ -84,6 +88,7 @@ pub struct TuiState {
     pub dxfeed_connected: bool,
     pub so2r_connected: bool,
     pub scoreboard_status: ScoreboardStatus,
+    pub rtc_status: logger_runtime::rtc_adapter::RtcStatus,
     pub export_modal: Option<ExportModal>,
     pub bandmap_mode: config::BandmapMode,
     /// Cached filtered bandmap spots keyed by (band, mode). Invalidated
@@ -119,7 +124,9 @@ impl Default for TuiState {
             dxfeed_connected: false,
             so2r_connected: false,
             scoreboard_configured: false,
+            rtc_configured: false,
             scoreboard_status: ScoreboardStatus::Idle,
+            rtc_status: logger_runtime::rtc_adapter::RtcStatus::Idle,
             export_modal: None,
             bandmap_mode: config::BandmapMode::Dual,
             bandmap_cache: RefCell::new(BandmapCache::new()),
@@ -369,12 +376,17 @@ async fn main() -> Result<()> {
     });
 
     // Scoreboard + RTC adapters were composed and spawned by bootstrap.
-    // Here we just record whether scoreboard was configured (for the
-    // connection footer) and take the status receiver off the session
-    // to hand to the event loop.
+    // Here we just record whether each was configured (for the footer
+    // badges) and take the status receivers off the session to hand to
+    // the event loop. `rtc_configured` reflects the actual spawned
+    // state — it's true only when the user enabled RTC *and* the
+    // current contest maps to an `rtc_id`, which is what
+    // `bootstrap()` uses to decide whether to spawn the adapter.
     let scoreboard_configured = !config.scoreboard.endpoints.is_empty();
     let mut session = session;
     let scoreboard_status_rx = session.scoreboard_status_rx.take();
+    let rtc_status_rx = session.rtc_status_rx.take();
+    let rtc_configured = rtc_status_rx.is_some();
 
     // Bridge: AppEvent → TerminalEvent::App
     let bridge_tx = tui_tx.clone();
@@ -413,6 +425,7 @@ async fn main() -> Result<()> {
             so2r_configured,
             so2r_connected,
             scoreboard_configured,
+            rtc_configured,
             condx_configured,
             bandmap_mode: config.bandmap,
         },
@@ -420,6 +433,7 @@ async fn main() -> Result<()> {
         so2r_default_rx_mode,
         condx_rx,
         scoreboard_status_rx,
+        rtc_status_rx,
         loaded_theme,
     )
     .await
@@ -436,6 +450,10 @@ pub struct ConnectionStatus {
     pub so2r_configured: bool,
     pub so2r_connected: bool,
     pub scoreboard_configured: bool,
+    /// `true` when RTC posting is effectively active — `[rtc] enabled`
+    /// AND the current contest maps to a supported `rtc_id`. The badge
+    /// is hidden entirely when false.
+    pub rtc_configured: bool,
     pub condx_configured: bool,
     pub bandmap_mode: config::BandmapMode,
 }

@@ -12,8 +12,8 @@ use logger_runtime::LogAdapter;
 use ratatui::backend::CrosstermBackend;
 use tokio::sync::{broadcast, mpsc, watch};
 use logger_runtime::{
-    KeyerEvent,
-    ScoreboardStatus,
+    KeyerEvent, ScoreboardStatus,
+    rtc_adapter::RtcStatus,
 };
 
 use crate::TuiState;
@@ -40,6 +40,7 @@ pub async fn run(
     so2r_default_rx_mode: logger_core::So2rRxMode,
     mut condx_rx: Option<mpsc::Receiver<logger_runtime::CondXSnapshot>>,
     scoreboard_status_rx: Option<watch::Receiver<ScoreboardStatus>>,
+    rtc_status_rx: Option<watch::Receiver<RtcStatus>>,
     theme: crate::theme::Theme,
 ) -> Result<()> {
     // RX mode is a runtime knob — the config provides an initial value, and
@@ -76,6 +77,7 @@ pub async fn run(
         so2r_configured: conn.so2r_configured,
         so2r_connected: conn.so2r_connected,
         scoreboard_configured: conn.scoreboard_configured,
+        rtc_configured: conn.rtc_configured,
         condx_configured: conn.condx_configured,
         bandmap_mode: conn.bandmap_mode,
         cw_echo_enabled,
@@ -311,6 +313,9 @@ pub async fn run(
             }
             status = recv_scoreboard_status(&scoreboard_status_rx) => {
                 tui_state.scoreboard_status = status;
+            }
+            status = recv_rtc_status(&rtc_status_rx) => {
+                tui_state.rtc_status = status;
             }
             snapshot = recv_condx(&mut condx_rx) => {
                 tui_state.condx = Some(snapshot);
@@ -585,6 +590,19 @@ async fn recv_condx(
 async fn recv_scoreboard_status(
     rx: &Option<watch::Receiver<ScoreboardStatus>>,
 ) -> ScoreboardStatus {
+    match rx {
+        Some(rx) => {
+            let mut rx = rx.clone();
+            match rx.changed().await {
+                Ok(()) => *rx.borrow(),
+                Err(_) => std::future::pending().await,
+            }
+        }
+        None => std::future::pending().await,
+    }
+}
+
+async fn recv_rtc_status(rx: &Option<watch::Receiver<RtcStatus>>) -> RtcStatus {
     match rx {
         Some(rx) => {
             let mut rx = rx.clone();
