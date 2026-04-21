@@ -170,9 +170,7 @@ impl<'a, M> canvas::Program<M> for BandmapProgram<'a, M> {
 
         match event {
             canvas::Event::Mouse(MouseEvent::WheelScrolled { delta }) => {
-                if cursor.position_in(bounds).is_none() {
-                    return None;
-                }
+                cursor.position_in(bounds)?;
                 let y = match delta {
                     ScrollDelta::Lines { y, .. } => *y,
                     // ~20 pixels per "line" is a rough but reasonable match

@@ -99,6 +99,7 @@ impl ScpLookup for NoScp {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn reduce(
     st: &mut AppState,
     contest: &dyn ContestEntry,
@@ -266,11 +267,10 @@ pub fn reduce(
                 if !entry.fields.is_empty() {
                     entry.focus = (entry.focus + 1) % entry.fields.len();
                     // Skip the auto-populated RST field. Tab is the way to land on it.
-                    if let Some(rst_id) = rst_id {
-                        if entry.fields.get(entry.focus).map(|f| f.field_id) == Some(rst_id) {
+                    if let Some(rst_id) = rst_id
+                        && entry.fields.get(entry.focus).map(|f| f.field_id) == Some(rst_id) {
                             entry.focus = (entry.focus + 1) % entry.fields.len();
                         }
-                    }
                 }
                 Vec::new()
             }
@@ -307,11 +307,10 @@ pub fn reduce(
                 Vec::new()
             }
             Key::Right => {
-                if let Some(field) = st.focused_entry_mut().focused_mut() {
-                    if field.cursor < field.value.len() {
+                if let Some(field) = st.focused_entry_mut().focused_mut()
+                    && field.cursor < field.value.len() {
                         field.cursor += 1;
                     }
-                }
                 Vec::new()
             }
             Key::Esc => vec![Effect::CwAbort],
@@ -633,6 +632,7 @@ fn try_frequency_entry(st: &mut AppState) -> Option<Vec<Effect>> {
 /// a `RigSet` for the spot's frequency. Shared by `BandmapUp/Down` (which
 /// pick a spot relative to the current cursor) and `BandmapSelect` (which
 /// is given the call+freq directly — e.g. from a GUI bandmap click).
+#[allow(clippy::too_many_arguments)]
 fn select_bandmap_spot(
     st: &mut AppState,
     target: RadioId,
@@ -719,8 +719,8 @@ fn recompute_feedback(
                     let band = crate::contest::freq_to_band_label(r.freq_hz);
                     let mode = normalize_mode(&r.mode);
                     (
-                        dupe_checker.is_dupe(call_norm, &band, mode),
-                        mult_checker.is_new_mult(call_norm, &band, mode),
+                        dupe_checker.is_dupe(call_norm, band, mode),
+                        mult_checker.is_new_mult(call_norm, band, mode),
                     )
                 }
                 None => (false, false),
@@ -776,11 +776,10 @@ fn snap_bandmap_cursor_to_freq(st: &mut AppState, radio: RadioId) {
     // cluster of co-located spots to its first member — breaking Ctrl+Up
     // navigation through spots at the same frequency (and click-to-select
     // when multiple spots share a freq).
-    if let Some(BandmapCursor::On { call, freq_hz }) = st.bandmap_cursors.get(&radio) {
-        if *freq_hz == target && spots.iter().any(|s| &s.call == call) {
+    if let Some(BandmapCursor::On { call, freq_hz }) = st.bandmap_cursors.get(&radio)
+        && *freq_hz == target && spots.iter().any(|s| &s.call == call) {
             return;
         }
-    }
 
     let pos = spots.partition_point(|s| s.freq_hz < target);
     let nearest = match (pos == 0, pos == spots.len()) {
@@ -863,11 +862,11 @@ fn snap_all_bandmap_cursors(st: &mut AppState) {
     }
 }
 
-fn nearest_spot_within<'a>(
-    spots: &'a [Spot],
+fn nearest_spot_within(
+    spots: &[Spot],
     target: u64,
     half_width: u64,
-) -> Option<&'a Spot> {
+) -> Option<&Spot> {
     if spots.is_empty() {
         return None;
     }
@@ -1010,14 +1009,12 @@ fn apply_history_lookup(
                 .fields
                 .iter_mut()
                 .find(|f| f.label == target)
-            {
-                if field.value.is_empty() || field.from_history {
+                && (field.value.is_empty() || field.from_history) {
                     field.value = normalize_history_value(value);
                     field.cursor = field.value.len();
                     field.from_history = true;
                     filled_by_contest.insert(field.field_id);
                 }
-            }
         }
     }
 
@@ -1036,20 +1033,17 @@ fn apply_history_lookup(
             if filled_by_contest.contains(field_id) {
                 continue;
             }
-            if let Some(value) = pairs_map.get(col_name) {
-                if let Some(field) = st
+            if let Some(value) = pairs_map.get(col_name)
+                && let Some(field) = st
                     .focused_entry_mut()
                     .fields
                     .iter_mut()
                     .find(|f| f.field_id == *field_id)
-                {
-                    if field.value.is_empty() || field.from_history {
+                    && (field.value.is_empty() || field.from_history) {
                         field.value = normalize_history_value(value);
                         field.cursor = field.value.len();
                         field.from_history = true;
                     }
-                }
-            }
         }
     }
 }

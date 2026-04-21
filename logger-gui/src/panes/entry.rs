@@ -192,13 +192,13 @@ fn render_radio<'a, M: 'a>(
     let mut status_bits: Vec<Element<M>> = Vec::new();
     if let Some(entry) = entry {
         if entry.is_dupe {
-            status_bits.push(badge(" DUPE ", style::dupe_pair).into());
+            status_bits.push(badge(" DUPE ", style::dupe_pair));
         }
         if entry.is_new_mult {
-            status_bits.push(badge(" MULT ", style::mult_pair).into());
+            status_bits.push(badge(" MULT ", style::mult_pair));
         }
         if entry.is_passband_qrm {
-            status_bits.push(badge(" QRM ", style::qrm_pair).into());
+            status_bits.push(badge(" QRM ", style::qrm_pair));
         }
         if let Some(sn) = entry.assigned_serial {
             status_bits.push(text(format!("# {sn}")).size(12.0).style(style::body).into());

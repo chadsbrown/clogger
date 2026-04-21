@@ -234,7 +234,7 @@ impl ContestEntry for SpecDrivenContest {
     }
 
     fn history_field_mapping(&self) -> Vec<(&str, u16)> {
-        self.meta.history_mapping.iter().copied().collect()
+        self.meta.history_mapping.to_vec()
     }
 
     fn uses_serial(&self) -> bool {
@@ -253,11 +253,10 @@ impl ContestEntry for SpecDrivenContest {
                 let Some(allowed) = variant.allowed_modes.as_ref() else {
                     continue;
                 };
-                if allowed.contains(&target) {
-                    if let Some(name) = variant.cabrillo_contest.as_deref() {
+                if allowed.contains(&target)
+                    && let Some(name) = variant.cabrillo_contest.as_deref() {
                         return Some(name);
                     }
-                }
             }
         }
         // No matching variant. If the contest has no variants at all,
@@ -303,11 +302,10 @@ impl ContestEntry for SpecDrivenContest {
         // Const value pulled from `sent_variants` (state QPs hardcode "599").
         for sent_variant in &self.spec.exchange.sent_variants {
             for field in &sent_variant.fields {
-                if field.id == "rst" {
-                    if let SentValue::Const(value) = &field.value {
+                if field.id == "rst"
+                    && let SentValue::Const(value) = &field.value {
                         return Some(value.clone());
                     }
-                }
             }
         }
 

@@ -52,8 +52,8 @@ fn qso_to_adif_record(rec: &QsoRecord, my_call: &str, contest_id: &str) -> Recor
 
     let dt = chrono::DateTime::from_timestamp_millis(rec.ts_ms as i64)
         .unwrap_or_default();
-    adif.add_field(Field::new("QSO_DATE", &dt.format("%Y%m%d").to_string()));
-    adif.add_field(Field::new("TIME_ON", &dt.format("%H%M%S").to_string()));
+    adif.add_field(Field::new("QSO_DATE", dt.format("%Y%m%d").to_string()));
+    adif.add_field(Field::new("TIME_ON", dt.format("%H%M%S").to_string()));
 
     if let Some(band) = band_to_adif(rec.band) {
         adif.add_field(Field::new("BAND", band));
@@ -61,7 +61,7 @@ fn qso_to_adif_record(rec: &QsoRecord, my_call: &str, contest_id: &str) -> Recor
 
     if rec.freq_hz > 0 {
         let mhz = rec.freq_hz as f64 / 1_000_000.0;
-        adif.add_field(Field::new("FREQ", &format!("{mhz:.6}")));
+        adif.add_field(Field::new("FREQ", format!("{mhz:.6}")));
     }
 
     if let Some(mode) = mode_to_adif(rec.mode) {
@@ -112,7 +112,7 @@ fn qso_to_adif_record(rec: &QsoRecord, my_call: &str, contest_id: &str) -> Recor
                 _ => {
                     adif.add_field(Field::new(
                         "COMMENT",
-                        &format!("{key}={value}"),
+                        format!("{key}={value}"),
                     ));
                 }
             }

@@ -956,8 +956,8 @@ fn keyboard_subscription() -> Subscription<Message> {
             // Ctrl-modifier shortcuts that should never reach the reducer.
             // Match on the Key (which is layout-aware and stable across
             // shift state) rather than the produced text.
-            if modifiers.control() || modifiers.command() {
-                if let keyboard::Key::Character(s) = &key {
+            if (modifiers.control() || modifiers.command())
+                && let keyboard::Key::Character(s) = &key {
                     match s.as_str() {
                         "+" | "=" => return Some(Message::FontScaleUp),
                         "-" | "_" => return Some(Message::FontScaleDown),
@@ -965,7 +965,6 @@ fn keyboard_subscription() -> Subscription<Message> {
                         _ => {}
                     }
                 }
-            }
             // Backtick → SO2R RX-mode toggle. Intercept before the reducer
             // sees it so the entry box doesn't collect a stray `.
             if text.as_deref() == Some("`") {

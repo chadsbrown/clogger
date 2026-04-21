@@ -21,6 +21,7 @@ use crate::adapters::terminal::TerminalEvent;
 use crate::ui;
 use crate::ui::log_tail::LogRow;
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run(
     mut state: AppState,
     contest: Box<dyn ContestEntry>,
@@ -333,6 +334,7 @@ pub async fn run(
     result
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn dispatch_effects(
     effects: &[Effect],
     state: &mut AppState,

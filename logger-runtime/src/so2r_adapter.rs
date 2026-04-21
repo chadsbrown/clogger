@@ -33,18 +33,16 @@ pub(crate) fn rx_mode_to_otrsp(mode: So2rRxMode) -> RxMode {
 
 /// Set the SO2R switch's TX routing for the given radio.
 pub async fn set_tx(switch: Option<&dyn So2rSwitch>, radio: RadioId) {
-    if let Some(s) = switch {
-        if let Err(e) = s.set_tx(radio_id_to_otrsp(radio)).await {
+    if let Some(s) = switch
+        && let Err(e) = s.set_tx(radio_id_to_otrsp(radio)).await {
             warn!("OTRSP set_tx failed: {e}");
         }
-    }
 }
 
 /// Set the SO2R switch's RX audio routing.
 pub async fn set_rx(switch: Option<&dyn So2rSwitch>, radio: RadioId, mode: So2rRxMode) {
-    if let Some(s) = switch {
-        if let Err(e) = s.set_rx(radio_id_to_otrsp(radio), rx_mode_to_otrsp(mode)).await {
+    if let Some(s) = switch
+        && let Err(e) = s.set_rx(radio_id_to_otrsp(radio), rx_mode_to_otrsp(mode)).await {
             warn!("OTRSP set_rx failed: {e}");
         }
-    }
 }

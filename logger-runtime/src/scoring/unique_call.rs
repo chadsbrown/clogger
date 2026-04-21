@@ -12,6 +12,12 @@ pub struct UniqueCallScorer {
     cached_summary: ScoreSummary,
 }
 
+impl Default for UniqueCallScorer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl UniqueCallScorer {
     pub fn new() -> Self {
         Self {

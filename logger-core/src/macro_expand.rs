@@ -111,7 +111,6 @@ mod tests {
 
     use crate::{
         contest::contest_from_id,
-        contest::traits::ContestEntry,
         entry::state::EntryState,
         state::AppState,
     };

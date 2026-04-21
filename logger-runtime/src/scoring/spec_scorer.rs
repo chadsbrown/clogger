@@ -195,11 +195,10 @@ impl SpecScorer {
     /// stays defined for operators without a cty_file configured (and
     /// for callsigns cty.dat doesn't recognize).
     fn resolve_station(&self, call_upper: &str) -> ResolvedStation {
-        if let Some(cty) = &self.cty {
-            if let Some(rs) = cty.resolve(call_upper) {
+        if let Some(cty) = &self.cty
+            && let Some(rs) = cty.resolve(call_upper) {
                 return rs;
             }
-        }
         resolved_station_for_call(call_upper)
     }
 
@@ -520,11 +519,10 @@ impl SpecScorer {
             .collect();
         let mut hypothetical_rcvd: HashMap<String, String> = HashMap::new();
         for (ch_col, engine_field_id) in &self.history_mapping {
-            if let Some(v) = ch_row.get(ch_col.as_str()) {
-                if !v.trim().is_empty() {
+            if let Some(v) = ch_row.get(ch_col.as_str())
+                && !v.trim().is_empty() {
                     hypothetical_rcvd.insert(engine_field_id.clone(), v.to_string());
                 }
-            }
         }
         if hypothetical_rcvd.is_empty() {
             return None;

@@ -485,21 +485,18 @@ impl SkimmerQualityConfigSerde {
         if let Some(0) = self.lookback_window_secs {
             anyhow::bail!("[dxfeed.skimmer_quality] lookback_window_secs must be > 0");
         }
-        if let Some(v) = self.valid_freq_window_hz {
-            if v <= 0 {
+        if let Some(v) = self.valid_freq_window_hz
+            && v <= 0 {
                 anyhow::bail!("[dxfeed.skimmer_quality] valid_freq_window_hz must be > 0");
             }
-        }
-        if let Some(v) = self.busted_freq_window_hz {
-            if v <= 0 {
+        if let Some(v) = self.busted_freq_window_hz
+            && v <= 0 {
                 anyhow::bail!("[dxfeed.skimmer_quality] busted_freq_window_hz must be > 0");
             }
-        }
-        if let Some(v) = self.qsy_freq_window_hz {
-            if v <= 0 {
+        if let Some(v) = self.qsy_freq_window_hz
+            && v <= 0 {
                 anyhow::bail!("[dxfeed.skimmer_quality] qsy_freq_window_hz must be > 0");
             }
-        }
         Ok(())
     }
 }

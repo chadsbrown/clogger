@@ -366,7 +366,7 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
         Box::new(ScriptScp { sorted_calls: sorted })
     };
 
-    for script_event in script.events.iter().cloned() {
+    for script_event in script.events.iter() {
         let app_event = match script_event.clone() {
             ScriptEvent::RigStatus {
                 radio,
@@ -471,7 +471,7 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
 
         if record_trace {
             trace.push(TraceStep {
-                event: serde_json::to_value(&script_event).unwrap_or(Value::Null),
+                event: serde_json::to_value(script_event).unwrap_or(Value::Null),
                 effects: trace_effects,
                 state_after: TraceState {
                     focused_radio: st.focused_radio,

@@ -12,12 +12,11 @@ use crate::{
 pub fn apply_default_rst(entry: &mut EntryState, contest: &dyn ContestEntry, mode: &str) {
     let Some(field_id) = contest.rst_field_id() else { return };
     let Some(value) = contest.default_rst(mode) else { return };
-    if let Some(field) = entry.fields.iter_mut().find(|f| f.field_id == field_id) {
-        if field.value.is_empty() {
+    if let Some(field) = entry.fields.iter_mut().find(|f| f.field_id == field_id)
+        && field.value.is_empty() {
             field.cursor = value.len();
             field.value = value;
         }
-    }
 }
 
 fn focused_radio_mode(st: &AppState) -> &'static str {
@@ -72,12 +71,11 @@ fn handle_run(st: &mut AppState, contest: &dyn ContestEntry, macros: &Macros) ->
             text: compose_call_exchange(st, macros),
         }];
         // Auto-advance cursor past CALL field so operator can enter received exchange
-        if focused_field_id(st) == Some(1) {
-            if let Some(next_id) = next_field_id(st) {
+        if focused_field_id(st) == Some(1)
+            && let Some(next_id) = next_field_id(st) {
                 st.focused_entry_mut().focus += 1;
                 effects.push(Effect::UiSetFocus { field_id: next_id });
             }
-        }
         return effects;
     }
 

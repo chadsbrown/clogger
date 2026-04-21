@@ -203,11 +203,8 @@ mod tests {
         // should fall through to the generic Char path (which uppercases
         // to '+').
         let ev = map_key_event(key(KeyCode::Char('+'), KeyModifiers::CONTROL), true);
-        match ev {
-            Some(TerminalEvent::App(AppEvent::QuickLog)) => {
-                panic!("Ctrl+Plus must no longer fire QuickLog")
-            }
-            _ => {}
+        if let Some(TerminalEvent::App(AppEvent::QuickLog)) = ev {
+            panic!("Ctrl+Plus must no longer fire QuickLog")
         }
     }
 }

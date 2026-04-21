@@ -111,12 +111,11 @@ pub fn save(ws: &Workspace, font_scale: f32, theme_name: &str) {
             return;
         }
     };
-    if let Some(parent) = path.parent() {
-        if let Err(e) = fs::create_dir_all(parent) {
+    if let Some(parent) = path.parent()
+        && let Err(e) = fs::create_dir_all(parent) {
             tracing::warn!(path = %parent.display(), err = %e, "mkdir for gui layout failed");
             return;
         }
-    }
     if let Err(e) = fs::write(&path, json) {
         tracing::warn!(path = %path.display(), err = %e, "writing gui layout failed");
         return;

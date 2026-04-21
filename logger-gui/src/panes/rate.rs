@@ -138,7 +138,7 @@ mod tests {
     #[test]
     fn windowed_rate_projects_count_to_hourly() {
         // 5 QSOs in the last 10 minutes → 30/hr.
-        let ts = vec![NOW - 1 * MIN, NOW - 3 * MIN, NOW - 5 * MIN, NOW - 7 * MIN, NOW - 9 * MIN];
+        let ts = vec![NOW - MIN, NOW - 3 * MIN, NOW - 5 * MIN, NOW - 7 * MIN, NOW - 9 * MIN];
         assert_eq!(rate_in_window(&ts, NOW, 10), 30.0);
         // Same set in a 60-min window: 5 in 60 min → 5/hr.
         assert_eq!(rate_in_window(&ts, NOW, 60), 5.0);
@@ -160,7 +160,7 @@ mod tests {
             burst_end - 5 * MIN, // 5th-from-end (anchor)
             burst_end - 4 * MIN,
             burst_end - 3 * MIN,
-            burst_end - 1 * MIN,
+            burst_end - MIN,
             burst_end,
         ];
         let r = rate_over_last_n_qsos(&ts, NOW, 5).unwrap();

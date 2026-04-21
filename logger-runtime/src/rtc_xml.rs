@@ -274,40 +274,40 @@ pub fn serialize_envelope(dyn_results_body: &str, pending: &[PendingContact]) ->
             }
         }
     }
-    let _ = write!(xml, "</rtc>\n");
+    let _ = writeln!(xml, "</rtc>");
     xml
 }
 
 fn write_contact(xml: &mut String, tag: &str, d: &ContactData) {
-    let _ = write!(xml, "<{tag}>\n");
-    let _ = write!(xml, "  <ID>{}</ID>\n", xml_escape(&d.id));
-    let _ = write!(xml, "  <timestamp>{}</timestamp>\n", xml_escape(&d.timestamp));
-    let _ = write!(xml, "  <band>{}</band>\n", d.band);
-    let _ = write!(xml, "  <txfreq>{}</txfreq>\n", d.txfreq_10hz);
-    let _ = write!(xml, "  <mode>{}</mode>\n", d.mode);
-    let _ = write!(xml, "  <call>{}</call>\n", xml_escape(&d.call));
-    let _ = write!(
+    let _ = writeln!(xml, "<{tag}>");
+    let _ = writeln!(xml, "  <ID>{}</ID>", xml_escape(&d.id));
+    let _ = writeln!(xml, "  <timestamp>{}</timestamp>", xml_escape(&d.timestamp));
+    let _ = writeln!(xml, "  <band>{}</band>", d.band);
+    let _ = writeln!(xml, "  <txfreq>{}</txfreq>", d.txfreq_10hz);
+    let _ = writeln!(xml, "  <mode>{}</mode>", d.mode);
+    let _ = writeln!(xml, "  <call>{}</call>", xml_escape(&d.call));
+    let _ = writeln!(
         xml,
-        "  <SentExchange>{}</SentExchange>\n",
+        "  <SentExchange>{}</SentExchange>",
         xml_escape(&d.sent_exchange)
     );
-    let _ = write!(
+    let _ = writeln!(
         xml,
-        "  <RxExchange>{}</RxExchange>\n",
+        "  <RxExchange>{}</RxExchange>",
         xml_escape(&d.rx_exchange)
     );
     if let Some(void) = d.x_qso {
-        let _ = write!(xml, "  <x-qso>{}</x-qso>\n", if void { 1 } else { 0 });
+        let _ = writeln!(xml, "  <x-qso>{}</x-qso>", if void { 1 } else { 0 });
     }
-    let _ = write!(xml, "  <radionr>{}</radionr>\n", d.radionr);
+    let _ = writeln!(xml, "  <radionr>{}</radionr>", d.radionr);
     if let Some(cp) = &d.countryprefix {
-        let _ = write!(
+        let _ = writeln!(
             xml,
-            "  <countryprefix>{}</countryprefix>\n",
+            "  <countryprefix>{}</countryprefix>",
             xml_escape(cp)
         );
     }
-    let _ = write!(xml, "</{tag}>\n");
+    let _ = writeln!(xml, "</{tag}>");
 }
 
 // ---------------------------------------------------------------------------
@@ -325,9 +325,9 @@ fn write_contact(xml: &mut String, tag: &str, d: &ContactData) {
 pub fn serialize_dynamicresults_body(snap: &ScoreboardSnapshot, qth: Option<&RtcQth>) -> String {
     let mut xml = String::with_capacity(2048);
     let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S");
-    let _ = write!(xml, "  <contest>{}</contest>\n", xml_escape(&snap.cabrillo_id));
-    let _ = write!(xml, "  <call>{}</call>\n", xml_escape(&snap.call));
-    let _ = write!(xml, "  <ops>{}</ops>\n", xml_escape(&snap.ops));
+    let _ = writeln!(xml, "  <contest>{}</contest>", xml_escape(&snap.cabrillo_id));
+    let _ = writeln!(xml, "  <call>{}</call>", xml_escape(&snap.call));
+    let _ = writeln!(xml, "  <ops>{}</ops>", xml_escape(&snap.ops));
     let cat = &snap.category;
     let _ = write!(xml, "  <class power=\"{}\"", cat.power.as_str());
     let _ = write!(xml, " assisted=\"{}\"", cat.assisted.as_str());
@@ -336,60 +336,60 @@ pub fn serialize_dynamicresults_body(snap: &ScoreboardSnapshot, qth: Option<&Rtc
     let _ = write!(xml, " bands=\"{}\"", cat.bands.as_str());
     let _ = write!(xml, " mode=\"{}\"", cat.mode.as_str());
     let _ = write!(xml, " overlay=\"{}\"", cat.overlay.as_str());
-    let _ = write!(xml, " />\n");
-    let _ = write!(xml, "  <breakdown>\n");
+    let _ = writeln!(xml, " />");
+    let _ = writeln!(xml, "  <breakdown>");
     for row in &snap.breakdown.rows {
         let band = scoreboard_band(&row.band);
-        let _ = write!(
+        let _ = writeln!(
             xml,
-            "    <qso band=\"{}\" mode=\"{}\">{}</qso>\n",
+            "    <qso band=\"{}\" mode=\"{}\">{}</qso>",
             band, row.mode, row.qsos
         );
         for (mult_type, count) in &row.mults {
             if *count == 0 {
                 continue;
             }
-            let _ = write!(
+            let _ = writeln!(
                 xml,
-                "    <mult type=\"{}\" band=\"{}\" mode=\"{}\">{}</mult>\n",
+                "    <mult type=\"{}\" band=\"{}\" mode=\"{}\">{}</mult>",
                 scoreboard_mult_type(mult_type),
                 band,
                 row.mode,
                 count
             );
         }
-        let _ = write!(
+        let _ = writeln!(
             xml,
-            "    <point band=\"{}\" mode=\"{}\">{}</point>\n",
+            "    <point band=\"{}\" mode=\"{}\">{}</point>",
             band, row.mode, row.points
         );
     }
-    let _ = write!(xml, "  </breakdown>\n");
-    let _ = write!(xml, "  <score>{}</score>\n", snap.breakdown.claimed_score);
-    let _ = write!(xml, "  <timestamp>{}</timestamp>\n", timestamp);
-    let _ = write!(xml, "  <soft>CLogger</soft>\n");
-    let _ = write!(xml, "  <version>{}</version>\n", env!("CARGO_PKG_VERSION"));
+    let _ = writeln!(xml, "  </breakdown>");
+    let _ = writeln!(xml, "  <score>{}</score>", snap.breakdown.claimed_score);
+    let _ = writeln!(xml, "  <timestamp>{}</timestamp>", timestamp);
+    let _ = writeln!(xml, "  <soft>CLogger</soft>");
+    let _ = writeln!(xml, "  <version>{}</version>", env!("CARGO_PKG_VERSION"));
     if let Some(qth) = qth {
-        let _ = write!(xml, "  <qth>\n");
-        let _ = write!(
+        let _ = writeln!(xml, "  <qth>");
+        let _ = writeln!(
             xml,
-            "    <dxcccountry>{}</dxcccountry>\n",
+            "    <dxcccountry>{}</dxcccountry>",
             xml_escape(&qth.dxcc_country)
         );
-        let _ = write!(xml, "    <cqzone>{}</cqzone>\n", qth.cq_zone);
-        let _ = write!(xml, "    <iaruzone>{}</iaruzone>\n", qth.iaru_zone);
-        let _ = write!(
+        let _ = writeln!(xml, "    <cqzone>{}</cqzone>", qth.cq_zone);
+        let _ = writeln!(xml, "    <iaruzone>{}</iaruzone>", qth.iaru_zone);
+        let _ = writeln!(
             xml,
-            "    <arrlsection>{}</arrlsection>\n",
+            "    <arrlsection>{}</arrlsection>",
             xml_escape(&qth.arrl_section)
         );
-        let _ = write!(
+        let _ = writeln!(
             xml,
-            "    <stprvoth>{}</stprvoth>\n",
+            "    <stprvoth>{}</stprvoth>",
             xml_escape(&qth.state_or_province)
         );
-        let _ = write!(xml, "    <grid6>{}</grid6>\n", xml_escape(&qth.grid6));
-        let _ = write!(xml, "  </qth>\n");
+        let _ = writeln!(xml, "    <grid6>{}</grid6>", xml_escape(&qth.grid6));
+        let _ = writeln!(xml, "  </qth>");
     }
     xml
 }
@@ -403,7 +403,7 @@ pub fn scoreboard_band(band: &str) -> String {
     if s.eq_ignore_ascii_case("total") {
         return "total".to_string();
     }
-    s.trim_end_matches(|c: char| c == 'M' || c == 'm').to_string()
+    s.trim_end_matches(['M', 'm']).to_string()
 }
 
 /// Map a contest-engine multiplier ID to a dynamicresults-valid `type`

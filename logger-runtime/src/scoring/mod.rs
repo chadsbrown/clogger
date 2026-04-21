@@ -16,6 +16,7 @@ pub struct BandScore {
 }
 
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct ScoreSummary {
     pub by_band: Vec<(String, BandScore)>,
     pub total_qsos: u32,
@@ -23,16 +24,6 @@ pub struct ScoreSummary {
     pub claimed_score: i64,
 }
 
-impl Default for ScoreSummary {
-    fn default() -> Self {
-        Self {
-            by_band: Vec::new(),
-            total_qsos: 0,
-            total_mults: 0,
-            claimed_score: 0,
-        }
-    }
-}
 
 /// A single row in the score breakdown, keyed by (band, mode).
 #[derive(Debug, Clone)]
@@ -48,19 +39,12 @@ pub struct BreakdownRow {
 /// Per-(band, mode) score breakdown for scoreboard XML posting.
 /// Always includes at least a total row (band="total", mode="ALL").
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct ScoreBreakdown {
     pub rows: Vec<BreakdownRow>,
     pub claimed_score: i64,
 }
 
-impl Default for ScoreBreakdown {
-    fn default() -> Self {
-        Self {
-            rows: Vec::new(),
-            claimed_score: 0,
-        }
-    }
-}
 
 pub trait ContestScorer: Send + Sync {
     /// A new QSO has been appended to the log. Update incremental state.
