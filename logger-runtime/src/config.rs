@@ -291,6 +291,11 @@ pub struct RtcSpawnConfig {
     /// `format!("clogger/{}", env!("CARGO_PKG_VERSION"))` when the
     /// TOML field is unset.
     pub user_agent: String,
+    /// Cabrillo class metadata — needed for the `<class ... />`
+    /// element inside `<dynamicresults>`. Shared with the scoreboard
+    /// path (same element format). UIs require `[category]` to be
+    /// configured whenever RTC is enabled.
+    pub category: CategoryConfig,
 }
 
 impl RtcConfig {

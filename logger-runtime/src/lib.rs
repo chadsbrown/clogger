@@ -18,6 +18,7 @@ pub mod scoring;
 pub mod scp;
 pub mod scoreboard_adapter;
 pub mod rtc_adapter;
+pub mod rtc_xml;
 pub mod so2r_adapter;
 pub mod so2r_task;
 

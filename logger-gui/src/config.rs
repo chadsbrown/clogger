@@ -136,8 +136,6 @@ pub struct AdapterBits {
     pub dxfeed: Option<logger_runtime::DxFeedConfig>,
     pub so2r: Option<logger_runtime::So2rConfig>,
     pub condx: logger_runtime::CondXConfig,
-    pub my_call: String,
-    pub contest: String,
     /// `true` when scoreboard has configured endpoints. Used purely
     /// for the status-bar footer badge; the adapter itself is spawned
     /// inside bootstrap from `SessionBits.scoreboard`.
@@ -241,8 +239,6 @@ fn load_pair(cli: &Cli, config_path: &PathBuf, contest_path: &PathBuf) -> Result
         dxfeed: stable.dxfeed,
         so2r: stable.so2r,
         condx: stable.condx,
-        my_call: session.my_call.clone(),
-        contest: session.contest.clone(),
         scoreboard_configured,
     };
 
@@ -325,6 +321,7 @@ fn compose_rtc(
         contest_instance_id: contest.contest_instance_id(),
         sidecar_path,
         user_agent,
+        category: category.clone(),
     }))
 }
 

@@ -527,5 +527,6 @@ fn compose_rtc_bundle(
         contest_instance_id: contest.contest_instance_id(),
         sidecar_path,
         user_agent,
+        category: category.clone(),
     }))
 }
