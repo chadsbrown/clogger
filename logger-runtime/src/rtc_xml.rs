@@ -146,40 +146,62 @@ pub fn mode_to_rtc(m: Mode) -> Option<&'static str> {
 // ---------------------------------------------------------------------------
 
 /// Split a record's `exchange_pairs` into received (`rx`) and sent
-/// components, preserving the order the pairs were originally stored
-/// in. Excludes signal-report fields (keys `rst`, `rst_s`, `rst_r` and
-/// the `sent_rst*` variants) since the RTC spec requires them omitted.
+/// components. Excludes signal-report fields (keys `rst`, `rst_s`,
+/// `rst_r` and the `sent_rst*` variants) since the RTC spec requires
+/// them omitted.
 ///
-/// The returned `sent` list places the serial first (if present),
-/// matching how Cabrillo conventionally orders NR-first contests and
-/// matching the RTC spec's `<SentExchange>` example for mini-CWT
-/// (which has no serial) — "VIC 2212" comes straight from the
-/// sent variant's fields.
+/// The serial position in the sent exchange is inferred from the
+/// received field order: every received key either has a matching
+/// `sent_<key>` field or is the "serial-equivalent" — the position
+/// where the serial belongs. This handles serial-first contests
+/// (Sweepstakes, NS Sprint) and serial-last contests (MST) without
+/// external metadata.
 fn split_exchange(record: &QsoRecord) -> (Vec<String>, Vec<String>) {
     let Ok(pairs) = decode_exchange_pairs(&record.exchange) else {
         return (Vec::new(), Vec::new());
     };
-    let mut rx = Vec::new();
-    let mut sent_serial: Option<String> = None;
-    let mut sent_other = Vec::new();
+
+    // Categorize pairs into received keys/values, sent (stripped)
+    // keys/values, and the standalone serial. RST keys are dropped.
+    let mut rx: Vec<(String, String)> = Vec::new();
+    let mut sent_fields: Vec<(String, String)> = Vec::new();
+    let mut serial_value: Option<String> = None;
+
     for (k, v) in pairs {
         if is_signal_report_key(&k) {
             continue;
         }
         if k == "serial" {
-            sent_serial = Some(v);
-        } else if let Some(_sent_key) = k.strip_prefix("sent_") {
-            sent_other.push(v);
+            serial_value = Some(v);
+        } else if let Some(stripped) = k.strip_prefix("sent_") {
+            sent_fields.push((stripped.to_string(), v));
         } else {
-            rx.push(v);
+            rx.push((k, v));
         }
     }
-    let mut sent = Vec::with_capacity(sent_other.len() + 1);
-    if let Some(s) = sent_serial {
+
+    let rx_values: Vec<String> = rx.iter().map(|(_, v)| v.clone()).collect();
+
+    // Build sent exchange in the order dictated by the received fields.
+    // Each rx key either has a matching sent_<key> or marks where the
+    // serial belongs (the one received field with no sent counterpart).
+    let mut sent = Vec::with_capacity(rx.len());
+    let mut serial_placed = false;
+    for (rx_key, _) in &rx {
+        if let Some(pos) = sent_fields.iter().position(|(sk, _)| sk == rx_key) {
+            sent.push(sent_fields[pos].1.clone());
+        } else if let Some(ref s) = serial_value {
+            sent.push(s.clone());
+            serial_placed = true;
+        }
+    }
+    // Fallback: if a serial exists but no rx key was unmatched,
+    // append it rather than silently dropping.
+    if !serial_placed && let Some(s) = serial_value {
         sent.push(s);
     }
-    sent.extend(sent_other);
-    (rx, sent)
+
+    (rx_values, sent)
 }
 
 fn is_signal_report_key(k: &str) -> bool {
@@ -556,6 +578,49 @@ mod tests {
         // Received keeps its original order; no serial filtering
         // happens for rx.
         assert_eq!(data.rx_exchange, "14 A 85 CT");
+    }
+
+    #[test]
+    fn mst_sent_exchange_orders_serial_last() {
+        // MST exchange: received (name, nr), sent (sent_name) plus serial.
+        // Serial must come AFTER name, matching received field order.
+        let rec = fixture_record(
+            11,
+            "K1ABC",
+            vec![
+                ("name", "BOB"),
+                ("nr", "42"),
+                ("serial", "1"),
+                ("sent_name", "CHAD"),
+            ],
+            false,
+        );
+        let data = qso_to_contact_data(&rec, 1, None, false).expect("projected");
+        assert_eq!(data.sent_exchange, "CHAD 1");
+        assert_eq!(data.rx_exchange, "BOB 42");
+    }
+
+    #[test]
+    fn ns_sprint_sent_exchange_orders_serial_first() {
+        // NS Sprint exchange: received (nr, name, loc), sent
+        // (sent_name, sent_loc) plus serial. Serial maps to rx "nr"
+        // at position 0, so it comes first.
+        let rec = fixture_record(
+            12,
+            "W6YX",
+            vec![
+                ("nr", "14"),
+                ("name", "BOB"),
+                ("loc", "CA"),
+                ("serial", "1"),
+                ("sent_name", "CHAD"),
+                ("sent_loc", "IL"),
+            ],
+            false,
+        );
+        let data = qso_to_contact_data(&rec, 1, None, false).expect("projected");
+        assert_eq!(data.sent_exchange, "1 CHAD IL");
+        assert_eq!(data.rx_exchange, "14 BOB CA");
     }
 
     #[test]
