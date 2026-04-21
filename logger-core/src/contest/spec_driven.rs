@@ -241,12 +241,35 @@ impl ContestEntry for SpecDrivenContest {
         self.meta.uses_serial
     }
 
-    fn cabrillo_id(&self, mode: CategoryMode) -> Option<&'static str> {
-        (self.meta.cabrillo_id_fn)(mode)
-    }
-
-    fn rtc_id(&self, mode: CategoryMode) -> Option<&'static str> {
-        (self.meta.rtc_id_fn)(mode)
+    fn cabrillo_id(&self, mode: CategoryMode) -> Option<&str> {
+        // Look up directly from the contest-engine spec. For contests
+        // with mode-specific sponsor names (CQWW, ARRL-DX, SS, NAQP,
+        // ARRL-SS), find the variant whose `allowed_modes` includes
+        // the target mode and return its `cabrillo_contest`. For
+        // single-mode contests with no variants (CWT, MST, state QPs,
+        // NS Sprint), fall back to the top-level `cabrillo_contest`.
+        if let Some(target) = category_mode_to_engine(mode) {
+            for variant in self.spec.variants.values() {
+                let Some(allowed) = variant.allowed_modes.as_ref() else {
+                    continue;
+                };
+                if allowed.contains(&target) {
+                    if let Some(name) = variant.cabrillo_contest.as_deref() {
+                        return Some(name);
+                    }
+                }
+            }
+        }
+        // No matching variant. If the contest has no variants at all,
+        // the top-level name is the answer regardless of mode.
+        if self.spec.variants.is_empty() {
+            return Some(self.spec.cabrillo_contest.as_str());
+        }
+        // Contest has variants but none matched — e.g. Mixed against
+        // a CW/SSB split. Preserve the old behavior of returning None
+        // so multi-mode contests don't silently export with the wrong
+        // (top-level) name.
+        None
     }
 
     fn auto_toggle_mode(&self) -> bool {
@@ -401,6 +424,18 @@ fn normalized_mode_to_engine(mode: &str) -> Option<Mode> {
         "SSB" => Some(Mode::SSB),
         "DIGITAL" => Some(Mode::DIGITAL),
         _ => None,
+    }
+}
+
+/// Map a clogger `CategoryMode` to the contest-engine `Mode` used in
+/// `variants.<mode>.allowed_modes`. `CategoryMode::Mixed` has no
+/// single-mode counterpart — callers handle that as "no variant
+/// matches" and either fall back to the top-level name or return None.
+fn category_mode_to_engine(m: CategoryMode) -> Option<Mode> {
+    match m {
+        CategoryMode::CW => Some(Mode::CW),
+        CategoryMode::SSB => Some(Mode::SSB),
+        CategoryMode::Mixed => None,
     }
 }
 

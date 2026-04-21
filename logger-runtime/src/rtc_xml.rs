@@ -303,7 +303,7 @@ fn write_contact(xml: &mut String, tag: &str, d: &ContactData) {
 pub fn serialize_dynamicresults_body(snap: &ScoreboardSnapshot, qth: Option<&RtcQth>) -> String {
     let mut xml = String::with_capacity(2048);
     let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S");
-    let _ = write!(xml, "  <contest>{}</contest>\n", xml_escape(snap.cabrillo_id));
+    let _ = write!(xml, "  <contest>{}</contest>\n", xml_escape(&snap.cabrillo_id));
     let _ = write!(xml, "  <call>{}</call>\n", xml_escape(&snap.call));
     let _ = write!(xml, "  <ops>{}</ops>\n", xml_escape(&snap.ops));
     let cat = &snap.category;
@@ -644,7 +644,7 @@ mod tests {
         };
         use crate::scoring::{BreakdownRow, ScoreBreakdown};
         let snap = ScoreboardSnapshot {
-            cabrillo_id: "CW-Ops",
+            cabrillo_id: "CW-Ops".to_string(),
             call: "N9UNX".to_string(),
             ops: "N9UNX".to_string(),
             category: CategoryConfig {

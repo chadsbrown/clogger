@@ -486,7 +486,7 @@ fn compose_scoreboard_bundle(
     Ok(Some(logger_runtime::ScoreboardConfig {
         endpoints: config.scoreboard.endpoints.clone(),
         interval_secs: config.scoreboard.interval_secs,
-        cabrillo_id,
+        cabrillo_id: cabrillo_id.to_string(),
         call: config.my_call.clone(),
         ops: config.my_call.clone(),
         category: category.clone(),
@@ -518,9 +518,14 @@ fn compose_rtc_bundle(
     })?;
     let contest = logger_core::contest_from_id(&config.contest)
         .ok_or_else(|| anyhow::anyhow!("unknown contest: {}", config.contest))?;
-    let Some(contest_rtc_id) = contest.rtc_id(category.mode.to_category_mode()) else {
+    // RTC and Cabrillo share one canonical contest identifier —
+    // `cabrillo_id` — sourced from the contest-engine spec's
+    // `cabrillo_contest`. If the contest has no Cabrillo name for
+    // this mode (unusual; typically means "mode not supported"), RTC
+    // is skipped the same way scoreboard would be.
+    let Some(contest_rtc_id) = contest.cabrillo_id(category.mode.to_category_mode()) else {
         tracing::info!(
-            "RTC enabled but contest '{}' has no rtc_id for mode '{}' — skipping",
+            "RTC enabled but contest '{}' has no cabrillo_id for mode '{}' — skipping",
             config.contest,
             category.mode.as_str()
         );
@@ -540,7 +545,7 @@ fn compose_rtc_bundle(
 
     Ok(Some(logger_runtime::config::RtcSpawnConfig {
         http: rtc_cfg.clone(),
-        contest_rtc_id,
+        contest_rtc_id: contest_rtc_id.to_string(),
         my_call: config.my_call.clone(),
         contest_instance_id: contest.contest_instance_id(),
         sidecar_path,

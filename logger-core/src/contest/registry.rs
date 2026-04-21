@@ -1,7 +1,5 @@
 use crate::state::Macros;
 
-use super::traits::CategoryMode;
-
 /// Clogger-specific metadata for a spec-driven contest. Each entry pairs
 /// a contest-engine spec ID with TUI/integration concerns that don't belong
 /// in the scoring engine: field display widths, default CW macros, call
@@ -20,15 +18,6 @@ pub struct SpecContestMeta {
     pub history_mapping: &'static [(&'static str, u16)],
     /// Whether this contest uses auto-incrementing serial numbers.
     pub uses_serial: bool,
-    /// Maps CategoryMode to Cabrillo contest ID string.
-    pub cabrillo_id_fn: fn(CategoryMode) -> Option<&'static str>,
-    /// Maps CategoryMode to the RTC (Real Time Contest) server's contest
-    /// identifier, if the RTC server accepts uploads for this contest.
-    /// Returns `None` for contests the RTC server doesn't support; the RTC
-    /// adapter skips posting when this is `None`. This is intentionally
-    /// separate from `cabrillo_id_fn` — the RTC server uses its own naming
-    /// convention (e.g. "CW-Ops" for CWT, where Cabrillo uses "CW-OPS").
-    pub rtc_id_fn: fn(CategoryMode) -> Option<&'static str>,
     /// Exchange schema ID for QsoDraft (matches qsolog convention).
     pub exchange_schema_id: u16,
     /// Whether the operating mode auto-toggles (RUN↔S&P) after logging a QSO.
@@ -43,12 +32,6 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         default_macros_fn: default_macros,
         history_mapping: &[("CqZone", 3)],
         uses_serial: false,
-        cabrillo_id_fn: |mode| match mode {
-            CategoryMode::CW => Some("CQ-WW-CW"),
-            CategoryMode::SSB => Some("CQ-WW-SSB"),
-            CategoryMode::Mixed => None,
-        },
-        rtc_id_fn: no_rtc,
         exchange_schema_id: 1,
         auto_toggle_mode: false,
     },
@@ -59,10 +42,6 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         default_macros_fn: cwt_macros,
         history_mapping: &[("Name", 2), ("Exch1", 3)],
         uses_serial: false,
-        cabrillo_id_fn: |_| Some("CW-OPS"),
-        // RTC server spec example uses "CW-Ops" as the contest identifier
-        // for CWT postings (distinct from the Cabrillo "CW-OPS" naming).
-        rtc_id_fn: |_| Some("CW-Ops"),
         exchange_schema_id: 3,
         auto_toggle_mode: false,
     },
@@ -73,12 +52,6 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         default_macros_fn: naqp_macros,
         history_mapping: &[("Name", 2)],
         uses_serial: false,
-        cabrillo_id_fn: |mode| match mode {
-            CategoryMode::CW => Some("NAQP-CW"),
-            CategoryMode::SSB => Some("NAQP-SSB"),
-            CategoryMode::Mixed => None,
-        },
-        rtc_id_fn: no_rtc,
         exchange_schema_id: 5,
         auto_toggle_mode: false,
     },
@@ -89,12 +62,6 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         default_macros_fn: default_macros,
         history_mapping: &[],
         uses_serial: false,
-        cabrillo_id_fn: |mode| match mode {
-            CategoryMode::CW => Some("ARRL-DX-CW"),
-            CategoryMode::SSB => Some("ARRL-DX-SSB"),
-            CategoryMode::Mixed => None,
-        },
-        rtc_id_fn: no_rtc,
         exchange_schema_id: 6,
         auto_toggle_mode: false,
     },
@@ -105,12 +72,6 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         default_macros_fn: mst_macros,
         history_mapping: &[("Name", 2)],
         uses_serial: true,
-        cabrillo_id_fn: |_| Some("ICWC-MST"),
-        // Matches the Cabrillo identifier; unconfirmed against
-        // HamScore's accepted list. If the server rejects with
-        // "Contest not supported", the RTC badge flips to gray
-        // `Unsupported` — try "MST" or contact the server admin.
-        rtc_id_fn: |_| Some("ICWC-MST"),
         exchange_schema_id: 4,
         auto_toggle_mode: false,
     },
@@ -121,11 +82,6 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         default_macros_fn: ns_sprint_macros,
         history_mapping: &[("Name", 3), ("State", 4)],
         uses_serial: true,
-        cabrillo_id_fn: |mode| match mode {
-            CategoryMode::CW => Some("NCCC-SPRINT"),
-            _ => None,
-        },
-        rtc_id_fn: no_rtc,
         exchange_schema_id: 7,
         auto_toggle_mode: true,
     },
@@ -136,12 +92,6 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         default_macros_fn: ss_macros,
         history_mapping: &[("Exch1", 3), ("CK", 4), ("Sect", 5)],
         uses_serial: true,
-        cabrillo_id_fn: |mode| match mode {
-            CategoryMode::CW => Some("ARRL-SS-CW"),
-            CategoryMode::SSB => Some("ARRL-SS-SSB"),
-            CategoryMode::Mixed => None,
-        },
-        rtc_id_fn: no_rtc,
         exchange_schema_id: 2,
         auto_toggle_mode: false,
     },
@@ -157,8 +107,6 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         default_macros_fn: flqp_macros,
         history_mapping: &[("Exch1", 3)],
         uses_serial: false,
-        cabrillo_id_fn: |_| Some("FL-QSO-PARTY"),
-        rtc_id_fn: no_rtc,
         exchange_schema_id: 8,
         auto_toggle_mode: false,
     },
@@ -169,8 +117,6 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         default_macros_fn: gaqp_macros,
         history_mapping: &[("Exch1", 3)],
         uses_serial: false,
-        cabrillo_id_fn: |_| Some("GA-QSO-PARTY"),
-        rtc_id_fn: no_rtc,
         exchange_schema_id: 9,
         auto_toggle_mode: false,
     },
@@ -181,8 +127,6 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         default_macros_fn: inqp_macros,
         history_mapping: &[("Exch1", 3)],
         uses_serial: false,
-        cabrillo_id_fn: |_| Some("IN-QSO-PARTY"),
-        rtc_id_fn: no_rtc,
         exchange_schema_id: 10,
         auto_toggle_mode: false,
     },
@@ -193,8 +137,6 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         default_macros_fn: miqp_macros,
         history_mapping: &[("Exch1", 3)],
         uses_serial: false,
-        cabrillo_id_fn: |_| Some("MI-QSO-PARTY"),
-        rtc_id_fn: no_rtc,
         exchange_schema_id: 11,
         auto_toggle_mode: false,
     },
@@ -205,8 +147,6 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         default_macros_fn: moqp_macros,
         history_mapping: &[("Exch1", 3)],
         uses_serial: false,
-        cabrillo_id_fn: |_| Some("MO-QSO-PARTY"),
-        rtc_id_fn: no_rtc,
         exchange_schema_id: 12,
         auto_toggle_mode: false,
     },
@@ -217,8 +157,6 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         default_macros_fn: ndqp_macros,
         history_mapping: &[("Exch1", 3)],
         uses_serial: false,
-        cabrillo_id_fn: |_| Some("ND-QSO-PARTY"),
-        rtc_id_fn: no_rtc,
         exchange_schema_id: 13,
         auto_toggle_mode: false,
     },
@@ -230,8 +168,6 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         history_mapping: &[("Exch1", 3)],
         uses_serial: false,
         // New England QP uses the bare "NEQP" contest ID, not "NE-QSO-PARTY".
-        cabrillo_id_fn: |_| Some("NEQP"),
-        rtc_id_fn: no_rtc,
         exchange_schema_id: 14,
         auto_toggle_mode: false,
     },
@@ -243,11 +179,6 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         history_mapping: &[("Exch1", 3)],
         uses_serial: false,
         // NH QSO Party is CW-only.
-        cabrillo_id_fn: |mode| match mode {
-            CategoryMode::CW => Some("NH-QSO-PARTY"),
-            _ => None,
-        },
-        rtc_id_fn: no_rtc,
         exchange_schema_id: 15,
         auto_toggle_mode: false,
     },
@@ -258,8 +189,6 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         default_macros_fn: nmqp_macros,
         history_mapping: &[("Exch1", 3)],
         uses_serial: false,
-        cabrillo_id_fn: |_| Some("NM-QSO-PARTY"),
-        rtc_id_fn: no_rtc,
         exchange_schema_id: 16,
         auto_toggle_mode: false,
     },
@@ -270,8 +199,6 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         default_macros_fn: neqsop_macros,
         history_mapping: &[("Exch1", 3)],
         uses_serial: false,
-        cabrillo_id_fn: |_| Some("NE-QSO-PARTY"),
-        rtc_id_fn: no_rtc,
         exchange_schema_id: 17,
         auto_toggle_mode: false,
     },
@@ -282,8 +209,6 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         default_macros_fn: onqp_macros,
         history_mapping: &[("Exch1", 3)],
         uses_serial: false,
-        cabrillo_id_fn: |_| Some("ON-QSO-PARTY"),
-        rtc_id_fn: no_rtc,
         exchange_schema_id: 18,
         auto_toggle_mode: false,
     },
@@ -294,8 +219,6 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         default_macros_fn: qcqp_macros,
         history_mapping: &[("Exch1", 3)],
         uses_serial: false,
-        cabrillo_id_fn: |_| Some("QC-QSO-PARTY"),
-        rtc_id_fn: no_rtc,
         exchange_schema_id: 19,
         auto_toggle_mode: false,
     },
@@ -306,8 +229,6 @@ pub const SPEC_CONTESTS: &[SpecContestMeta] = &[
         default_macros_fn: deqp_macros,
         history_mapping: &[("Exch1", 3)],
         uses_serial: false,
-        cabrillo_id_fn: |_| Some("DE-QSO-PARTY"),
-        rtc_id_fn: no_rtc,
         exchange_schema_id: 20,
         auto_toggle_mode: false,
     },
@@ -320,14 +241,6 @@ pub fn find_spec_contest(id: &str) -> Option<&'static SpecContestMeta> {
         _ => &id_lower,
     };
     SPEC_CONTESTS.iter().find(|m| m.contest_id == effective_id)
-}
-
-/// Default `rtc_id_fn` value for contests the RTC server doesn't
-/// (yet) accept — returning `None` causes the RTC adapter to skip
-/// posting. Individual contests opt in by overriding `rtc_id_fn` with
-/// their confirmed RTC identifier.
-fn no_rtc(_: CategoryMode) -> Option<&'static str> {
-    None
 }
 
 fn default_macros() -> Macros {

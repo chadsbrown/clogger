@@ -23,9 +23,10 @@ use crate::scoring::ScoreBreakdown;
 pub struct ScoreboardConfig {
     pub endpoints: Vec<ScoreboardEndpoint>,
     pub interval_secs: u64,
-    /// Cabrillo contest identifier (e.g. "CQ-WW-CW"). Static: picked
-    /// by the UI from `ContestEntry::cabrillo_id(mode)` at startup.
-    pub cabrillo_id: &'static str,
+    /// Cabrillo contest identifier (e.g. "CQ-WW-CW"). Picked by the
+    /// UI from `ContestEntry::cabrillo_id(mode)` at startup and
+    /// cloned per tick into the `ScoreboardSnapshot`.
+    pub cabrillo_id: String,
     /// Station callsign. Used as both `<call>` and `<ops>` in the
     /// scoreboard XML.
     pub call: String,
@@ -42,7 +43,7 @@ pub struct ScoreboardConfig {
 /// serialization helper takes one, and exposing it keeps the helper
 /// testable without a LogSnapshot fixture.
 pub struct ScoreboardSnapshot {
-    pub cabrillo_id: &'static str,
+    pub cabrillo_id: String,
     pub call: String,
     pub ops: String,
     pub category: CategoryConfig,
@@ -103,7 +104,7 @@ async fn adapter_task(
         let snap = {
             let log = log_rx.borrow();
             ScoreboardSnapshot {
-                cabrillo_id: cfg.cabrillo_id,
+                cabrillo_id: cfg.cabrillo_id.clone(),
                 call: cfg.call.clone(),
                 ops: cfg.ops.clone(),
                 category: cfg.category.clone(),

@@ -273,10 +273,11 @@ fn default_rtc_url() -> String {
 pub struct RtcSpawnConfig {
     pub http: RtcConfig,
     /// The RTC-server's contest identifier for the current contest and
-    /// mode (e.g. "CW-Ops"). Resolved from `ContestEntry::rtc_id(mode)`
-    /// by the UI; the adapter is only spawned when this is `Some` on
-    /// the UI side.
-    pub contest_rtc_id: &'static str,
+    /// mode (e.g. "CW-OPS"). Resolved from
+    /// `ContestEntry::cabrillo_id(mode)` by the UI — RTC and Cabrillo
+    /// share the canonical name; the adapter is only spawned when this
+    /// is `Some` on the UI side.
+    pub contest_rtc_id: String,
     /// The station callsign, used as HTTP Basic auth username and as
     /// one input to the QSO ID hash.
     pub my_call: String,

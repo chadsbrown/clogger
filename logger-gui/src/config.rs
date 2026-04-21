@@ -282,7 +282,7 @@ fn compose_scoreboard(
     Ok(Some(logger_runtime::ScoreboardConfig {
         endpoints: section.endpoints.clone(),
         interval_secs: section.interval_secs,
-        cabrillo_id,
+        cabrillo_id: cabrillo_id.to_string(),
         call: my_call.to_string(),
         ops: my_call.to_string(),
         category: category.clone(),
@@ -306,9 +306,12 @@ fn compose_rtc(
     let category = category.ok_or_else(|| {
         anyhow::anyhow!("[category] is required when [rtc] is enabled")
     })?;
-    let Some(contest_rtc_id) = contest.rtc_id(category.mode.to_category_mode()) else {
+    // RTC and Cabrillo share one canonical contest identifier — the
+    // Cabrillo name sourced from the spec's `cabrillo_contest`. RTC
+    // spawn gates on its presence.
+    let Some(contest_rtc_id) = contest.cabrillo_id(category.mode.to_category_mode()) else {
         tracing::info!(
-            "RTC enabled but contest '{}' has no rtc_id for mode '{}' — skipping",
+            "RTC enabled but contest '{}' has no cabrillo_id for mode '{}' — skipping",
             contest_id,
             category.mode.as_str()
         );
@@ -328,7 +331,7 @@ fn compose_rtc(
 
     Ok(Some(logger_runtime::config::RtcSpawnConfig {
         http: rtc_cfg.clone(),
-        contest_rtc_id,
+        contest_rtc_id: contest_rtc_id.to_string(),
         my_call: my_call.to_string(),
         contest_instance_id: contest.contest_instance_id(),
         sidecar_path,

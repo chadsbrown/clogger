@@ -74,16 +74,14 @@ pub trait ContestEntry {
 
     /// The Cabrillo contest ID for this contest and mode category.
     /// Returns None if the contest doesn't support the given mode.
-    fn cabrillo_id(&self, _mode: CategoryMode) -> Option<&'static str> {
-        None
-    }
-
-    /// The RTC (Real Time Contest) server's contest identifier for this
-    /// contest and mode category. Returns None when the RTC server
-    /// doesn't accept uploads for this contest — the RTC adapter then
-    /// skips posting. Distinct from `cabrillo_id`: the RTC server uses
-    /// its own naming (e.g. "CW-Ops" where Cabrillo uses "CW-OPS").
-    fn rtc_id(&self, _mode: CategoryMode) -> Option<&'static str> {
+    /// Used both for the Cabrillo `CONTEST:` header and as the RTC
+    /// `<contest>` value on uploads — one canonical name per (contest,
+    /// mode) sourced from the contest-engine spec's `cabrillo_contest`
+    /// (see `contest-engine/docs/cabrillo-contest-names.md`).
+    ///
+    /// The returned slice borrows from `self` — callers that need to
+    /// store the value across ticks should clone into `String`.
+    fn cabrillo_id(&self, _mode: CategoryMode) -> Option<&str> {
         None
     }
 

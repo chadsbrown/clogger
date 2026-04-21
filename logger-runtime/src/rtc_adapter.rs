@@ -178,7 +178,7 @@ async fn adapter_task(
             // have been spawned, so these identity fields are always
             // meaningful.
             let score_snap = ScoreboardSnapshot {
-                cabrillo_id: cfg.contest_rtc_id,
+                cabrillo_id: cfg.contest_rtc_id.clone(),
                 call: cfg.my_call.clone(),
                 ops: cfg.my_call.clone(),
                 category: cfg.http_category_placeholder(),
