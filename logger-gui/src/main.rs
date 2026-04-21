@@ -1027,7 +1027,6 @@ fn init() -> (App, iced::Task<Message>) {
     // Stash the status receivers into their static slots so the
     // iced subscriptions can drain them. Mirrors where the old spawn
     // code used to populate them inside `spawn_adapters`.
-    let rtc_was_spawned = rtc_status_rx.is_some();
     if let Some(rx) = scoreboard_status_rx {
         let _ = bridge::set_scoreboard_status_rx(rx);
     }
@@ -1036,7 +1035,10 @@ fn init() -> (App, iced::Task<Message>) {
     }
     let mut app = App::new(session, app_tx.clone());
     app.rig_configs = rig_configs;
-    app.handles.rtc_configured = rtc_was_spawned;
+    // Note: `rtc_configured` lives on AdapterHandles and is populated
+    // by `spawn_adapters` from `AdapterBits.rtc_configured`. Setting
+    // it here would be overwritten when `AdaptersReady` installs the
+    // spawned handles — don't.
 
     let task = if let Some(bits) = adapter_bits {
         iced::Task::perform(

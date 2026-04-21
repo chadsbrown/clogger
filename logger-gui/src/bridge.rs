@@ -369,12 +369,13 @@ pub async fn spawn_adapters(
 
     // Scoreboard / RTC adapters were spawned inside `bootstrap` from
     // the pre-composed bundles on `SessionBits`. All we do here is
-    // record that scoreboard was configured so the status footer
-    // shows the SCRBD badge. The status receiver is taken from
-    // `Session.scoreboard_status_rx` by `init()` and stashed in
-    // `SCOREBOARD_STATUS_RX` there (same place this code used to
-    // populate).
+    // record which ones were configured so the status footer shows
+    // the right badges. The status receivers are taken off
+    // `Session.*_status_rx` by `init()` and stashed in the
+    // corresponding static slots (same place this code used to
+    // populate them).
     handles.scoreboard_configured = bits.scoreboard_configured;
+    handles.rtc_configured = bits.rtc_configured;
 
     Ok(handles)
 }

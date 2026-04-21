@@ -140,6 +140,10 @@ pub struct AdapterBits {
     /// for the status-bar footer badge; the adapter itself is spawned
     /// inside bootstrap from `SessionBits.scoreboard`.
     pub scoreboard_configured: bool,
+    /// `true` when the RTC adapter was actually spawned by bootstrap
+    /// — i.e. `[rtc] enabled = true` AND the contest has an `rtc_id`
+    /// mapped. Drives the RTC badge; ignored otherwise.
+    pub rtc_configured: bool,
 }
 
 /// Combined runtime configuration. Split into parts before use so each
@@ -233,6 +237,13 @@ fn load_pair(cli: &Cli, config_path: &PathBuf, contest_path: &PathBuf) -> Result
         rtc: rtc_bundle,
     };
 
+    // `rtc_configured` reflects what `compose_rtc` actually produced:
+    // `Some(_)` means bootstrap will spawn the adapter; `None` means
+    // it's gated off (disabled, missing category, or the contest has
+    // no rtc_id). The GUI footer reads this from the handles struct,
+    // so it must match the spawn outcome exactly.
+    let rtc_configured = session.rtc.is_some();
+
     let adapters = AdapterBits {
         rigs: stable.rigs,
         keyer: stable.keyer,
@@ -240,6 +251,7 @@ fn load_pair(cli: &Cli, config_path: &PathBuf, contest_path: &PathBuf) -> Result
         so2r: stable.so2r,
         condx: stable.condx,
         scoreboard_configured,
+        rtc_configured,
     };
 
     Ok(Config { session, adapters })
