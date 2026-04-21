@@ -192,7 +192,11 @@ async fn adapter_task(
             compute_pending(&sidecar, &snapshot.records, cfg.contest_instance_id);
 
         let xml = serialize_envelope(&dyn_body, &pending);
-        tracing::info!("rtc XML ({} contacts):\n{xml}", pending.len());
+
+        // TEMP-DEBUG (remove-me): body dump to rtc.log; see
+        // logger-runtime/src/temp_debug_log.rs for the full removal
+        // recipe. Replaces the previous `tracing::info!("rtc XML ...")`.
+        crate::temp_debug_log::append("rtc.log", &xml);
 
         match post_and_interpret(&client, &cfg, &xml).await {
             PostOutcome::Ok => {

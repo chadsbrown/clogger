@@ -112,7 +112,11 @@ async fn adapter_task(
         };
         let xml = serialize_xml(&snap);
 
-        tracing::info!("scoreboard XML:\n{xml}");
+        // TEMP-DEBUG (remove-me): body dump to scoreboard.log; see
+        // logger-runtime/src/temp_debug_log.rs for the full removal
+        // recipe. Replaces the old `tracing::info!("scoreboard XML:
+        // {xml}")` that used to pollute the regular log.
+        crate::temp_debug_log::append("scoreboard.log", &xml);
 
         // POST to all endpoints in parallel
         let results = join_all(cfg.endpoints.iter().map(|ep| {
