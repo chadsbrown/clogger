@@ -95,7 +95,7 @@ impl ContestEntry for SpecDrivenContest {
         EntryFormSpec { fields }
     }
 
-    fn validate_entry(&self, input: &EntryState, _ctx: &EntryContext) -> EntryValidation {
+    fn validate_entry(&self, input: &EntryState) -> EntryValidation {
         let received = self.received_fields();
         let mut fields = Vec::with_capacity(input.fields.len());
 

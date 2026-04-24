@@ -1,7 +1,7 @@
 use crate::{
     contest::{
         filtered_bandmap_spots, freq_to_band_label, normalize_mode,
-        traits::{ContestEntry, EntryContext},
+        traits::ContestEntry,
     },
     effects::Effect,
     entry::{
@@ -740,15 +740,13 @@ fn select_bandmap_spot(
 }
 
 fn revalidate_after_edit(st: &mut AppState, contest: &dyn ContestEntry) {
-    let ctx = EntryContext {
-        my_call: st.my_call.clone(),
-        my_zone: st.my_zone,
-        rst_sent: st.rst_sent.clone(),
-        rig: st.radios.get(&st.focused_radio).cloned(),
-        serial: st.focused_entry().assigned_serial,
-        station_config: st.station_config.clone(),
-    };
-    let validation = contest.validate_entry(st.focused_entry(), &ctx);
+    // `validate_entry` intentionally takes no EntryContext: it's called
+    // on every keystroke, and the only data it needs is the entry form
+    // itself (field values checked against the contest spec). Skipping
+    // the EntryContext construction here avoids cloning my_call,
+    // rst_sent, rig, and station_config per-keystroke — non-trivial on
+    // state-QP sessions where station_config is populated.
+    let validation = contest.validate_entry(st.focused_entry());
 
     let entry = st.focused_entry_mut();
     for (idx, status) in validation.fields.into_iter().enumerate() {

@@ -40,7 +40,15 @@ pub trait ContestEntry {
     fn contest_instance_id(&self) -> u64;
     fn default_macros(&self) -> Macros;
     fn form_spec(&self) -> EntryFormSpec;
-    fn validate_entry(&self, input: &EntryState, ctx: &EntryContext) -> EntryValidation;
+    /// Check that the entry's fields are well-formed (required fields
+    /// present, numeric fields parse, etc.). Called on every keystroke,
+    /// so this is on the hot path — do not allocate per-call when
+    /// something cheaper (e.g. a `&str` check against `self.spec`) will
+    /// do. Intentionally does not take an `EntryContext`: the existing
+    /// spec-driven implementation doesn't need live station state to
+    /// validate form fields, and avoiding the argument keeps the
+    /// caller free of per-keystroke `EntryContext` construction.
+    fn validate_entry(&self, input: &EntryState) -> EntryValidation;
     fn build_qso_draft(
         &self,
         input: &EntryState,

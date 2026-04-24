@@ -219,9 +219,8 @@ impl ContestEntry for SerialContest {
     fn validate_entry(
         &self,
         input: &EntryState,
-        ctx: &logger_core::EntryContext,
     ) -> logger_core::entry::validation::EntryValidation {
-        self.0.validate_entry(input, ctx)
+        self.0.validate_entry(input)
     }
     fn build_qso_draft(
         &self,
