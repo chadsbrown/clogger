@@ -1,0 +1,26 @@
+{
+  "contest": "ns_sprint",
+  "my_exchange": {
+    "NAME": "CHAD",
+    "LOC": "IN"
+  },
+  "events": [
+    { "type": "RigStatus", "radio": 1, "freq_hz": 14042000, "mode": "CW", "is_ptt": false },
+    { "type": "SetMode", "mode": "Sp" },
+
+    { "type": "Text", "s": "N6TR" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "154" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "TREE" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "OR" },
+    { "type": "Key", "key": "Enter" }
+  ],
+  "expectations": {
+    "qsos": [
+      { "call": "N6TR", "exchange": { "nr": "154", "name": "TREE", "loc": "OR", "serial": "1" } }
+    ],
+    "final_serial_counter": 2
+  }
+}

@@ -241,27 +241,45 @@ pub fn reduce(
             }
             revalidate_after_edit(st, contest);
             if touched_call {
-                // Editing the call after exchange was sent forces a resend
+                // Editing the call after any partial-ESM step (CallSent or
+                // ExchSent) resets to Idle so the next Enter treats this as
+                // a fresh send.
                 let entry = st.focused_entry_mut();
-                if entry.esm_step == EsmStep::ExchSent {
-                    entry.esm_step = EsmStep::Idle;
-                }
+                entry.esm_step = EsmStep::Idle;
                 entry.scp_cycle_index = None;
                 recompute_feedback(st, dupe_checker, mult_checker);
                 apply_call_history(st, contest, call_history, contest_history, scp);
                 revalidate_after_edit(st, contest);
+                // N1MM+ parity: reserve the next serial at the first keystroke
+                // into the CALL field in Run mode. `claim_serial` is a no-op
+                // for contests that don't use serials and idempotent once a
+                // serial is assigned, so calling it on every keystroke is safe.
+                if st.focused_entry().mode == OpMode::Run && !st.current_call().is_empty() {
+                    crate::entry::esm::claim_serial(st, contest);
+                }
             }
             Vec::new()
         }
         AppEvent::KeyPress { key } => match key {
             Key::Tab => {
+                let was_on_call = crate::entry::esm::focused_field_id(st) == Some(1);
                 let entry = st.focused_entry_mut();
                 if !entry.fields.is_empty() {
                     entry.focus = (entry.focus + 1) % entry.fields.len();
                 }
+                // N1MM+ parity: reserve the serial when the cursor leaves
+                // CALL (S&P path; idempotent for Run since the keystroke
+                // path already reserved).
+                if was_on_call
+                    && crate::entry::esm::focused_field_id(st) != Some(1)
+                    && !st.current_call().is_empty()
+                {
+                    crate::entry::esm::claim_serial(st, contest);
+                }
                 Vec::new()
             }
             Key::Space => {
+                let was_on_call = crate::entry::esm::focused_field_id(st) == Some(1);
                 let rst_id = contest.rst_field_id();
                 let entry = st.focused_entry_mut();
                 if !entry.fields.is_empty() {
@@ -271,6 +289,12 @@ pub fn reduce(
                         && entry.fields.get(entry.focus).map(|f| f.field_id) == Some(rst_id) {
                             entry.focus = (entry.focus + 1) % entry.fields.len();
                         }
+                }
+                if was_on_call
+                    && crate::entry::esm::focused_field_id(st) != Some(1)
+                    && !st.current_call().is_empty()
+                {
+                    crate::entry::esm::claim_serial(st, contest);
                 }
                 Vec::new()
             }
@@ -288,15 +312,20 @@ pub fn reduce(
                 }
                 revalidate_after_edit(st, contest);
                 if touched_call {
-                    // Editing the call after exchange was sent forces a resend
+                    // Editing the call after any partial-ESM step (CallSent
+                    // or ExchSent) resets to Idle.
                     let entry = st.focused_entry_mut();
-                    if entry.esm_step == EsmStep::ExchSent {
-                        entry.esm_step = EsmStep::Idle;
-                    }
+                    entry.esm_step = EsmStep::Idle;
                     entry.scp_cycle_index = None;
                     recompute_feedback(st, dupe_checker, mult_checker);
                     apply_call_history(st, contest, call_history, contest_history, scp);
                     revalidate_after_edit(st, contest);
+                    // N1MM+ parity: reserve at keystroke in Run mode, as
+                    // long as there's still a call in the field. Skipped
+                    // when backspace brings the call to empty.
+                    if st.focused_entry().mode == OpMode::Run && !st.current_call().is_empty() {
+                        crate::entry::esm::claim_serial(st, contest);
+                    }
                 }
                 Vec::new()
             }
@@ -314,66 +343,80 @@ pub fn reduce(
                 Vec::new()
             }
             Key::Esc => vec![Effect::CwAbort],
-            Key::F1 => vec![Effect::CwSend {
-                radio: st.focused_radio,
-                text: expand_macro(&macros.f1, st),
-            }],
-            Key::F2 => vec![Effect::CwSend {
-                radio: st.focused_radio,
-                text: expand_macro(&macros.f2, st),
-            }],
-            Key::F3 => vec![Effect::CwSend {
-                radio: st.focused_radio,
-                text: expand_macro(&macros.f3, st),
-            }],
+            Key::F1 => {
+                let template = macros.f1.clone();
+                vec![Effect::CwSend {
+                    radio: st.focused_radio,
+                    text: crate::entry::esm::expand_for_send(st, contest, &template),
+                }]
+            }
+            Key::F2 => {
+                let template = macros.f2.clone();
+                vec![Effect::CwSend {
+                    radio: st.focused_radio,
+                    text: crate::entry::esm::expand_for_send(st, contest, &template),
+                }]
+            }
+            Key::F3 => {
+                let template = macros.f3.clone();
+                vec![Effect::CwSend {
+                    radio: st.focused_radio,
+                    text: crate::entry::esm::expand_for_send(st, contest, &template),
+                }]
+            }
             Key::F4 => vec![Effect::CwSend {
                 radio: st.focused_radio,
+                // Hard-coded "{MYCALL}" template never contains {SERIAL}, so
+                // no serial-reservation path is needed here.
                 text: expand_macro("{MYCALL}", st),
             }],
-            Key::F5 => vec![Effect::CwSend {
-                radio: st.focused_radio,
-                text: expand_macro(&macros.f5, st),
-            }],
+            Key::F5 => {
+                let template = macros.f5.clone();
+                vec![Effect::CwSend {
+                    radio: st.focused_radio,
+                    text: crate::entry::esm::expand_for_send(st, contest, &template),
+                }]
+            }
             Key::F7 | Key::F8 | Key::F9 => {
-                let text = match key {
-                    Key::F7 => &macros.f7,
-                    Key::F8 => &macros.f8,
-                    Key::F9 => &macros.f9,
+                let template = match key {
+                    Key::F7 => macros.f7.clone(),
+                    Key::F8 => macros.f8.clone(),
+                    Key::F9 => macros.f9.clone(),
                     _ => unreachable!(),
                 };
-                if text.is_empty() {
+                if template.is_empty() {
                     Vec::new()
                 } else {
                     vec![Effect::CwSend {
                         radio: st.focused_radio,
-                        text: expand_macro(text, st),
+                        text: crate::entry::esm::expand_for_send(st, contest, &template),
                     }]
                 }
             }
             Key::CtrlAltF1 | Key::CtrlAltF2 | Key::CtrlAltF3 | Key::CtrlAltF4
             | Key::CtrlAltF5 | Key::CtrlAltF6 | Key::CtrlAltF7 | Key::CtrlAltF8
             | Key::CtrlAltF9 | Key::CtrlAltF10 | Key::CtrlAltF11 | Key::CtrlAltF12 => {
-                let text = match key {
-                    Key::CtrlAltF1 => &macros.ctrl_alt_f1,
-                    Key::CtrlAltF2 => &macros.ctrl_alt_f2,
-                    Key::CtrlAltF3 => &macros.ctrl_alt_f3,
-                    Key::CtrlAltF4 => &macros.ctrl_alt_f4,
-                    Key::CtrlAltF5 => &macros.ctrl_alt_f5,
-                    Key::CtrlAltF6 => &macros.ctrl_alt_f6,
-                    Key::CtrlAltF7 => &macros.ctrl_alt_f7,
-                    Key::CtrlAltF8 => &macros.ctrl_alt_f8,
-                    Key::CtrlAltF9 => &macros.ctrl_alt_f9,
-                    Key::CtrlAltF10 => &macros.ctrl_alt_f10,
-                    Key::CtrlAltF11 => &macros.ctrl_alt_f11,
-                    Key::CtrlAltF12 => &macros.ctrl_alt_f12,
+                let template = match key {
+                    Key::CtrlAltF1 => macros.ctrl_alt_f1.clone(),
+                    Key::CtrlAltF2 => macros.ctrl_alt_f2.clone(),
+                    Key::CtrlAltF3 => macros.ctrl_alt_f3.clone(),
+                    Key::CtrlAltF4 => macros.ctrl_alt_f4.clone(),
+                    Key::CtrlAltF5 => macros.ctrl_alt_f5.clone(),
+                    Key::CtrlAltF6 => macros.ctrl_alt_f6.clone(),
+                    Key::CtrlAltF7 => macros.ctrl_alt_f7.clone(),
+                    Key::CtrlAltF8 => macros.ctrl_alt_f8.clone(),
+                    Key::CtrlAltF9 => macros.ctrl_alt_f9.clone(),
+                    Key::CtrlAltF10 => macros.ctrl_alt_f10.clone(),
+                    Key::CtrlAltF11 => macros.ctrl_alt_f11.clone(),
+                    Key::CtrlAltF12 => macros.ctrl_alt_f12.clone(),
                     _ => unreachable!(),
                 };
-                if text.is_empty() {
+                if template.is_empty() {
                     Vec::new()
                 } else {
                     vec![Effect::CwSend {
                         radio: st.focused_radio,
-                        text: expand_macro(text, st),
+                        text: crate::entry::esm::expand_for_send(st, contest, &template),
                     }]
                 }
             }
@@ -383,9 +426,21 @@ pub fn reduce(
                     .get(&st.focused_radio)
                     .map(|r| normalize_mode(r.mode.as_str()))
                     .unwrap_or("CW");
+                // N1MM+ Alt+W parity: un-reserve this entry's serial when
+                // safe. Safety condition `counter == assigned + 1` means no
+                // other radio/entry has advanced past this claim, so rolling
+                // back the counter hands the same serial to the next QSO
+                // without creating a duplicate. When another radio holds a
+                // claim past ours, we leave the gap (correct — their serial
+                // is committed).
+                if let (Some(assigned), Some(counter)) =
+                    (st.focused_entry().assigned_serial, st.serial_counter)
+                    && counter == assigned + 1
+                {
+                    st.serial_counter = Some(assigned);
+                }
                 let entry = st.focused_entry_mut();
                 entry.clear_values();
-                entry.esm_step = EsmStep::Idle;
                 entry.scp_matches.clear();
                 entry.scp_n1_matches.clear();
                 entry.scp_cycle_index = None;

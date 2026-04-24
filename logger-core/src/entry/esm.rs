@@ -168,7 +168,6 @@ fn log_and_clear(
             let entry = st.focused_entry_mut();
             entry.clear_values();
             apply_default_rst(entry, contest, mode);
-            entry.esm_step = EsmStep::Idle;
             entry.last_logged_context = Some(last_ctx);
             if contest.auto_toggle_mode() {
                 entry.mode = match entry.mode {
@@ -205,7 +204,7 @@ fn log_and_clear(
     }
 }
 
-fn focused_field_id(st: &AppState) -> Option<u16> {
+pub(crate) fn focused_field_id(st: &AppState) -> Option<u16> {
     let entry = st.focused_entry();
     entry.fields.get(entry.focus).map(|f| f.field_id)
 }
@@ -236,7 +235,7 @@ fn invalid_focus_effects(st: &mut AppState) -> Vec<Effect> {
 
 /// Claim the next serial number from the counter, storing it in entry state.
 /// No-op if the contest doesn't use serials or a serial is already claimed.
-fn claim_serial(st: &mut AppState, contest: &dyn ContestEntry) {
+pub(crate) fn claim_serial(st: &mut AppState, contest: &dyn ContestEntry) {
     if !contest.uses_serial() {
         return;
     }
@@ -247,6 +246,23 @@ fn claim_serial(st: &mut AppState, contest: &dyn ContestEntry) {
         st.focused_entry_mut().assigned_serial = Some(counter);
         st.serial_counter = Some(counter + 1);
     }
+}
+
+/// Expand a macro template for CW send, reserving the next serial first when
+/// the template needs one and a QSO is in progress. Call-empty templates (CQ
+/// repeats, repeat-last-exchange) resolve `{SERIAL}` against
+/// `last_logged_context` via `expand_macro`; we only reserve when the
+/// operator is actually working a specific call. Idempotent: a second call
+/// for the same QSO is a no-op thanks to `claim_serial`'s own guard.
+pub(crate) fn expand_for_send(
+    st: &mut AppState,
+    contest: &dyn ContestEntry,
+    template: &str,
+) -> String {
+    if template.contains("{SERIAL}") && !st.current_call().is_empty() {
+        claim_serial(st, contest);
+    }
+    expand_macro(template, st)
 }
 
 fn entry_ctx(st: &AppState) -> EntryContext {

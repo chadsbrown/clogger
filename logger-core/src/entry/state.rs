@@ -116,6 +116,7 @@ impl EntryState {
         self.scp_n1_matches.clear();
         self.scp_cycle_index = None;
         self.assigned_serial = None;
+        self.esm_step = EsmStep::Idle;
     }
 
     pub fn focused_mut(&mut self) -> Option<&mut EntryFieldState> {

@@ -1,0 +1,36 @@
+{
+  "contest": "ns_sprint",
+  "my_exchange": {
+    "NAME": "CHAD",
+    "LOC": "IN"
+  },
+  "macro_overrides": {
+    "ctrl_alt_f11": "TU {MYCALL} {SERIAL} {MYNAME}"
+  },
+  "events": [
+    { "type": "RigStatus", "radio": 1, "freq_hz": 14042000, "mode": "CW", "is_ptt": false },
+    { "type": "SetMode", "mode": "Run" },
+
+    { "type": "Text", "s": "N6TR" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "154" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "TREE" },
+    { "type": "Key", "key": "Space" },
+    { "type": "Text", "s": "OR" },
+    { "type": "Key", "key": "Enter" },
+    { "type": "Key", "key": "Enter" },
+
+    { "type": "Text", "s": "W9XYZ" },
+    { "type": "Key", "key": "CtrlAltF11" }
+  ],
+  "expectations": {
+    "qsos": [
+      { "call": "N6TR", "exchange": { "nr": "154", "name": "TREE", "loc": "OR", "serial": "1" } }
+    ],
+    "cw_sent_contains": [
+      "TU N0CALL 2 CHAD"
+    ],
+    "final_serial_counter": 3
+  }
+}
