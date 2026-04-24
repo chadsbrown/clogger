@@ -83,15 +83,15 @@ SpecContestMeta {
     history_mapping: &[              // .ch column name → field_id
         ("Name", 2),
     ],
-    uses_serial: false,              // true if contest has sent serial numbers
-    cabrillo_id_fn: |mode| match mode {
-        CategoryMode::CW => Some("YOUR-CONTEST-CW"),
-        CategoryMode::SSB => Some("YOUR-CONTEST-SSB"),
-        CategoryMode::Mixed => None,
-    },
+    uses_serial: false,              // true if contest sends serial numbers
     exchange_schema_id: 7,           // unique u16 for QsoDraft
+    auto_toggle_mode: false,         // true for NS-Sprint-style Run↔S&P flip on log
 },
 ```
+
+**Cabrillo IDs come from the contest-engine spec** (the `cabrillo_id` or
+`cabrillo_ids` field in the JSON), not from the registry. No function
+pointer is wired up here.
 
 And the macro factory function:
 
@@ -209,15 +209,28 @@ the `SpecScorer` handles it automatically.
 
 ## Currently Supported Contests
 
-| Contest | Path | contest_id | Spec |
-|---------|------|------------|------|
-| CQ World-Wide DX | Spec-driven | `cqww` | `cqww.json` |
-| CWops CWT | Spec-driven | `cwt` | `cwt.json` |
-| NAQP | Spec-driven | `naqp` | `naqp.json` |
-| ARRL DX | Spec-driven | `arrl_dx` | `arrl_dx.json` |
-| ICWC Medium Speed Test | Spec-driven | `mst` | `mst.json` |
-| NCCC NS Sprint | Spec-driven | `ns_sprint` | `ns_sprint.json` |
-| ARRL Sweepstakes | Hand-coded | `sweeps` | none |
+Major contests (spec-driven unless noted):
+
+| Contest | contest_id | Spec |
+|---------|------------|------|
+| CQ World-Wide DX | `cqww` | `cqww.json` |
+| CWops CWT | `cwt` | `cwt.json` |
+| NAQP | `naqp` | `naqp.json` |
+| ARRL DX | `arrl_dx` | `arrl_dx.json` |
+| ICWC Medium Speed Test | `mst` | `mst.json` |
+| NCCC NS Sprint | `ns_sprint` | `ns_sprint.json` |
+| ARRL Sweepstakes (hand-coded) | `ss` (alias `sweeps`) | none |
+
+State / Province QSO parties — thirteen wired up (`flqp`, `gaqp`,
+`inqp`, `miqp`, `moqp`, `ndqp`, `nhqp`, `nmqp`, `neqp`, `neqsop`,
+`onqp`, `qcqp`, `deqp`). All spec-driven, all share the same
+CALL+RST+LOC shape, configured per-contest in `contest.toml`'s
+`[station]` section. See `docs/contests.md` for the per-contest
+config fields.
+
+The authoritative list is `SPEC_CONTESTS` in
+`logger-core/src/contest/registry.rs` — consult it if a new contest
+has landed since this doc was last refreshed.
 
 ## Key Files Reference
 

@@ -349,6 +349,39 @@ logged QSO. Post-fix:
 | App exit with claim outstanding | Counter re-derived from log on restart — **no waste** |
 | DB insert failure | Counter advanced, QSO not in log — **potential waste, rare** |
 
+## Networked mode considerations (future)
+
+The current design is safe for single-logger SO2R because `claim_serial`
+is a synchronous read-modify-write inside the single-threaded reducer,
+and the F12 rollback's `counter == assigned + 1` check is SO2R-aware.
+
+Before clogger grows a networked / multi-station mode, the following
+design decisions must be made:
+
+- **Counter ownership.** `AppState.serial_counter` is a local `Option<u32>`.
+  For per-station counters with a shared log, that's fine as long as
+  `max_sent_serial` (`logger-runtime/src/log_adapter.rs`) is filtered by
+  station. For a shared serial pool, a coordinator is required — local
+  reducer atomicity does not extend across the network.
+- **Station identity.** `operator_id` is a field on log records but is
+  hardcoded to `0` today (see `log_adapter.rs`, `rtc_adapter.rs`,
+  `rtc_xml.rs`). Any networked mode needs a distinct identity per station
+  plumbed through the reducer and persistence.
+- **F12 rollback across peers.** Today rollback is local-only. In a
+  shared-pool design, a local rollback without peer notification risks
+  duplicate issuance of a serial that another station has already
+  committed against.
+- **Boot-time counter derivation.** `max_sent_serial + 1` assumes the
+  local log contains every committed serial. In a shared-log design
+  where peers may have committed serials not yet synced locally, this
+  underestimates the counter.
+- **Network partition.** Local and peer claims proceed independently
+  during a partition; no reconcile logic exists. Whichever flavor of
+  networked mode is built will need an explicit policy here.
+
+These are tracked for when the work is scheduled; no code changes have
+been made to support networked operation.
+
 ## N1MM+ parity reference
 
 clogger's serial semantics are designed to match N1MM+'s published

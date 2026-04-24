@@ -11,6 +11,7 @@ that operator, and for anyone curious enough to read the code.
 - **[Configuration](configuration.md)** — every TOML field in `config.toml` and `contest.toml`, what it controls, and the defaults.
 - **[Operating](operating.md)** — keybindings, ESM flow, CW macros, SO2R, and the panel layout.
 - **[ESM design](esm.md)** — the Enter-key state machine in detail: Run/S&P flows, state diagrams, CALL-edit reset, auto-toggle, QuickLog.
+- **[ESM — N1MM+ parity](esm-n1mm-parity.md)** — side-by-side comparison of clogger's ESM to N1MM+'s, flagging matches, differences, and feature gaps.
 - **[Serial numbers](serial-numbers.md)** — serial reservation lifecycle, claim/rollback semantics, F-key parity, N1MM+ conventions, SO2R sharing.
 - **[Contests](contests.md)** — per-contest notes (exchange shape, mult types, quirks).
 - **[DX feed tuning](dxfeed-tuning.md)** — dxfeed skimmer quality engine + filter pipeline.
