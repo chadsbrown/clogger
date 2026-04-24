@@ -1,3 +1,4 @@
+mod analytics;
 mod bridge;
 mod config;
 mod keys;
@@ -75,6 +76,9 @@ struct App {
     /// can hand a fresh sender without replumbing.
     #[allow(dead_code)]
     app_tx: tokio::sync::mpsc::Sender<AppEvent>,
+    /// Cached bandmap/available/rate pane data — recomputed in
+    /// `update()` when inputs change rather than every render.
+    analytics: analytics::PaneAnalytics,
 }
 
 const FONT_SCALE_MIN: f32 = 0.6;
@@ -166,7 +170,22 @@ impl App {
             adapters_ready: false,
             font_scale: mdi::load_font_scale().unwrap_or(1.0).clamp(FONT_SCALE_MIN, FONT_SCALE_MAX),
             app_tx,
+            analytics: analytics::PaneAnalytics::new(),
         }
+    }
+
+    /// Refresh the cached pane analytics from the current session state.
+    /// Called at the end of `update()` so subsequent `view()` calls read
+    /// prepared data. Cheap when none of the tracked inputs changed.
+    fn refresh_analytics(&mut self) {
+        let now_ms = chrono::Utc::now().timestamp_millis();
+        let show_r2 = self.show_r2();
+        self.analytics.refresh(
+            &self.session.state,
+            &self.session.log_adapter,
+            show_r2,
+            now_ms,
+        );
     }
 
     /// Capture observable side effects before they hit `dispatch` so
@@ -495,6 +514,11 @@ fn update(state: &mut App, msg: Message) -> iced::Task<Message> {
         }
     }
 
+    // Refresh cached pane analytics (bandmap worked/mults, available,
+    // rate) once per message. No-op when none of the tracked inputs
+    // changed; otherwise runs the work here rather than every render.
+    state.refresh_analytics();
+
     pending
 }
 
@@ -587,20 +611,22 @@ fn body_for<'a>(state: &'a App, pane: &'a mdi::Pane) -> Element<'a, Message> {
         )
     } else if pane.id == state.pane_bandmap_r1 {
         let zoom = state.bandmap_zoom.get(&1).copied().unwrap_or(1.0);
+        let cursor_hz = state.session.state.radios.get(&1).map(|r| r.freq_hz).unwrap_or(0);
         panes::bandmap::view(
             &state.session.state,
-            &state.session.log_adapter,
-            1,
+            state.analytics.r1.as_ref(),
+            cursor_hz,
             zoom,
             bandmap_r1_clicked,
             bandmap_r1_zoom,
         )
     } else if pane.id == state.pane_bandmap_r2 {
         let zoom = state.bandmap_zoom.get(&2).copied().unwrap_or(1.0);
+        let cursor_hz = state.session.state.radios.get(&2).map(|r| r.freq_hz).unwrap_or(0);
         panes::bandmap::view(
             &state.session.state,
-            &state.session.log_adapter,
-            2,
+            state.analytics.r2.as_ref(),
+            cursor_hz,
             zoom,
             bandmap_r2_clicked,
             bandmap_r2_zoom,
@@ -610,9 +636,9 @@ fn body_for<'a>(state: &'a App, pane: &'a mdi::Pane) -> Element<'a, Message> {
     } else if pane.id == state.pane_score {
         panes::score::view(&state.session.log_adapter)
     } else if pane.id == state.pane_rate {
-        panes::rate::view(&state.session.log_adapter)
+        panes::rate::view(&state.analytics.rate)
     } else if pane.id == state.pane_avail {
-        panes::available::view(&state.session.state, &state.session.log_adapter)
+        panes::available::view(&state.analytics.avail)
     } else if pane.id == state.pane_macros {
         panes::macros::view(&state.session.macros)
     } else if pane.id == state.pane_so2r {

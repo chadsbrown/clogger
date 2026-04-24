@@ -9,11 +9,9 @@ use std::collections::HashSet;
 use iced::mouse;
 use iced::widget::canvas::{self, Canvas, Frame, Geometry, Path, Stroke, Text};
 use iced::{Color, Element, Length, Point, Rectangle, Renderer, Size, Theme};
-use logger_core::{
-    contest::{filtered_bandmap_spots, normalize_mode, BandmapCache},
-    freq_to_band_label, AppState, RadioId,
-};
-use logger_runtime::{compute_worked_calls, LogAdapter};
+use logger_core::AppState;
+
+use crate::analytics::RadioAnalytics;
 
 use super::style;
 
@@ -27,50 +25,27 @@ const MIN_ZOOM: f32 = 0.02;
 
 pub fn view<'a, M: 'a + Clone + Send + Sync + 'static>(
     state: &'a AppState,
-    log: &'a LogAdapter,
-    radio_id: RadioId,
+    analytics: Option<&RadioAnalytics>,
+    cursor_hz: u64,
     zoom: f32,
     on_click: fn(Option<String>, u64) -> M,
     on_zoom: fn(f32) -> M,
 ) -> Element<'a, M> {
-    let radio = state.radios.get(&radio_id);
-    let cursor_hz = radio.map(|r| r.freq_hz).unwrap_or(0);
-    let mode = radio.map(|r| r.mode.as_str()).unwrap_or("CW");
     let (band_low, band_high) = pick_band(cursor_hz);
 
-    // Filter by band + mode so the pane renders and snaps against the
-    // same spot list the reducer navigates. Matches reducer.rs call
-    // sites (e.g. reducer.rs:826 snap_bandmap_cursor_to_freq). When the
-    // rig hasn't reported a frequency yet (cursor_hz == 0) the filter
-    // produces an empty list, which the draw code handles cleanly.
-    let filtered_spots: Vec<logger_core::state::Spot> = if cursor_hz > 0 {
-        filtered_bandmap_spots(
-            &state.bandmap,
-            freq_to_band_label(cursor_hz),
-            normalize_mode(mode),
-        )
-    } else {
-        Vec::new()
-    };
-
-    let mut cache = BandmapCache::new();
-    let worked = if cursor_hz > 0 {
-        compute_worked_calls(
-            &state.bandmap,
-            state.bandmap_version,
-            &mut cache,
-            cursor_hz,
-            mode,
-            log,
-        )
-    } else {
-        logger_runtime::WorkedCalls::default()
+    let (spots, worked, mults) = match analytics {
+        Some(a) => (
+            a.filtered_spots.clone(),
+            a.worked.clone(),
+            a.mults.clone(),
+        ),
+        None => (Vec::new(), HashSet::new(), HashSet::new()),
     };
 
     Canvas::new(BandmapProgram {
-        spots: filtered_spots,
-        worked: worked.worked,
-        mults: worked.mults,
+        spots,
+        worked,
+        mults,
         band_low_hz: band_low,
         band_high_hz: band_high,
         cursor_hz,

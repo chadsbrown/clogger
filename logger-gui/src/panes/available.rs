@@ -3,26 +3,11 @@
 
 use iced::widget::{column, container, row, text, Space};
 use iced::{Color, Element, Length, Theme};
-use logger_core::{contest::BandmapCache, AppState};
-use logger_runtime::{compute_avail, LogAdapter};
+use logger_runtime::AvailSummary;
 
 use super::style;
 
-pub fn view<'a, M: 'a>(state: &'a AppState, log: &'a LogAdapter) -> Element<'a, M> {
-    let focused_mode = state
-        .radios
-        .get(&state.focused_radio)
-        .map(|r| r.mode.as_str())
-        .unwrap_or("CW");
-    let mut cache = BandmapCache::new();
-    let info = compute_avail(
-        &state.bandmap,
-        state.bandmap_version,
-        &mut cache,
-        focused_mode,
-        log,
-    );
-
+pub fn view<'a, M: 'a>(info: &'a AvailSummary) -> Element<'a, M> {
     let header = row![
         text("BAND").size(11.0).style(style::muted).width(Length::Fixed(60.0)),
         text("Q").size(11.0).style(style::muted).width(Length::Fixed(50.0)),
