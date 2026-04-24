@@ -377,11 +377,14 @@ pub fn reduce(
                     text: crate::entry::esm::expand_for_send(st, contest, &template),
                 }]
             }
-            Key::F7 | Key::F8 | Key::F9 => {
+            Key::F6 | Key::F7 | Key::F8 | Key::F9 | Key::F10 | Key::F11 => {
                 let template = match key {
+                    Key::F6 => macros.f6.clone(),
                     Key::F7 => macros.f7.clone(),
                     Key::F8 => macros.f8.clone(),
                     Key::F9 => macros.f9.clone(),
+                    Key::F10 => macros.f10.clone(),
+                    Key::F11 => macros.f11.clone(),
                     _ => unreachable!(),
                 };
                 if template.is_empty() {
@@ -2458,6 +2461,58 @@ mod tests {
             st.bandmap_cursors.get(&1),
             Some(BandmapCursor::On { call, .. }) if call == "K5ZD"
         ));
+    }
+
+    #[test]
+    fn bandmap_cursor_demotes_to_between_when_anchored_call_withdrawn() {
+        // Anchored call K5ZD disappears from the bandmap. snap_all_bandmap_cursors
+        // should demote the cursor from On{K5ZD} to Between at the same freq so
+        // the UI keeps a meaningful insertion point. Another spot nearby is a
+        // distractor — we specifically want the Between carry-over, not a jump
+        // to that spot (that happens on the next RigStatus).
+        let mut st = mk_state();
+        add_spot(&mut st, "K5ZD", 14_025_000, "CW");
+        add_spot(&mut st, "W1AW", 14_027_000, "CW");
+        rig_status(&mut st, 1, 14_025_100, "CW", Some(500));
+        assert!(matches!(
+            st.bandmap_cursors.get(&1),
+            Some(BandmapCursor::On { call, .. }) if call == "K5ZD"
+        ));
+        // Withdraw the anchored call.
+        let contest = contest_from_id("cqww").unwrap();
+        let macros = Macros::default();
+        reduce(
+            &mut st,
+            contest.as_ref(),
+            &macros,
+            AppEvent::SpotWithdrawn {
+                call: "K5ZD".to_string(),
+            },
+        );
+        assert!(
+            matches!(
+                st.bandmap_cursors.get(&1),
+                Some(BandmapCursor::Between { freq_hz: 14_025_000 })
+            ),
+            "anchored call withdrawn should demote to Between at the last known freq, got {:?}",
+            st.bandmap_cursors.get(&1)
+        );
+    }
+
+    #[test]
+    fn bandmap_snap_noop_when_rig_freq_zero() {
+        // RigStatus with freq_hz=0 (rig not yet polled) must not insert a
+        // cursor — otherwise the first real RigStatus has to unwind a bogus
+        // Between{0}. Guards the early-return at the top of
+        // snap_bandmap_cursor_to_freq.
+        let mut st = mk_state();
+        add_spot(&mut st, "K5ZD", 14_025_000, "CW");
+        rig_status(&mut st, 1, 0, "CW", Some(500));
+        assert!(
+            st.bandmap_cursors.get(&1).is_none(),
+            "snap must not run on freq_hz=0, got {:?}",
+            st.bandmap_cursors.get(&1)
+        );
     }
 
     #[test]

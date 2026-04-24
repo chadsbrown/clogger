@@ -23,6 +23,19 @@ struct LastRigState {
     filter_width_hz: Option<u32>,
 }
 
+/// Initial-poll PTT query is retried this many times with PTT_RETRY_DELAY
+/// between attempts before giving up and defaulting to PTT-off. The
+/// connection itself is still considered established — a radio that refuses
+/// to answer `get_ptt` on boot but responds to freq/mode reads is common
+/// enough that this shouldn't block startup.
+const PTT_STARTUP_RETRIES: u32 = 3;
+const PTT_RETRY_DELAY: Duration = Duration::from_millis(200);
+
+/// Reconnect backoff: start at 1s, double on each failure, cap at 30s.
+/// Applies both to initial-connect failures and to mid-session disconnects.
+const RECONNECT_INITIAL_DELAY: Duration = Duration::from_secs(1);
+const RECONNECT_MAX_DELAY: Duration = Duration::from_secs(30);
+
 fn map_mode(mode: &riglib::Mode) -> String {
     match mode {
         riglib::Mode::CW | riglib::Mode::CWR => "CW".to_string(),
@@ -39,7 +52,21 @@ fn normalize(name: &str) -> String {
     name.to_lowercase().replace('-', "")
 }
 
-/// Spawn a rig adapter task and return a handle to the rig.
+/// Spawn a rig adapter task and return the command channel.
+///
+/// The adapter is self-supervising: on connection failure or mid-session
+/// disconnect it emits `AppEvent::RigDisconnected`, waits with exponential
+/// backoff (1s → 2s → 4s → ... capped at 30s), and retries indefinitely
+/// until the returned `cmd_tx` is dropped (which signals shutdown).
+///
+/// Commands sent to `cmd_tx` while the rig is offline are buffered in the
+/// channel and dispatched as soon as reconnection succeeds; if the channel
+/// buffer fills during a long outage, sends will block or fail per standard
+/// mpsc semantics.
+///
+/// Only the initial model lookup is synchronous — a bogus model name in
+/// TOML fails fast with `Err`. Every other error path is handled via
+/// supervised reconnect.
 ///
 /// # Limitation: one receiver per adapter
 ///
@@ -65,11 +92,208 @@ pub async fn spawn_rig_adapter(
     config: &RigConfig,
     tx: mpsc::Sender<AppEvent>,
 ) -> anyhow::Result<mpsc::Sender<RigCmd>> {
-    let rig_def = riglib::find_rig(&config.model)
+    // Validate the model name upfront so TOML typos fail immediately
+    // rather than disappearing into an infinite reconnect loop.
+    riglib::find_rig(&config.model)
         .ok_or_else(|| anyhow::anyhow!("unknown rig model: {}", config.model))?;
 
-    info!("connecting to {} on {}", rig_def.model_name, config.port);
+    let (cmd_tx, cmd_rx) = mpsc::channel::<RigCmd>(32);
+    let config = config.clone();
+    tokio::spawn(rig_supervisor(config, tx, cmd_rx));
+    Ok(cmd_tx)
+}
 
+/// Outer supervisor: owns the command channel across reconnect cycles.
+/// Each iteration tries to bring up a full session (connect + subscribe +
+/// poll + command dispatch). On failure or disconnect it sleeps with
+/// backoff and tries again. Shutdown is signaled by the command sender
+/// dropping, which closes `cmd_rx` and causes `run_session` to return
+/// `SessionResult::Shutdown`.
+async fn rig_supervisor(
+    config: RigConfig,
+    tx: mpsc::Sender<AppEvent>,
+    mut cmd_rx: mpsc::Receiver<RigCmd>,
+) {
+    let radio_id = config.radio_id;
+    let mut backoff = RECONNECT_INITIAL_DELAY;
+    let mut first = true;
+
+    loop {
+        if !first {
+            info!(radio = radio_id, "rig reconnecting in {:?}", backoff);
+            tokio::time::sleep(backoff).await;
+        }
+        first = false;
+
+        match run_session(&config, &tx, &mut cmd_rx).await {
+            SessionResult::Shutdown => {
+                info!(radio = radio_id, "rig adapter shutting down");
+                return;
+            }
+            SessionResult::ConnectFailed(e) => {
+                warn!(radio = radio_id, err = %e, "rig connect failed");
+                let _ = tx
+                    .send(AppEvent::RigDisconnected { radio: radio_id })
+                    .await;
+                backoff = (backoff * 2).min(RECONNECT_MAX_DELAY);
+            }
+            SessionResult::Disconnected(reason) => {
+                warn!(radio = radio_id, "rig disconnected: {reason}");
+                let _ = tx
+                    .send(AppEvent::RigDisconnected { radio: radio_id })
+                    .await;
+                // Fresh disconnect — reset backoff so a long-stable rig
+                // that briefly drops doesn't wait the full 30s next time.
+                backoff = RECONNECT_INITIAL_DELAY;
+            }
+        }
+    }
+}
+
+enum SessionResult {
+    /// Command channel closed — caller dropped the adapter handle.
+    Shutdown,
+    /// Could not build or initialize the rig connection.
+    ConnectFailed(anyhow::Error),
+    /// Connection was established but went away mid-session.
+    Disconnected(String),
+}
+
+/// One connection-lifetime session: build the rig, do the initial poll,
+/// then run the subscribe/poll/control tasks until one of them signals
+/// that the connection is gone (or the command channel closes).
+async fn run_session(
+    config: &RigConfig,
+    tx: &mpsc::Sender<AppEvent>,
+    cmd_rx: &mut mpsc::Receiver<RigCmd>,
+) -> SessionResult {
+    let radio_id = config.radio_id;
+    let rig = match build_rig(config).await {
+        Ok(r) => r,
+        Err(e) => return SessionResult::ConnectFailed(e),
+    };
+
+    let primary = match rig.primary_receiver().await {
+        Ok(p) => p,
+        Err(e) => return SessionResult::ConnectFailed(anyhow::anyhow!("primary_receiver: {e}")),
+    };
+    let freq_hz = match rig.get_frequency(primary).await {
+        Ok(f) => f,
+        Err(e) => return SessionResult::ConnectFailed(anyhow::anyhow!("get_frequency: {e}")),
+    };
+    let mode = match rig.get_mode(primary).await {
+        Ok(m) => m,
+        Err(e) => return SessionResult::ConnectFailed(anyhow::anyhow!("get_mode: {e}")),
+    };
+    // PTT is less load-bearing for initial setup — many rigs return an
+    // error on get_ptt() during the first few hundred ms after USB enum.
+    // Retry a handful of times, then give up and assume PTT-off. This
+    // doesn't fail the session; worst case the first UI paint shows PTT-off
+    // until a genuine PttChanged event arrives.
+    let is_ptt = startup_query_ptt(rig.as_ref()).await;
+    let filter_width_hz = rig.get_passband(primary).await.ok().map(|pb| pb.hz());
+
+    let mode_str = map_mode(&mode);
+
+    let _ = tx
+        .send(AppEvent::RigStatus {
+            radio: radio_id,
+            freq_hz,
+            mode: mode_str.clone(),
+            is_ptt,
+            filter_width_hz,
+        })
+        .await;
+
+    let (filter_tx, filter_rx) = watch::channel(filter_width_hz);
+
+    let events = match rig.subscribe() {
+        Ok(e) => e,
+        Err(e) => return SessionResult::ConnectFailed(anyhow::anyhow!("subscribe: {e}")),
+    };
+    let last = LastRigState {
+        freq_hz,
+        mode: mode_str,
+        is_ptt,
+        filter_width_hz,
+    };
+
+    // Each sub-task reports its own exit reason. The first to report wins
+    // — we discard the rest when we drop the JoinHandles on return.
+    let (report_tx, mut report_rx) = mpsc::channel::<String>(4);
+
+    let sub_handle = tokio::spawn(subscription_task(
+        events,
+        tx.clone(),
+        filter_rx.clone(),
+        radio_id,
+        last,
+        report_tx.clone(),
+    ));
+
+    let poll_handle = if !config.transceive {
+        Some(tokio::spawn(poll_task(
+            Arc::clone(&rig),
+            primary,
+            tx.clone(),
+            filter_tx,
+            radio_id,
+            report_tx.clone(),
+        )))
+    } else {
+        // No polling — but keep filter_tx alive so the subscription task's
+        // filter_rx doesn't see a closed channel. A lightweight detached
+        // task holds it for the session's duration.
+        tokio::spawn(async move {
+            let _hold = filter_tx;
+            std::future::pending::<()>().await;
+        });
+        None
+    };
+
+    // Control task runs inline in this function: we select on cmd_rx and
+    // the sub-task report channel. This way if the command channel closes
+    // (shutdown) we can return Shutdown directly, without needing the
+    // sub-tasks to cooperate.
+    loop {
+        tokio::select! {
+            biased;
+            cmd = cmd_rx.recv() => {
+                match cmd {
+                    Some(RigCmd::SetFrequency { hz }) => {
+                        if let Err(e) = rig.set_frequency(primary, hz).await {
+                            warn!(radio = radio_id, "set_frequency failed: {e}");
+                            // A command error is usually a disconnect in
+                            // disguise. Let the sub-tasks confirm via their
+                            // normal disconnect paths; we just log here.
+                        }
+                    }
+                    None => {
+                        // Shutdown: caller dropped cmd_tx.
+                        sub_handle.abort();
+                        if let Some(h) = poll_handle {
+                            h.abort();
+                        }
+                        return SessionResult::Shutdown;
+                    }
+                }
+            }
+            reason = report_rx.recv() => {
+                let reason = reason.unwrap_or_else(|| "sub-tasks exited".to_string());
+                sub_handle.abort();
+                if let Some(h) = poll_handle {
+                    h.abort();
+                }
+                return SessionResult::Disconnected(reason);
+            }
+        }
+    }
+}
+
+async fn build_rig(config: &RigConfig) -> anyhow::Result<Arc<dyn Rig>> {
+    let rig_def = riglib::find_rig(&config.model)
+        .ok_or_else(|| anyhow::anyhow!("unknown rig model: {}", config.model))?;
+    info!("connecting to {} on {}", rig_def.model_name, config.port);
     let needle = normalize(&config.model);
 
     let rig: Arc<dyn Rig> = match rig_def.manufacturer {
@@ -125,187 +349,125 @@ pub async fn spawn_rig_adapter(
             Arc::new(builder.build().await?) as Arc<dyn Rig>
         }
     };
+    Ok(rig)
+}
 
-    // Initial poll
-    let primary = rig.primary_receiver().await?;
-    let freq_hz = rig.get_frequency(primary).await?;
-    let mode = rig.get_mode(primary).await?;
-    let is_ptt = rig.get_ptt().await.unwrap_or(false);
-    let filter_width_hz = rig.get_passband(primary).await.ok().map(|pb| pb.hz());
-
-    let mode_str = map_mode(&mode);
-    // Each rig adapter is tied to a single radio_id (configured in TOML).
-    // This allows two physical rigs (each reporting receiver index 0) to be
-    // distinguished as Radio 1 and Radio 2.
-    let radio_id = config.radio_id;
-
-    let _ = tx
-        .send(AppEvent::RigStatus {
-            radio: radio_id,
-            freq_hz,
-            mode: mode_str.clone(),
-            is_ptt,
-            filter_width_hz,
-        })
-        .await;
-
-    // The poll task updates filter_width_hz via a watch channel; the
-    // subscription task reads it when forwarding RigStatus events.
-    let (filter_tx, filter_rx) = watch::channel(filter_width_hz);
-
-    // Subscribe and forward events
-    let mut events = rig.subscribe()?;
-    let mut last = LastRigState {
-        freq_hz,
-        mode: mode_str,
-        is_ptt,
-        filter_width_hz,
-    };
-
-    let event_tx = tx.clone();
-    tokio::spawn(async move {
-        let filter_rx = filter_rx;
-        loop {
-            match events.recv().await {
-                Ok(RigEvent::FrequencyChanged { receiver: _, freq_hz }) => {
-                    last.freq_hz = freq_hz;
-                    last.filter_width_hz = *filter_rx.borrow();
-                    let _ = event_tx
-                        .send(AppEvent::RigStatus {
-                            radio: radio_id,
-                            freq_hz: last.freq_hz,
-                            mode: last.mode.clone(),
-                            is_ptt: last.is_ptt,
-                            filter_width_hz: last.filter_width_hz,
-                        })
-                        .await;
-                }
-                Ok(RigEvent::ModeChanged { receiver: _, mode }) => {
-                    last.mode = map_mode(&mode);
-                    last.filter_width_hz = *filter_rx.borrow();
-                    let _ = event_tx
-                        .send(AppEvent::RigStatus {
-                            radio: radio_id,
-                            freq_hz: last.freq_hz,
-                            mode: last.mode.clone(),
-                            is_ptt: last.is_ptt,
-                            filter_width_hz: last.filter_width_hz,
-                        })
-                        .await;
-                }
-                Ok(RigEvent::PttChanged { on }) => {
-                    last.is_ptt = on;
-                    last.filter_width_hz = *filter_rx.borrow();
-                    let _ = event_tx
-                        .send(AppEvent::RigStatus {
-                            radio: radio_id,
-                            freq_hz: last.freq_hz,
-                            mode: last.mode.clone(),
-                            is_ptt: last.is_ptt,
-                            filter_width_hz: last.filter_width_hz,
-                        })
-                        .await;
-                }
-                Ok(RigEvent::Disconnected) => {
-                    warn!("rig disconnected");
-                    let _ = event_tx
-                        .send(AppEvent::RigDisconnected { radio: radio_id })
-                        .await;
-                    break;
-                }
-                Ok(_) => {}
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
-                    warn!("rig event stream lagged, dropped {n} events");
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                    warn!("rig event stream closed");
-                    let _ = event_tx
-                        .send(AppEvent::RigDisconnected { radio: radio_id })
-                        .await;
-                    break;
-                }
-            }
-        }
-    });
-
-    // Poll frequency, mode, and passband at 4 Hz *only* when the operator
-    // has declared CI-V Transceive off on this rig. In transceive mode the
-    // rig already broadcasts freq/mode/PTT changes on the bus and the
-    // subscription task above handles them as RigEvents — polling would
-    // compete with those broadcasts on the half-duplex bus and cause
-    // front-panel lag on Icom radios. Filter width has no broadcast
-    // event, so in transceive mode the reducer falls back to the value
-    // read once at startup (or the mode defaults when absent).
-    if !config.transceive {
-        let poll_rig = Arc::clone(&rig);
-        let poll_tx = tx.clone();
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_millis(250));
-            let mut consecutive_errors = 0u32;
-            loop {
-                interval.tick().await;
-                let freq_ok = poll_rig.get_frequency(primary).await.is_ok();
-                let mode_ok = poll_rig.get_mode(primary).await.is_ok();
-                // Passband polling is best-effort; not all backends implement it.
-                let new_filter = poll_rig
-                    .get_passband(primary)
-                    .await
-                    .ok()
-                    .map(|pb| pb.hz());
-                let _ = filter_tx.send(new_filter);
-                if freq_ok && mode_ok {
-                    consecutive_errors = 0;
+/// Retry the initial PTT query a handful of times before giving up.
+/// Returns `false` if every attempt errors; this lets a slow-to-boot radio
+/// come up cleanly without blocking the adapter startup.
+async fn startup_query_ptt(rig: &dyn Rig) -> bool {
+    for attempt in 0..PTT_STARTUP_RETRIES {
+        match rig.get_ptt().await {
+            Ok(ptt) => return ptt,
+            Err(e) => {
+                if attempt + 1 < PTT_STARTUP_RETRIES {
+                    warn!(
+                        attempt = attempt + 1,
+                        "get_ptt failed on startup: {e}; retrying"
+                    );
+                    tokio::time::sleep(PTT_RETRY_DELAY).await;
                 } else {
-                    consecutive_errors += 1;
-                    warn!("rig poll failed ({consecutive_errors} consecutive)");
-                    if consecutive_errors >= 3 {
-                        warn!("rig poll: too many consecutive errors, stopping");
-                        let _ = poll_tx
-                            .send(AppEvent::RigDisconnected { radio: radio_id })
-                            .await;
-                        break;
-                    }
-                }
-            }
-        });
-    } else {
-        // Keep filter_tx alive for the subscription task's filter_rx reader.
-        // Dropping it would signal channel closure; holding it in this
-        // detached task costs one watch::Sender for the rig's lifetime.
-        tokio::spawn(async move {
-            let _hold = filter_tx;
-            std::future::pending::<()>().await;
-        });
-    }
-
-    // Control task: drains RigCmd from an mpsc channel and calls the
-    // corresponding Rig methods. Shares `Arc<dyn Rig>` with the poll and
-    // subscription tasks — the underlying riglib implementation serializes
-    // commands internally via its own actor, so concurrent access is safe.
-    // This is what makes hardware operations non-blocking from the event
-    // loop's perspective: the event loop does `rig_tx.try_send(cmd)` and
-    // returns in nanoseconds; the control task picks it up and awaits on
-    // the CI-V roundtrip without blocking the UI.
-    let (cmd_tx, mut cmd_rx) = mpsc::channel::<RigCmd>(32);
-    let control_rig = Arc::clone(&rig);
-    let control_err_tx = tx;
-    tokio::spawn(async move {
-        while let Some(cmd) = cmd_rx.recv().await {
-            match cmd {
-                RigCmd::SetFrequency { hz } => {
-                    if let Err(e) = control_rig.set_frequency(primary, hz).await {
-                        warn!("rig {} set_frequency failed: {e}", radio_id);
-                        // Transient errors get surfaced to the UI as
-                        // RigError-style events could be added here; for
-                        // now, mirror the existing log-and-continue behavior.
-                        let _ = control_err_tx
-                            .send(AppEvent::RigDisconnected { radio: radio_id })
-                            .await;
-                    }
+                    warn!("get_ptt failed {PTT_STARTUP_RETRIES} times on startup; assuming off");
                 }
             }
         }
-    });
+    }
+    false
+}
 
-    Ok(cmd_tx)
+async fn subscription_task(
+    mut events: tokio::sync::broadcast::Receiver<RigEvent>,
+    tx: mpsc::Sender<AppEvent>,
+    filter_rx: watch::Receiver<Option<u32>>,
+    radio_id: logger_core::RadioId,
+    mut last: LastRigState,
+    report_tx: mpsc::Sender<String>,
+) {
+    loop {
+        match events.recv().await {
+            Ok(RigEvent::FrequencyChanged { receiver: _, freq_hz }) => {
+                last.freq_hz = freq_hz;
+                last.filter_width_hz = *filter_rx.borrow();
+                let _ = tx
+                    .send(AppEvent::RigStatus {
+                        radio: radio_id,
+                        freq_hz: last.freq_hz,
+                        mode: last.mode.clone(),
+                        is_ptt: last.is_ptt,
+                        filter_width_hz: last.filter_width_hz,
+                    })
+                    .await;
+            }
+            Ok(RigEvent::ModeChanged { receiver: _, mode }) => {
+                last.mode = map_mode(&mode);
+                last.filter_width_hz = *filter_rx.borrow();
+                let _ = tx
+                    .send(AppEvent::RigStatus {
+                        radio: radio_id,
+                        freq_hz: last.freq_hz,
+                        mode: last.mode.clone(),
+                        is_ptt: last.is_ptt,
+                        filter_width_hz: last.filter_width_hz,
+                    })
+                    .await;
+            }
+            Ok(RigEvent::PttChanged { on }) => {
+                last.is_ptt = on;
+                last.filter_width_hz = *filter_rx.borrow();
+                let _ = tx
+                    .send(AppEvent::RigStatus {
+                        radio: radio_id,
+                        freq_hz: last.freq_hz,
+                        mode: last.mode.clone(),
+                        is_ptt: last.is_ptt,
+                        filter_width_hz: last.filter_width_hz,
+                    })
+                    .await;
+            }
+            Ok(RigEvent::Disconnected) => {
+                let _ = report_tx.send("subscription: Disconnected event".into()).await;
+                return;
+            }
+            Ok(_) => {}
+            Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                warn!("rig event stream lagged, dropped {n} events");
+            }
+            Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                let _ = report_tx.send("subscription: stream closed".into()).await;
+                return;
+            }
+        }
+    }
+}
+
+/// Poll frequency, mode, and passband at 4 Hz (only when transceive is off).
+/// On three consecutive failures, reports disconnect to the supervisor and
+/// exits.
+async fn poll_task(
+    rig: Arc<dyn Rig>,
+    primary: riglib::ReceiverId,
+    _tx: mpsc::Sender<AppEvent>,
+    filter_tx: watch::Sender<Option<u32>>,
+    radio_id: logger_core::RadioId,
+    report_tx: mpsc::Sender<String>,
+) {
+    let mut interval = tokio::time::interval(Duration::from_millis(250));
+    let mut consecutive_errors = 0u32;
+    loop {
+        interval.tick().await;
+        let freq_ok = rig.get_frequency(primary).await.is_ok();
+        let mode_ok = rig.get_mode(primary).await.is_ok();
+        let new_filter = rig.get_passband(primary).await.ok().map(|pb| pb.hz());
+        let _ = filter_tx.send(new_filter);
+        if freq_ok && mode_ok {
+            consecutive_errors = 0;
+        } else {
+            consecutive_errors += 1;
+            warn!(radio = radio_id, "rig poll failed ({consecutive_errors} consecutive)");
+            if consecutive_errors >= 3 {
+                let _ = report_tx.send("poll: 3 consecutive errors".into()).await;
+                return;
+            }
+        }
+    }
 }

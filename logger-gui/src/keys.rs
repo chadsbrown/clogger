@@ -50,9 +50,12 @@ pub fn translate(key: &Key, modifiers: Modifiers, text: Option<&str>) -> Option<
             Named::F3 => return Some(AppEvent::KeyPress { key: LKey::F3 }),
             Named::F4 => return Some(AppEvent::KeyPress { key: LKey::F4 }),
             Named::F5 => return Some(AppEvent::KeyPress { key: LKey::F5 }),
+            Named::F6 => return Some(AppEvent::KeyPress { key: LKey::F6 }),
             Named::F7 => return Some(AppEvent::KeyPress { key: LKey::F7 }),
             Named::F8 => return Some(AppEvent::KeyPress { key: LKey::F8 }),
             Named::F9 => return Some(AppEvent::KeyPress { key: LKey::F9 }),
+            Named::F10 => return Some(AppEvent::KeyPress { key: LKey::F10 }),
+            Named::F11 => return Some(AppEvent::KeyPress { key: LKey::F11 }),
             Named::F12 => return Some(AppEvent::KeyPress { key: LKey::F12 }),
 
             _ => {}

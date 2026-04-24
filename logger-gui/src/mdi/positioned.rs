@@ -76,7 +76,10 @@ where
         cursor: mouse::Cursor,
         viewport: &Rectangle,
     ) {
-        let child_layout = layout.children().next().unwrap();
+        let child_layout = layout
+            .children()
+            .next()
+            .expect("Positioned widget layout invariant: exactly one child");
         self.content.as_widget().draw(
             &tree.children[0],
             renderer,
@@ -99,7 +102,10 @@ where
         shell: &mut Shell<'_, Message>,
         viewport: &Rectangle,
     ) {
-        let child_layout = layout.children().next().unwrap();
+        let child_layout = layout
+            .children()
+            .next()
+            .expect("Positioned widget layout invariant: exactly one child");
         self.content.as_widget_mut().update(
             &mut tree.children[0],
             event,
@@ -120,7 +126,10 @@ where
         viewport: &Rectangle,
         renderer: &Renderer,
     ) -> mouse::Interaction {
-        let child_layout = layout.children().next().unwrap();
+        let child_layout = layout
+            .children()
+            .next()
+            .expect("Positioned widget layout invariant: exactly one child");
         self.content.as_widget().mouse_interaction(
             &tree.children[0],
             child_layout,
@@ -138,7 +147,10 @@ where
         viewport: &Rectangle,
         translation: Vector,
     ) -> Option<overlay::Element<'b, Message, Theme, Renderer>> {
-        let child_layout = layout.children().next().unwrap();
+        let child_layout = layout
+            .children()
+            .next()
+            .expect("Positioned widget layout invariant: exactly one child");
         self.content.as_widget_mut().overlay(
             &mut tree.children[0],
             child_layout,

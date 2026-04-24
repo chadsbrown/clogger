@@ -23,9 +23,12 @@ pub struct MacroOverrides {
     pub f2: Option<String>,
     pub f3: Option<String>,
     pub f5: Option<String>,
+    pub f6: Option<String>,
     pub f7: Option<String>,
     pub f8: Option<String>,
     pub f9: Option<String>,
+    pub f10: Option<String>,
+    pub f11: Option<String>,
     pub ctrl_alt_f1: Option<String>,
     pub ctrl_alt_f2: Option<String>,
     pub ctrl_alt_f3: Option<String>,
@@ -132,9 +135,12 @@ pub fn bootstrap(config: SessionConfig) -> Result<Session> {
         if let Some(ref v) = overrides.f2 { macros.f2 = v.clone(); }
         if let Some(ref v) = overrides.f3 { macros.f3 = v.clone(); }
         if let Some(ref v) = overrides.f5 { macros.f5 = v.clone(); }
+        if let Some(ref v) = overrides.f6 { macros.f6 = v.clone(); }
         if let Some(ref v) = overrides.f7 { macros.f7 = v.clone(); }
         if let Some(ref v) = overrides.f8 { macros.f8 = v.clone(); }
         if let Some(ref v) = overrides.f9 { macros.f9 = v.clone(); }
+        if let Some(ref v) = overrides.f10 { macros.f10 = v.clone(); }
+        if let Some(ref v) = overrides.f11 { macros.f11 = v.clone(); }
         if let Some(ref v) = overrides.ctrl_alt_f1 { macros.ctrl_alt_f1 = v.clone(); }
         if let Some(ref v) = overrides.ctrl_alt_f2 { macros.ctrl_alt_f2 = v.clone(); }
         if let Some(ref v) = overrides.ctrl_alt_f3 { macros.ctrl_alt_f3 = v.clone(); }

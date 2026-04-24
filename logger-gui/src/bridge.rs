@@ -444,6 +444,12 @@ pub fn dispatch(session: &mut Session, effects: Vec<Effect>, handles: &AdapterHa
                     .position(|f| f.field_id == field_id)
                 {
                     session.state.focused_entry_mut().focus = idx;
+                } else {
+                    tracing::warn!(
+                        field_id,
+                        "UiSetFocus effect referenced a field_id not in the focused entry \
+                         (likely stale after radio/contest change)"
+                    );
                 }
             }
             Effect::UiClearEntry => {

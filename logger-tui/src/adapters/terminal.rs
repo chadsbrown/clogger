@@ -153,9 +153,12 @@ pub(crate) fn map_key_event(key_ev: KeyEvent, has_second_rig: bool) -> Option<Te
                 (_, KeyCode::F(3)) => TerminalEvent::App(AppEvent::KeyPress { key: Key::F3 }),
                 (_, KeyCode::F(4)) => TerminalEvent::App(AppEvent::KeyPress { key: Key::F4 }),
                 (_, KeyCode::F(5)) => TerminalEvent::App(AppEvent::KeyPress { key: Key::F5 }),
+                (_, KeyCode::F(6)) => TerminalEvent::App(AppEvent::KeyPress { key: Key::F6 }),
                 (_, KeyCode::F(7)) => TerminalEvent::App(AppEvent::KeyPress { key: Key::F7 }),
                 (_, KeyCode::F(8)) => TerminalEvent::App(AppEvent::KeyPress { key: Key::F8 }),
                 (_, KeyCode::F(9)) => TerminalEvent::App(AppEvent::KeyPress { key: Key::F9 }),
+                (_, KeyCode::F(10)) => TerminalEvent::App(AppEvent::KeyPress { key: Key::F10 }),
+                (_, KeyCode::F(11)) => TerminalEvent::App(AppEvent::KeyPress { key: Key::F11 }),
                 (_, KeyCode::F(12)) => TerminalEvent::App(AppEvent::KeyPress { key: Key::F12 }),
                 _ => return None,
     };

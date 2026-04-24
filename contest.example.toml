@@ -96,9 +96,12 @@ contest = "cqww"
 #f2 = ">{RST_SENT} {MYZONE}<"    # exchange (faster)
 #f3 = "TU {MYCALL}"               # thank you
 #f5 = "{CALL}"                     # other station's call
+#f6 = ""                           # user-defined (default empty = unbound)
 #f7 = "?"
 #f8 = "NR {MYZONE} {MYZONE}"
 #f9 = "QRL?"
+#f10 = ""                          # user-defined (default empty = unbound)
+#f11 = ""                          # user-defined (default empty = unbound)
 # Ctrl-Alt function keys (all default to empty / unbound):
 #ctrl_alt_f1 = "QRL?"
 #ctrl_alt_f2 = "AGN?"
