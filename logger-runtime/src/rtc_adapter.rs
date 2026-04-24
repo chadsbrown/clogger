@@ -193,11 +193,6 @@ async fn adapter_task(
 
         let xml = serialize_envelope(&dyn_body, &pending);
 
-        // TEMP-DEBUG (remove-me): body dump to rtc.log; see
-        // logger-runtime/src/temp_debug_log.rs for the full removal
-        // recipe. Replaces the previous `tracing::info!("rtc XML ...")`.
-        crate::temp_debug_log::append("rtc.log", &xml);
-
         match post_and_interpret(&client, &cfg, &xml).await {
             PostOutcome::Ok => {
                 let _ = status_tx.send(RtcStatus::NoChanges);

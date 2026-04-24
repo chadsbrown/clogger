@@ -21,8 +21,6 @@ pub mod rtc_adapter;
 pub mod rtc_xml;
 pub mod so2r_adapter;
 pub mod so2r_task;
-// TEMP-DEBUG (remove-me): see logger-runtime/src/temp_debug_log.rs
-pub mod temp_debug_log;
 
 pub use call_history::CallHistoryDb;
 pub use condx_adapter::{BandCondition, CondXConfig, CondXSnapshot, spawn_condx_adapter};
