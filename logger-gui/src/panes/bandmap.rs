@@ -5,6 +5,7 @@
 //! frequency and populate the entry's CALL field.
 
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use iced::mouse;
 use iced::widget::canvas::{self, Canvas, Frame, Geometry, Path, Stroke, Text};
@@ -35,11 +36,15 @@ pub fn view<'a, M: 'a + Clone + Send + Sync + 'static>(
 
     let (spots, worked, mults) = match analytics {
         Some(a) => (
-            a.filtered_spots.clone(),
-            a.worked.clone(),
-            a.mults.clone(),
+            Arc::clone(&a.filtered_spots),
+            Arc::clone(&a.worked),
+            Arc::clone(&a.mults),
         ),
-        None => (Vec::new(), HashSet::new(), HashSet::new()),
+        None => (
+            Arc::new(Vec::new()),
+            Arc::new(HashSet::new()),
+            Arc::new(HashSet::new()),
+        ),
     };
 
     Canvas::new(BandmapProgram {
@@ -99,12 +104,14 @@ fn snap_to_spot_with_call(
 /// widget's position in the tree, so z-order changes (from clicking panes)
 /// would otherwise reset zoom to 1.0.
 struct BandmapProgram<M> {
-    /// Already filtered by band+mode via `filtered_bandmap_spots` in
-    /// `view()` — same filter the reducer uses for navigation. Sorted by
-    /// freq, deduped by call.
-    spots: Vec<logger_core::state::Spot>,
-    worked: HashSet<String>,
-    mults: HashSet<String>,
+    /// Already filtered by band+mode in `analytics::compute_radio` —
+    /// same filter the reducer uses for navigation, cached on `App`
+    /// across renders. Sorted by freq, deduped by call. `Arc`-shared
+    /// with `RadioAnalytics` so each render does a pointer bump
+    /// instead of a Vec/HashSet clone.
+    spots: Arc<Vec<logger_core::state::Spot>>,
+    worked: Arc<HashSet<String>>,
+    mults: Arc<HashSet<String>>,
     band_low_hz: u64,
     band_high_hz: u64,
     cursor_hz: u64,

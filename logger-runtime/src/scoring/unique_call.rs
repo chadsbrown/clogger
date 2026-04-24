@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use qsolog::qso::QsoRecord;
 
@@ -70,7 +71,7 @@ impl ContestScorer for UniqueCallScorer {
         self.rebuild_summary();
     }
 
-    fn rebuild(&mut self, records: &[QsoRecord]) {
+    fn rebuild(&mut self, records: &[Arc<QsoRecord>]) {
         self.seen_qsos.clear();
         self.seen_calls.clear();
         self.qsos_by_band.clear();

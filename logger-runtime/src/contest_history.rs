@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use logger_core::ContestHistoryLookup;
 use qsolog::qso::QsoRecord;
@@ -35,7 +36,7 @@ impl ContestHistoryIndex {
 
     /// Replay a batch of records (e.g. at open or after undo/redo).
     /// Non-voided records only; last write wins per callsign.
-    pub fn rebuild(&mut self, records: &[QsoRecord]) {
+    pub fn rebuild(&mut self, records: &[Arc<QsoRecord>]) {
         self.rows.clear();
         for rec in records.iter().filter(|r| !r.flags.is_void) {
             let Ok(pairs) = decode_exchange_pairs(&rec.exchange) else {

@@ -309,7 +309,7 @@ impl ContestScorer for SpecScorer {
         self.clear_classify_cache();
     }
 
-    fn rebuild(&mut self, records: &[QsoRecord]) {
+    fn rebuild(&mut self, records: &[Arc<QsoRecord>]) {
         self.qsos_by_band.clear();
         self.mults_by_band.clear();
         self.points_by_band.clear();

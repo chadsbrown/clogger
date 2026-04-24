@@ -13,6 +13,7 @@
 //! prepared results instead of recomputing.
 
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use logger_core::{
     AppState, DupeChecker, MultChecker, RadioId, Spot,
@@ -22,10 +23,14 @@ use logger_runtime::{AvailSummary, LogAdapter, compute_avail};
 
 /// Per-radio bandmap-pane inputs: the spot list (for rendering and
 /// click-to-snap) and the precomputed worked/mult call sets.
+///
+/// Wrapped in `Arc` so the bandmap pane can hand them off to its
+/// `BandmapProgram` via cheap pointer clones each render rather than
+/// deep-cloning the spot vector and both hash sets every time.
 pub struct RadioAnalytics {
-    pub filtered_spots: Vec<Spot>,
-    pub worked: HashSet<String>,
-    pub mults: HashSet<String>,
+    pub filtered_spots: Arc<Vec<Spot>>,
+    pub worked: Arc<HashSet<String>>,
+    pub mults: Arc<HashSet<String>>,
 }
 
 /// Rate-pane metrics. Computed by walking the log's record tail without
@@ -188,9 +193,9 @@ fn compute_radio(
         }
     }
     RadioAnalytics {
-        filtered_spots: spots,
-        worked,
-        mults,
+        filtered_spots: Arc::new(spots),
+        worked: Arc::new(worked),
+        mults: Arc::new(mults),
     }
 }
 

@@ -51,8 +51,10 @@ pub trait ContestScorer: Send + Sync {
     fn on_inserted(&mut self, record: &QsoRecord);
 
     /// One or more existing records have been mutated (void/unvoid/edit).
-    /// The scorer must rebuild its state by replaying `records`.
-    fn rebuild(&mut self, records: &[QsoRecord]);
+    /// The scorer must rebuild its state by replaying `records`. Each
+    /// element is `Arc`-shared with `LogAdapter::records_cache`; iterate
+    /// via auto-deref (`for rec in records { ... rec.field ... }`).
+    fn rebuild(&mut self, records: &[Arc<QsoRecord>]);
 
     /// Cheap read of current totals/breakdown.
     fn score_summary(&self) -> ScoreSummary;

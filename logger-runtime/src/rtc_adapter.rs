@@ -245,7 +245,7 @@ async fn adapter_task(
 ///    by id — simpler than tracking diffs).
 fn compute_pending(
     sidecar: &SidecarState,
-    records: &[QsoRecord],
+    records: &[Arc<QsoRecord>],
     contest_instance_id: u64,
 ) -> (Vec<PendingContact>, HashSet<QsoId>, HashMap<QsoId, bool>) {
     let mut pending = Vec::new();
@@ -434,13 +434,13 @@ mod tests {
     use qsolog::qso::{ExchangeBlob, QsoFlags, QsoRecord};
     use qsolog::types::{Band, Mode};
 
-    fn record(id: u64, is_void: bool) -> QsoRecord {
+    fn record(id: u64, is_void: bool) -> Arc<QsoRecord> {
         let pairs: Vec<(String, String)> =
             vec![("name".to_string(), "ALEX".to_string()),
                  ("xchg".to_string(), "NJ".to_string()),
                  ("sent_name".to_string(), "VIC".to_string()),
                  ("sent_xchg".to_string(), "2212".to_string())];
-        QsoRecord {
+        Arc::new(QsoRecord {
             id,
             contest_instance_id: 1,
             callsign_raw: format!("K{id}BB"),
@@ -455,7 +455,7 @@ mod tests {
                 bytes: serde_json::to_vec(&pairs).unwrap(),
             },
             flags: QsoFlags { is_void, dupe_override: false },
-        }
+        })
     }
 
     #[test]

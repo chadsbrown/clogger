@@ -144,7 +144,7 @@ impl App {
         });
         let tx_radio = session.state.focused_radio;
         let bandmap_zoom = std::collections::HashMap::new();
-        Self {
+        let mut app = Self {
             workspace,
             session,
             handles: AdapterHandles::default(),
@@ -171,7 +171,12 @@ impl App {
             font_scale: mdi::load_font_scale().unwrap_or(1.0).clamp(FONT_SCALE_MIN, FONT_SCALE_MAX),
             app_tx,
             analytics: analytics::PaneAnalytics::new(),
-        }
+        };
+        // Warm the cache so the first paint shows real bandmap/available/
+        // rate data instead of blank panes that fill in only after the
+        // first message lands.
+        app.refresh_analytics();
+        app
     }
 
     /// Refresh the cached pane analytics from the current session state.

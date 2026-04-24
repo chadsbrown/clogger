@@ -23,7 +23,8 @@ pub fn view<'a, M: 'a>(log: &'a LogAdapter) -> Element<'a, M> {
 
     let mut rows: Vec<Element<M>> = Vec::with_capacity(MAX_ROWS);
     let start = records.len().saturating_sub(MAX_ROWS);
-    for (i, rec) in records.iter().enumerate().skip(start) {
+    for (offset, rec) in records[start..].iter().enumerate() {
+        let i = start + offset;
         rows.push(
             row![
                 text(format!("{}", i + 1))
