@@ -9,7 +9,10 @@ use std::collections::HashSet;
 use iced::mouse;
 use iced::widget::canvas::{self, Canvas, Frame, Geometry, Path, Stroke, Text};
 use iced::{Color, Element, Length, Point, Rectangle, Renderer, Size, Theme};
-use logger_core::{contest::BandmapCache, AppState, RadioId};
+use logger_core::{
+    contest::{filtered_bandmap_spots, normalize_mode, BandmapCache},
+    freq_to_band_label, AppState, RadioId,
+};
 use logger_runtime::{compute_worked_calls, LogAdapter};
 
 use super::style;
@@ -35,6 +38,21 @@ pub fn view<'a, M: 'a + Clone + Send + Sync + 'static>(
     let mode = radio.map(|r| r.mode.as_str()).unwrap_or("CW");
     let (band_low, band_high) = pick_band(cursor_hz);
 
+    // Filter by band + mode so the pane renders and snaps against the
+    // same spot list the reducer navigates. Matches reducer.rs call
+    // sites (e.g. reducer.rs:826 snap_bandmap_cursor_to_freq). When the
+    // rig hasn't reported a frequency yet (cursor_hz == 0) the filter
+    // produces an empty list, which the draw code handles cleanly.
+    let filtered_spots: Vec<logger_core::state::Spot> = if cursor_hz > 0 {
+        filtered_bandmap_spots(
+            &state.bandmap,
+            freq_to_band_label(cursor_hz),
+            normalize_mode(mode),
+        )
+    } else {
+        Vec::new()
+    };
+
     let mut cache = BandmapCache::new();
     let worked = if cursor_hz > 0 {
         compute_worked_calls(
@@ -50,7 +68,7 @@ pub fn view<'a, M: 'a + Clone + Send + Sync + 'static>(
     };
 
     Canvas::new(BandmapProgram {
-        spots: &state.bandmap,
+        spots: filtered_spots,
         worked: worked.worked,
         mults: worked.mults,
         band_low_hz: band_low,
@@ -105,8 +123,11 @@ fn snap_to_spot_with_call(
 /// `Program::State` — iced's widget-tree diffing keys canvas state by the
 /// widget's position in the tree, so z-order changes (from clicking panes)
 /// would otherwise reset zoom to 1.0.
-struct BandmapProgram<'a, M> {
-    spots: &'a [logger_core::state::Spot],
+struct BandmapProgram<M> {
+    /// Already filtered by band+mode via `filtered_bandmap_spots` in
+    /// `view()` — same filter the reducer uses for navigation. Sorted by
+    /// freq, deduped by call.
+    spots: Vec<logger_core::state::Spot>,
     worked: HashSet<String>,
     mults: HashSet<String>,
     band_low_hz: u64,
@@ -118,7 +139,7 @@ struct BandmapProgram<'a, M> {
     on_zoom: fn(f32) -> M,
 }
 
-impl<'a, M> BandmapProgram<'a, M> {
+impl<M> BandmapProgram<M> {
     /// Current visible frequency range. Centered on `cursor_hz` when
     /// there's room; clamped to band edges otherwise.
     fn visible_range(&self) -> (u64, u64) {
@@ -156,7 +177,7 @@ fn tick_intervals(visible_span_hz: u64) -> (u64, u64) {
     }
 }
 
-impl<'a, M> canvas::Program<M> for BandmapProgram<'a, M> {
+impl<M> canvas::Program<M> for BandmapProgram<M> {
     type State = ();
 
     fn update(
@@ -200,7 +221,7 @@ impl<'a, M> canvas::Program<M> for BandmapProgram<'a, M> {
                     } else {
                         vlow + offset
                     };
-                    let snapped = snap_to_spot_with_call(self.spots, raw);
+                    let snapped = snap_to_spot_with_call(&self.spots, raw);
                     let (call, target) = match snapped {
                         Some((call, freq)) => (Some(call), freq),
                         None => (None, raw),
@@ -297,7 +318,11 @@ impl<'a, M> canvas::Program<M> for BandmapProgram<'a, M> {
             spot: &'b logger_core::state::Spot,
             y: f32,
         }
-        let mut placements: Vec<Placement> = self
+        // `spots` arrived sorted by freq from `filtered_bandmap_spots`,
+        // and `y_for` is monotonic in freq (modulo `high_at_top` which
+        // flips the sign — still monotonic), so the resulting vec is
+        // already ordered by y. No explicit sort needed.
+        let placements: Vec<Placement> = self
             .spots
             .iter()
             .filter(|s| s.freq_hz >= vlow && s.freq_hz <= vhigh)
@@ -306,7 +331,6 @@ impl<'a, M> canvas::Program<M> for BandmapProgram<'a, M> {
                 y: y_for(s.freq_hz),
             })
             .collect();
-        placements.sort_by(|a, b| a.y.partial_cmp(&b.y).unwrap_or(std::cmp::Ordering::Equal));
 
         // Minimum vertical distance between adjacent label baselines. Set
         // slightly larger than the rendered text height so descenders don't

@@ -375,11 +375,17 @@ fn update(state: &mut App, msg: Message) -> iced::Task<Message> {
                 So2rRxMode::Mono => So2rRxMode::Stereo,
                 So2rRxMode::Stereo | So2rRxMode::ReverseStereo => So2rRxMode::Mono,
             };
-            if let Some(tx) = &state.handles.so2r_tx {
-                let _ = tx.try_send(logger_runtime::So2rCmd::SetRx {
+            if let Some(tx) = &state.handles.so2r_tx
+                && let Err(e) = tx.try_send(logger_runtime::So2rCmd::SetRx {
                     radio: state.session.state.focused_radio,
                     mode: state.handles.so2r_default_rx_mode,
-                });
+                })
+            {
+                tracing::warn!(
+                    radio = state.session.state.focused_radio,
+                    err = %e,
+                    "ToggleSo2rRxMode dropped: so2r channel full or closed"
+                );
             }
         }
         Message::AdaptersReady(result) => match result {

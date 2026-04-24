@@ -402,34 +402,44 @@ pub fn dispatch(session: &mut Session, effects: Vec<Effect>, handles: &AdapterHa
             }
             Effect::CwSend { radio, text } => {
                 if let Some(tx) = &handles.keyer_tx {
-                    let _ = tx.try_send(KeyerCmd::Send { radio, text });
+                    if let Err(e) = tx.try_send(KeyerCmd::Send { radio, text }) {
+                        tracing::warn!(?radio, err = %e, "CwSend dropped: keyer channel full or closed");
+                    }
                 } else {
                     tracing::debug!(?radio, "CwSend with no keyer wired");
                 }
             }
             Effect::CwAbort => {
-                if let Some(tx) = &handles.keyer_tx {
-                    let _ = tx.try_send(KeyerCmd::Abort);
+                if let Some(tx) = &handles.keyer_tx
+                    && let Err(e) = tx.try_send(KeyerCmd::Abort)
+                {
+                    tracing::warn!(err = %e, "CwAbort dropped: keyer channel full or closed");
                 }
             }
             Effect::KeyerSetSpeed { wpm } => {
-                if let Some(tx) = &handles.keyer_tx {
-                    let _ = tx.try_send(KeyerCmd::SetSpeed { wpm });
+                if let Some(tx) = &handles.keyer_tx
+                    && let Err(e) = tx.try_send(KeyerCmd::SetSpeed { wpm })
+                {
+                    tracing::warn!(wpm, err = %e, "KeyerSetSpeed dropped: keyer channel full or closed");
                 }
             }
             Effect::RigSet { radio, freq_hz } => {
                 if let Some(tx) = handles.rig_txs.get(&radio) {
-                    let _ = tx.try_send(RigCmd::SetFrequency { hz: freq_hz });
+                    if let Err(e) = tx.try_send(RigCmd::SetFrequency { hz: freq_hz }) {
+                        tracing::warn!(?radio, freq_hz, err = %e, "RigSet dropped: rig channel full or closed");
+                    }
                 } else {
                     tracing::debug!(?radio, "RigSet with no rig wired");
                 }
             }
             Effect::So2rFocusChanged { radio } => {
-                if let Some(tx) = &handles.so2r_tx {
-                    let _ = tx.try_send(So2rCmd::SetRx {
+                if let Some(tx) = &handles.so2r_tx
+                    && let Err(e) = tx.try_send(So2rCmd::SetRx {
                         radio,
                         mode: handles.so2r_default_rx_mode,
-                    });
+                    })
+                {
+                    tracing::warn!(?radio, err = %e, "So2rFocusChanged dropped: so2r channel full or closed");
                 }
             }
             Effect::Beep { kind: _ } => {
