@@ -96,7 +96,7 @@ pub fn compute_avail(
 }
 
 pub fn compute_rate(log_adapter: &LogAdapter, now_ms: u64) -> RateInfo {
-    let records = log_adapter.ordered_records();
+    let records = log_adapter.records();
     let timestamps: Vec<u64> = records
         .iter()
         .filter(|r| !r.flags.is_void)

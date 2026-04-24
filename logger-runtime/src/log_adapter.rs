@@ -77,6 +77,13 @@ pub struct LogAdapter {
     /// being driven by the UI event loop. `None` for CLI golden tests
     /// and any caller that doesn't want the allocation overhead.
     change_tx: Option<watch::Sender<Arc<LogSnapshot>>>,
+    /// Cached materialization of `store`'s ordered records, rebuilt on
+    /// every mutation (insert/undo/redo/open_db). Read-only consumers —
+    /// GUI panes each frame, snapshot publication, scorer rebuild —
+    /// borrow a slice or clone the Arc instead of re-walking the store
+    /// and cloning every record. Invariant: must reflect `store` state
+    /// at all times; the private `refresh_records_cache` maintains it.
+    records_cache: Arc<[QsoRecord]>,
 }
 
 impl LogAdapter {
@@ -89,7 +96,35 @@ impl LogAdapter {
             score_epoch: 0,
             contest_history: ContestHistoryIndex::new(),
             change_tx: None,
+            records_cache: Arc::from(Vec::<QsoRecord>::new()),
         }
+    }
+
+    /// Materialize `store`'s ordered records into `records_cache`.
+    /// Call after any mutation that could change the ordered id list
+    /// or individual record contents; callers then read via
+    /// `records()` / `records_arc()` without re-walking the store.
+    fn refresh_records_cache(&mut self) {
+        let records: Vec<QsoRecord> = self
+            .store
+            .ordered_ids()
+            .iter()
+            .filter_map(|id| self.store.get_cloned(*id))
+            .collect();
+        self.records_cache = Arc::from(records);
+    }
+
+    /// All QSOs in insertion order, including voided records. Cheap
+    /// — returns a borrow of the cached slice, no allocation.
+    pub fn records(&self) -> &[QsoRecord] {
+        &self.records_cache
+    }
+
+    /// Cheap `Arc` clone of the cached records (8-byte pointer bump).
+    /// Used by `publish_snapshot` and by bootstrap for the initial
+    /// `LogSnapshot` seed, so neither path pays for a full Vec copy.
+    pub fn records_arc(&self) -> Arc<[QsoRecord]> {
+        Arc::clone(&self.records_cache)
     }
 
     /// Attach a `watch` publisher. After this call every mutation
@@ -105,11 +140,12 @@ impl LogAdapter {
 
     /// Build and push a snapshot to the watch sender, if configured.
     /// Called after each mutation. Cheap when no sender is attached.
+    /// Cheap even with one: the records slice is shared via Arc, not
+    /// copied.
     fn publish_snapshot(&self) {
         let Some(tx) = &self.change_tx else { return };
-        let records: Arc<[QsoRecord]> = self.ordered_records().into();
         let snapshot = Arc::new(LogSnapshot {
-            records,
+            records: Arc::clone(&self.records_cache),
             score_breakdown: Arc::new(self.scorer.score_breakdown()),
             score_epoch: self.score_epoch,
         });
@@ -142,9 +178,11 @@ impl LogAdapter {
             score_epoch: 0,
             contest_history: ContestHistoryIndex::new(),
             change_tx: None,
+            records_cache: Arc::from(Vec::<QsoRecord>::new()),
         };
-        // Populate scorer state from the loaded log
-        let records = adapter.ordered_records();
+        // Populate scorer state from the loaded log.
+        adapter.refresh_records_cache();
+        let records = Arc::clone(&adapter.records_cache);
         adapter.scorer.rebuild(&records);
         adapter.contest_history.rebuild(&records);
         adapter.score_epoch = adapter.score_epoch.wrapping_add(1);
@@ -179,8 +217,10 @@ impl LogAdapter {
             score_epoch: 0,
             contest_history: ContestHistoryIndex::new(),
             change_tx: None,
+            records_cache: Arc::from(Vec::<QsoRecord>::new()),
         };
-        let records = adapter.ordered_records();
+        adapter.refresh_records_cache();
+        let records = Arc::clone(&adapter.records_cache);
         adapter.scorer.rebuild(&records);
         adapter.contest_history.rebuild(&records);
         adapter.score_epoch = adapter.score_epoch.wrapping_add(1);
@@ -218,6 +258,7 @@ impl LogAdapter {
             .map_err(|e| anyhow::anyhow!("insert failed: {e:?}"))?;
 
         self.flush_pending_ops()?;
+        self.refresh_records_cache();
 
         if let Some(rec) = self.store.get(id) {
             self.scorer.on_inserted(rec);
@@ -232,12 +273,11 @@ impl LogAdapter {
         Ok(id)
     }
 
+    /// All QSOs in insertion order, owned. Prefer `records()` (slice
+    /// borrow) internally; this exists for external callers that need
+    /// an owned `Vec` (e.g. tests that compare lengths after mutation).
     pub fn ordered_records(&self) -> Vec<QsoRecord> {
-        self.store
-            .ordered_ids()
-            .iter()
-            .filter_map(|id| self.store.get_cloned(*id))
-            .collect()
+        self.records_cache.to_vec()
     }
 
     pub fn undo(&mut self) -> Result<()> {
@@ -245,7 +285,8 @@ impl LogAdapter {
             .undo()
             .map_err(|e| anyhow::anyhow!("undo failed: {e:?}"))?;
         self.flush_pending_ops()?;
-        let records = self.ordered_records();
+        self.refresh_records_cache();
+        let records = Arc::clone(&self.records_cache);
         self.scorer.rebuild(&records);
         self.contest_history.rebuild(&records);
         self.score_epoch = self.score_epoch.wrapping_add(1);
@@ -258,7 +299,8 @@ impl LogAdapter {
             .redo()
             .map_err(|e| anyhow::anyhow!("redo failed: {e:?}"))?;
         self.flush_pending_ops()?;
-        let records = self.ordered_records();
+        self.refresh_records_cache();
+        let records = Arc::clone(&self.records_cache);
         self.scorer.rebuild(&records);
         self.contest_history.rebuild(&records);
         self.score_epoch = self.score_epoch.wrapping_add(1);
@@ -315,7 +357,7 @@ impl LogAdapter {
 
     /// Returns the highest serial number found in logged exchange_pairs, or 0 if none.
     pub fn max_sent_serial(&self) -> u32 {
-        self.ordered_records()
+        self.records()
             .iter()
             .filter(|r| !r.flags.is_void)
             .filter_map(|r| {

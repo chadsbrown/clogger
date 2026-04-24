@@ -26,7 +26,7 @@ use super::style;
 pub fn view<'a, M: 'a>(log: &'a LogAdapter) -> Element<'a, M> {
     let now_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
     let timestamps: Vec<u64> = log
-        .ordered_records()
+        .records()
         .iter()
         .filter(|r| !r.flags.is_void)
         .map(|r| r.ts_ms)

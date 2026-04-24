@@ -274,7 +274,7 @@ pub fn bootstrap(config: SessionConfig) -> Result<Session> {
             // Seed with the current state so adapters that tick before
             // the first mutation still see a real snapshot.
             let initial = std::sync::Arc::new(crate::log_adapter::LogSnapshot {
-                records: log_adapter.ordered_records().into(),
+                records: log_adapter.records_arc(),
                 score_breakdown: std::sync::Arc::new(log_adapter.score_breakdown()),
                 score_epoch: log_adapter.score_epoch(),
             });

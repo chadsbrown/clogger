@@ -9,7 +9,7 @@ use super::style;
 const MAX_ROWS: usize = 12;
 
 pub fn view<'a, M: 'a>(log: &'a LogAdapter) -> Element<'a, M> {
-    let records = log.ordered_records();
+    let records = log.records();
     let count = records.len();
 
     let header = row![
