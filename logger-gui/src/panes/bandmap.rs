@@ -304,7 +304,7 @@ impl<M> canvas::Program<M> for BandmapProgram<M> {
         // and `y_for` is monotonic in freq (modulo `high_at_top` which
         // flips the sign — still monotonic), so the resulting vec is
         // already ordered by y. No explicit sort needed.
-        let placements: Vec<Placement> = self
+        let mut placements: Vec<Placement> = self
             .spots
             .iter()
             .filter(|s| s.freq_hz >= vlow && s.freq_hz <= vhigh)
@@ -313,6 +313,9 @@ impl<M> canvas::Program<M> for BandmapProgram<M> {
                 y: y_for(s.freq_hz),
             })
             .collect();
+        // Cluster and assign label rows in actual screen order so leader
+        // lines stay aligned whether the bandmap runs low→high or high→low.
+        placements.sort_by(|a, b| a.y.total_cmp(&b.y));
 
         // Minimum vertical distance between adjacent label baselines. Set
         // slightly larger than the rendered text height so descenders don't
