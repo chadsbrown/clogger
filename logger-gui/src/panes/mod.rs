@@ -1,6 +1,7 @@
 pub mod available;
 pub mod bandmap;
 pub mod condx;
+pub mod dxfeed;
 pub mod entry;
 pub mod log;
 pub mod macros;

@@ -37,7 +37,9 @@ pub struct RadioAnalytics {
 /// allocating a separate timestamp vector.
 #[derive(Default)]
 pub struct RateMetrics {
+    pub r10_count: u64,
     pub r10_per_hour: f64,
+    pub r60_count: u64,
     pub r60_per_hour: f64,
     pub last_5_per_hour: Option<f64>,
     pub secs_since_last: Option<u64>,
@@ -258,7 +260,9 @@ where
     let secs_since_last = last_ts.map(|t| now_ms.saturating_sub(t) / 1000);
 
     RateMetrics {
+        r10_count,
         r10_per_hour,
+        r60_count,
         r60_per_hour,
         last_5_per_hour,
         secs_since_last,

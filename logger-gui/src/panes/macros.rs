@@ -1,8 +1,8 @@
 //! Macros pane — current F-key bindings. Read-only display; editing comes
 //! later via a settings panel.
 
-use iced::widget::{column, container, row, text, Space};
-use iced::{Element, Length};
+use iced::widget::{column, container, row, text};
+use iced::{Element, Font, Length, Theme};
 use logger_core::Macros;
 
 use super::style;
@@ -18,15 +18,17 @@ pub fn view<'a, M: 'a>(macros: &'a Macros) -> Element<'a, M> {
         ("F9", macros.f9.as_str()),
     ];
 
-    let mut rows: Vec<Element<M>> = Vec::with_capacity(bare.len() + 4);
+    let mut sections: Vec<Element<M>> = Vec::new();
+    sections.push(section_header("Run keys"));
+    let mut run_rows: Vec<Element<M>> = Vec::with_capacity(bare.len());
     for (label, value) in bare {
-        rows.push(macro_row(label, value));
+        run_rows.push(macro_row(label, value));
     }
+    sections.push(column(run_rows).spacing(4).into());
 
     if let Some(sp_f2) = &macros.sp_f2 {
-        rows.push(Space::new().height(4).into());
-        rows.push(text("S&P overrides").size(11.0).style(style::muted).into());
-        rows.push(macro_row("S&P F2", sp_f2.as_str()));
+        sections.push(section_header("S&P override"));
+        sections.push(macro_row("S&P F2", sp_f2.as_str()));
     }
 
     let secondary = [
@@ -38,16 +40,17 @@ pub fn view<'a, M: 'a>(macros: &'a Macros) -> Element<'a, M> {
     ];
     let any_secondary = secondary.iter().any(|(_, v)| !v.is_empty());
     if any_secondary {
-        rows.push(Space::new().height(4).into());
-        rows.push(text("Ctrl+Alt+Fn").size(11.0).style(style::muted).into());
+        let mut extra_rows: Vec<Element<M>> = Vec::new();
         for (label, value) in secondary {
             if !value.is_empty() {
-                rows.push(macro_row(label, value));
+                extra_rows.push(macro_row(label, value));
             }
         }
+        sections.push(section_header("Ctrl+Alt macros"));
+        sections.push(column(extra_rows).spacing(4).into());
     }
 
-    container(column(rows).spacing(2))
+    container(column(sections).spacing(8))
         .padding(8)
         .width(Length::Fill)
         .height(Length::Fill)
@@ -57,20 +60,47 @@ pub fn view<'a, M: 'a>(macros: &'a Macros) -> Element<'a, M> {
 fn macro_row<'a, M: 'a>(label: &str, value: &str) -> Element<'a, M> {
     let empty = value.is_empty();
     let value_str = if empty { "—".to_string() } else { value.to_string() };
-    row![
+    container(
+        row![
+            keycap(label),
+            text(value_str)
+                .size(style::TEXT_BODY)
+                .font(Font::MONOSPACE)
+                .style(move |t: &Theme| {
+                    if empty {
+                        style::very_muted(t)
+                    } else {
+                        style::body(t)
+                    }
+                })
+                .width(Length::Fill),
+        ]
+        .spacing(8)
+        .align_y(iced::alignment::Vertical::Center),
+    )
+    .padding([6, 8])
+    .style(style::card_style)
+    .into()
+}
+
+fn section_header<'a, M: 'a>(label: &'static str) -> Element<'a, M> {
+    text(label)
+        .size(style::TEXT_TINY)
+        .style(style::muted)
+        .into()
+}
+
+fn keycap<'a, M: 'a>(label: &str) -> Element<'a, M> {
+    container(
         text(label.to_string())
-            .size(12.0)
-            .style(style::accent)
-            .width(Length::Fixed(70.0)),
-        text(value_str).size(12.0).style(move |t: &iced::Theme| {
-            if empty {
-                style::very_muted(t)
-            } else {
-                style::body(t)
-            }
-        }),
-    ]
-    .spacing(4)
-    .align_y(iced::alignment::Vertical::Center)
+            .size(style::TEXT_BODY)
+            .font(Font::MONOSPACE)
+            .style(move |t: &Theme| iced::widget::text::Style {
+                color: Some(t.extended_palette().primary.base.text),
+            }),
+    )
+    .padding([4, 8])
+    .width(Length::Fixed(84.0))
+    .style(move |t: &Theme| style::badge_style(t, t.extended_palette().primary.base))
     .into()
 }

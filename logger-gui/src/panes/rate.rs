@@ -14,42 +14,114 @@
 //!   when fewer than 5 QSOs have been logged.
 //! * **Since last Q** — wall-clock seconds since the most recent QSO.
 
-use iced::widget::{column, container, row, text, Space};
-use iced::{Element, Length};
+use iced::widget::{column, container, row, text};
+use iced::{Element, Font, Length, Theme};
 
 use crate::analytics::RateMetrics;
 
 use super::style;
 
 pub fn view<'a, M: 'a>(metrics: &'a RateMetrics) -> Element<'a, M> {
-    let line = |label: &'static str, value: String| -> Element<'a, M> {
-        row![
-            text(label)
-                .size(style::TEXT_BODY)
-                .style(style::muted)
-                .width(Length::Fixed(110.0)),
-            text(value).size(style::TEXT_VALUE).style(style::body),
-        ]
-        .spacing(4)
-        .into()
-    };
-
     container(
         column![
-            line("Last 10 min", fmt_rate(Some(metrics.r10_per_hour))),
-            Space::new().height(2),
-            line("Last 60 min", fmt_rate(Some(metrics.r60_per_hour))),
-            Space::new().height(2),
-            line("Last 5 Qs", fmt_rate(metrics.last_5_per_hour)),
-            Space::new().height(2),
-            line("Since last Q", fmt_since(metrics.secs_since_last)),
+            row![
+                metric_card(
+                    "10 min",
+                    fmt_rate(Some(metrics.r10_per_hour)),
+                    fmt_count(metrics.r10_count, "in 10m"),
+                    true,
+                ),
+                metric_card(
+                    "60 min",
+                    fmt_rate(Some(metrics.r60_per_hour)),
+                    fmt_count(metrics.r60_count, "in 60m"),
+                    false,
+                ),
+            ]
+            .spacing(8),
+            row![
+                metric_card(
+                    "Last 5 Qs",
+                    fmt_rate(metrics.last_5_per_hour),
+                    "Recent run cadence".to_string(),
+                    false,
+                ),
+                metric_card(
+                    "Idle",
+                    fmt_since(metrics.secs_since_last),
+                    "Since the last QSO".to_string(),
+                    false,
+                ),
+            ]
+            .spacing(8),
         ]
-        .spacing(0),
+        .spacing(8),
     )
     .padding(8)
     .width(Length::Fill)
     .height(Length::Fill)
     .into()
+}
+
+fn metric_card<'a, M: 'a>(
+    label: &'static str,
+    value: String,
+    caption: String,
+    emphasize: bool,
+) -> Element<'a, M> {
+    container(
+        column![
+            text(label).size(style::TEXT_TINY).style(move |t: &Theme| {
+                if emphasize {
+                    style::accent(t)
+                } else {
+                    style::muted(t)
+                }
+            }),
+            text(value)
+                .size(style::TEXT_DISPLAY)
+                .font(Font::MONOSPACE)
+                .style(move |t: &Theme| {
+                    if emphasize {
+                        iced::widget::text::Style {
+                            color: Some(t.extended_palette().primary.weak.text),
+                        }
+                    } else {
+                        style::body(t)
+                    }
+                }),
+            text(caption)
+                .size(style::TEXT_TINY)
+                .style(move |t: &Theme| {
+                    if emphasize {
+                        iced::widget::text::Style {
+                            color: Some(t.extended_palette().primary.base.color),
+                        }
+                    } else {
+                        style::very_muted(t)
+                    }
+                }),
+        ]
+        .spacing(2),
+    )
+    .padding([8, 10])
+    .width(Length::FillPortion(1))
+    .height(Length::FillPortion(1))
+    .style(move |t: &Theme| {
+        if emphasize {
+            style::accent_card_style(t)
+        } else {
+            style::card_style(t)
+        }
+    })
+    .into()
+}
+
+fn fmt_count(count: u64, suffix: &'static str) -> String {
+    match count {
+        1 => format!("1 QSO {suffix}"),
+        n => format!("{n} QSOs {suffix}"),
+    }
 }
 
 fn fmt_rate(r: Option<f64>) -> String {

@@ -10,7 +10,7 @@
 use std::collections::HashMap;
 
 use iced::widget::{column, container, row, text, Space};
-use iced::{Border, Color, Element, Font, Length, Theme};
+use iced::{Border, Element, Font, Length, Theme};
 use logger_core::{AppState, RadioId};
 
 use super::style;
@@ -47,7 +47,7 @@ pub fn view<'a, M: 'a>(
         ));
     }
     container(column(sections).spacing(8))
-        .padding(6)
+        .padding(8)
         .width(Length::Fill)
         .height(Length::Fill)
         .into()
@@ -63,32 +63,36 @@ fn render_radio<'a, M: 'a>(
     let entry = state.entries.get(&radio_id);
     let radio = state.radios.get(&radio_id);
 
-    let header_line = {
+    let header_detail = {
         let freq_str = radio
             .map(|r| format!("{:.3} MHz {}", r.freq_hz as f64 / 1_000_000.0, r.mode))
             .unwrap_or_else(|| "—".to_string());
-        let mode_str = match entry.map(|e| e.mode) {
-            Some(logger_core::OpMode::Sp) => "S&P",
-            _ => "RUN",
-        };
         let is_cw = radio.map(|r| r.mode.eq_ignore_ascii_case("CW")).unwrap_or(false);
         let wpm_str = if is_cw {
             let wpm = radio
                 .map(|r| r.cw_speed)
                 .unwrap_or(state.default_cw_speed);
-            format!("  •  {wpm} WPM")
+            format!("{wpm} WPM  •  ")
         } else {
             String::new()
         };
-        format!("R{radio_id}  •  {mode_str}{wpm_str}  •  {freq_str}")
+        format!("{wpm_str}{freq_str}")
     };
-    let header = text(header_line).size(style::TEXT_BODY).style(move |t: &Theme| {
-        if is_active {
-            style::accent(t)
-        } else {
-            style::very_muted(t)
-        }
-    });
+    let mode_label = match entry.map(|e| e.mode) {
+        Some(logger_core::OpMode::Sp) => "S&P",
+        _ => "RUN",
+    };
+    let header: Element<M> = row![
+        header_badge(&format!("R{radio_id}")),
+        header_badge(mode_label),
+        text(header_detail)
+            .size(style::TEXT_LABEL)
+            .font(Font::MONOSPACE)
+            .style(style::muted),
+    ]
+    .spacing(6)
+    .align_y(iced::alignment::Vertical::Center)
+    .into();
 
     // Horizontal field row — one column per field (label above value box).
     let fields_row: Element<M> = if let Some(entry) = entry {
@@ -97,11 +101,16 @@ fn render_radio<'a, M: 'a>(
             let is_focused_field = is_active && idx == entry.focus;
             let box_width = (field.width as f32 * PX_PER_COL + BOX_HPAD).max(MIN_BOX_PX);
 
-            let label = text(field.label.clone()).size(10.0).style(style::muted);
+            let label = text(field.label.clone())
+                .size(style::TEXT_TINY)
+                .font(Font::MONOSPACE)
+                .style(style::muted);
 
             let empty = field.value.is_empty();
             let value_style = move |t: &Theme| container::Style {
-                background: Some(t.extended_palette().background.base.color.into()),
+                background: Some(
+                    t.extended_palette().background.strong.color.into(),
+                ),
                 text_color: Some(if empty && !is_focused_field {
                     style::very_muted_color(t)
                 } else {
@@ -113,8 +122,8 @@ fn render_radio<'a, M: 'a>(
                     } else {
                         style::border_color(t)
                     },
-                    width: 1.0,
-                    radius: 2.0.into(),
+                    width: if is_focused_field { 1.5 } else { 1.0 },
+                    radius: style::RADIUS_INPUT.into(),
                 },
                 ..container::Style::default()
             };
@@ -170,7 +179,7 @@ fn render_radio<'a, M: 'a>(
                 text_part
             };
             let value = container(inner)
-                .padding([3, 6])
+                .padding([4, 7])
                 .width(Length::Fixed(box_width))
                 .style(value_style);
 
@@ -214,12 +223,12 @@ fn render_radio<'a, M: 'a>(
             .align_y(iced::alignment::Vertical::Center),
     )
     .width(Length::Fill)
-    .height(Length::Fixed(22.0));
+    .height(Length::Fixed(24.0));
 
     let echo_row = echo_line_view(echo);
 
     let body_children: Vec<Element<M>> = vec![
-        header.into(),
+        header,
         Space::new().height(4).into(),
         fields_row,
         Space::new().height(4).into(),
@@ -229,10 +238,11 @@ fn render_radio<'a, M: 'a>(
     ];
 
     container(column(body_children))
-        .padding(6)
+        .padding(8)
         .width(Length::Fill)
-        .style(move |t: &Theme| container::Style {
-            border: Border {
+        .style(move |t: &Theme| {
+            let mut card = style::card_style(t);
+            card.border = Border {
                 color: if is_tx {
                     style::danger_color(t)
                 } else if is_active {
@@ -241,9 +251,9 @@ fn render_radio<'a, M: 'a>(
                     style::border_color(t)
                 },
                 width: if is_tx || is_active { 1.5 } else { 1.0 },
-                radius: 3.0.into(),
-            },
-            ..container::Style::default()
+                radius: style::RADIUS_CARD.into(),
+            };
+            card
         })
         .into()
 }
@@ -265,7 +275,7 @@ fn echo_line_view<'a, M: 'a>(echo: Option<&'a str>) -> Element<'a, M> {
             .font(Font::MONOSPACE)
             .style(style::body),
     )
-    .padding([3, 8])
+    .padding([4, 8])
     .width(Length::Fill)
     .height(Length::Fixed(24.0))
     .center_x(Length::Fill)
@@ -278,20 +288,27 @@ fn badge<'a, M: 'a>(
 ) -> Element<'a, M> {
     container(
         text(label)
-            .size(11.0)
+            .size(style::TEXT_TINY)
+            .font(Font::MONOSPACE)
             .style(move |t: &Theme| iced::widget::text::Style {
                 color: Some(pair(t).text),
             }),
     )
-    .padding([1, 4])
-    .style(move |t: &Theme| container::Style {
-        background: Some(pair(t).color.into()),
-        border: Border {
-            color: Color::TRANSPARENT,
-            width: 0.0,
-            radius: 2.0.into(),
-        },
-        ..container::Style::default()
-    })
+    .padding([2, 6])
+    .style(move |t: &Theme| style::badge_style(t, pair(t)))
+    .into()
+}
+
+fn header_badge<'a, M: 'a>(label: &str) -> Element<'a, M> {
+    container(
+        text(label.to_string())
+            .size(style::TEXT_TINY)
+            .font(Font::MONOSPACE)
+            .style(move |t: &Theme| iced::widget::text::Style {
+                color: Some(style::muted_color(t)),
+            }),
+    )
+    .padding([2, 6])
+    .style(style::muted_badge_style)
     .into()
 }

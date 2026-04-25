@@ -21,6 +21,19 @@ or use it as a starting point for your own project. If something in here
 is useful to you, great. Just please don't expect support, a roadmap, or
 promises about anything.
 
+## Hardware Support
+
+The hardware setup I use myself is:
+
+- Icom IC-7610 radios
+- RigSelect Pro SO2R box
+
+That combination works well for me.
+
+Other hardware may also work, especially where the underlying crates
+claim support, but I do not actively test it. Unless it is the setup
+above, assume it is untested.
+
 ## Running it
 
 The workspace builds with `cargo build` and has these crates:

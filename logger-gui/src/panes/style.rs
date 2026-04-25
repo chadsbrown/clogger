@@ -5,8 +5,8 @@
 //! — those have meaning the operator learns.
 
 use iced::theme::palette::Pair;
-use iced::widget::text;
-use iced::{Color, Theme};
+use iced::widget::{container, text};
+use iced::{Border, Color, Theme};
 
 // --- Unified text sizes (in logical pixels; the global font_scale
 // multiplies these via iced's scale_factor). `f32` because iced 0.14's
@@ -19,12 +19,14 @@ pub const TEXT_BODY: f32 = 13.0;
 #[allow(dead_code)]
 pub const TEXT_VALUE: f32 = 14.0;
 pub const TEXT_HEADER: f32 = 15.0;
+pub const TEXT_DISPLAY: f32 = 24.0;
 
 // --- Shape constants for a more modern feel. ---
 pub const RADIUS_FRAME: f32 = 6.0;
 #[allow(dead_code)]
 pub const RADIUS_INPUT: f32 = 4.0;
 pub const RADIUS_CHIP: f32 = 3.0;
+pub const RADIUS_CARD: f32 = 8.0;
 
 /// Luminance-based "is this a light-ish theme?" detector. Returns `true`
 /// when the theme's base background luminance is above 0.5. Works across
@@ -70,10 +72,6 @@ pub fn accent_text_color(t: &Theme) -> Color {
     } else {
         Color::from_rgb(0.55, 0.75, 1.0)
     }
-}
-
-pub fn success_color(t: &Theme) -> Color {
-    t.extended_palette().success.base.color
 }
 
 pub fn danger_color(t: &Theme) -> Color {
@@ -163,6 +161,63 @@ pub fn new_spot_color(t: &Theme) -> Color {
 
 pub fn worked_spot_color(t: &Theme) -> Color {
     very_muted_color(t)
+}
+
+// --- Reusable pane surfaces ---
+
+pub fn card_style(t: &Theme) -> container::Style {
+    let pal = t.extended_palette();
+    let bg = lerp(pal.background.base.color, pal.background.strong.color, 0.22);
+    container::Style {
+        background: Some(bg.into()),
+        border: Border {
+            color: border_color(t),
+            width: 1.0,
+            radius: RADIUS_CARD.into(),
+        },
+        ..container::Style::default()
+    }
+}
+
+pub fn accent_card_style(t: &Theme) -> container::Style {
+    let pair = t.extended_palette().primary.weak;
+    container::Style {
+        background: Some(pair.color.into()),
+        border: Border {
+            color: t.extended_palette().primary.base.color,
+            width: 1.0,
+            radius: RADIUS_CARD.into(),
+        },
+        text_color: Some(pair.text),
+        ..container::Style::default()
+    }
+}
+
+pub fn badge_style(_t: &Theme, pair: Pair) -> container::Style {
+    container::Style {
+        background: Some(pair.color.into()),
+        border: Border {
+            color: Color::TRANSPARENT,
+            width: 0.0,
+            radius: RADIUS_CHIP.into(),
+        },
+        text_color: Some(pair.text),
+        ..container::Style::default()
+    }
+}
+
+pub fn muted_badge_style(t: &Theme) -> container::Style {
+    let pal = t.extended_palette().background.strong;
+    container::Style {
+        background: Some(pal.color.into()),
+        border: Border {
+            color: Color::TRANSPARENT,
+            width: 0.0,
+            radius: RADIUS_CHIP.into(),
+        },
+        text_color: Some(muted_color(t)),
+        ..container::Style::default()
+    }
 }
 
 // --- Text style closures (for `.style(...)` on text widgets) ---

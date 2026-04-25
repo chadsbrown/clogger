@@ -8,6 +8,7 @@ mod panes;
 
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
+use std::collections::VecDeque;
 
 use clap::Parser;
 use iced::{event, keyboard, Element, Event, Point, Size, Subscription, Theme};
@@ -15,7 +16,9 @@ use logger_core::{AppEvent, Effect, RadioId};
 use logger_runtime::{CondXSnapshot, KeyerEvent, ScoreboardStatus, Session};
 
 use bridge::AdapterHandles;
+use panes::dxfeed::{DxActivityItem, DxActivityKind};
 
+const DX_ACTIVITY_CAPACITY: usize = 256;
 
 /// Stash the parsed config between `main()` and `init()` (which iced calls
 /// inside its tokio runtime).
@@ -56,6 +59,8 @@ struct App {
     pane_so2r: u32,
     pane_condx: u32,
     pane_scp: u32,
+    pane_dxfeed: u32,
+    dx_activity: VecDeque<DxActivityItem>,
     theme: Theme,
     modal: Option<modals::Modal>,
     /// Sticky error banner. Set by `AppEvent::*Error` / `*Disconnected`;
@@ -100,6 +105,7 @@ impl App {
             workspace.add("Macros", Point::new(40.0, 580.0), Size::new(440.0, 200.0));
             workspace.add("SO2R", Point::new(840.0, 580.0), Size::new(320.0, 180.0));
             workspace.add("CondX", Point::new(1180.0, 40.0), Size::new(280.0, 340.0));
+            workspace.add("DX Feed", Point::new(1180.0, 400.0), Size::new(320.0, 260.0));
             workspace.add("SCP", Point::new(40.0, 800.0), Size::new(440.0, 160.0));
         }
         let pane_entry = workspace.id_by_title("Entry").unwrap_or_else(|| {
@@ -139,6 +145,9 @@ impl App {
         let pane_condx = workspace.id_by_title("CondX").unwrap_or_else(|| {
             workspace.add("CondX", Point::new(1180.0, 40.0), Size::new(280.0, 340.0))
         });
+        let pane_dxfeed = workspace.id_by_title("DX Feed").unwrap_or_else(|| {
+            workspace.add("DX Feed", Point::new(1180.0, 400.0), Size::new(320.0, 260.0))
+        });
         let pane_scp = workspace.id_by_title("SCP").unwrap_or_else(|| {
             workspace.add("SCP", Point::new(40.0, 800.0), Size::new(440.0, 160.0))
         });
@@ -164,6 +173,8 @@ impl App {
             pane_so2r,
             pane_condx,
             pane_scp,
+            pane_dxfeed,
+            dx_activity: VecDeque::with_capacity(DX_ACTIVITY_CAPACITY),
             theme: resolve_saved_theme().unwrap_or(Theme::Dark),
             modal: None,
             error_banner: None,
@@ -294,6 +305,7 @@ fn update(state: &mut App, msg: Message) -> iced::Task<Message> {
             // bootstrap-hosted adapters, there's nothing to do here.
         }
         Message::Domain(ev) => {
+            state.record_dx_activity(&ev);
             // Modal swallows Esc so a key-press focused on modal dismissal
             // doesn't also ripple into the reducer (which would, for
             // instance, clear the entry box).
@@ -654,10 +666,50 @@ fn body_for<'a>(state: &'a App, pane: &'a mdi::Pane) -> Element<'a, Message> {
         )
     } else if pane.id == state.pane_condx {
         panes::condx::view(state.condx.as_ref())
+    } else if pane.id == state.pane_dxfeed {
+        panes::dxfeed::view(&state.dx_activity)
     } else if pane.id == state.pane_scp {
         panes::scp::view(&state.session.state)
     } else {
         iced::widget::text(pane.body.clone()).into()
+    }
+}
+
+impl App {
+    fn record_dx_activity(&mut self, ev: &AppEvent) {
+        let now_ms = chrono::Utc::now().timestamp_millis();
+        let item = match ev {
+            AppEvent::SpotReceived { spot } => Some(DxActivityItem {
+                ts_ms: now_ms,
+                kind: DxActivityKind::Spot,
+                call: spot.call.clone(),
+                freq_hz: Some(spot.freq_hz),
+                mode: Some(spot.mode.clone()),
+            }),
+            AppEvent::SpotWithdrawn { call } => {
+                let existing = self
+                    .session
+                    .state
+                    .bandmap
+                    .iter()
+                    .find(|spot| spot.call.eq_ignore_ascii_case(call));
+                Some(DxActivityItem {
+                    ts_ms: now_ms,
+                    kind: DxActivityKind::Withdraw,
+                    call: call.clone(),
+                    freq_hz: existing.map(|spot| spot.freq_hz),
+                    mode: existing.map(|spot| spot.mode.clone()),
+                })
+            }
+            _ => None,
+        };
+
+        if let Some(item) = item {
+            if self.dx_activity.len() == DX_ACTIVITY_CAPACITY {
+                self.dx_activity.pop_front();
+            }
+            self.dx_activity.push_back(item);
+        }
     }
 }
 
