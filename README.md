@@ -34,6 +34,9 @@ Other hardware may also work, especially where the underlying crates
 claim support, but I do not actively test it. Unless it is the setup
 above, assume it is untested.
 
+Operating system support is similar: this is known to work on Windows
+and Linux. macOS is theoretically supported, but untested.
+
 ## Running it
 
 The workspace builds with `cargo build` and has these crates:
