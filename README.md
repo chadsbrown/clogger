@@ -2,7 +2,7 @@
 
 ![clogger TUI screenshot](docs/clogger-20260418-2.png)
 
-![clogger GUI screenshot](docs/clogger-gui-20260419.png)
+![clogger GUI screenshot](docs/clogger-gui-20260425.png)
 
 A contest logger by N9UNX.
 
