@@ -17,3 +17,4 @@ chrono = "0.4"
 clap = { version = "4", features = ["derive"] }
 toml = "0.8"
 dirs = "5"
+sysinfo = { version = "0.38.4", default-features = false, features = ["system"] }

@@ -1,6 +1,6 @@
 //! Performance pane — process and host resource usage for the running GUI.
 
-use iced::widget::{column, container, progress_bar, row, text, Space};
+use iced::widget::{Space, column, container, progress_bar, row, text};
 use iced::{Element, Font, Length, Theme};
 
 use crate::perf::PerfSnapshot;
