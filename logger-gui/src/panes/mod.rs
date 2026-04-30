@@ -5,6 +5,7 @@ pub mod dxfeed;
 pub mod entry;
 pub mod log;
 pub mod macros;
+pub mod perf;
 pub mod rate;
 pub mod scp;
 pub mod score;

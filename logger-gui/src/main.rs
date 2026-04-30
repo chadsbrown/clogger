@@ -5,6 +5,7 @@ mod keys;
 mod mdi;
 mod modals;
 mod panes;
+mod perf;
 
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
@@ -60,7 +61,9 @@ struct App {
     pane_condx: u32,
     pane_scp: u32,
     pane_dxfeed: u32,
+    pane_perf: u32,
     dx_activity: VecDeque<DxActivityItem>,
+    perf: perf::PerfSampler,
     theme: Theme,
     modal: Option<modals::Modal>,
     /// Sticky error banner. Set by `AppEvent::*Error` / `*Disconnected`;
@@ -106,6 +109,7 @@ impl App {
             workspace.add("SO2R", Point::new(840.0, 580.0), Size::new(320.0, 180.0));
             workspace.add("CondX", Point::new(1180.0, 40.0), Size::new(280.0, 340.0));
             workspace.add("DX Feed", Point::new(1180.0, 400.0), Size::new(320.0, 260.0));
+            workspace.add("Performance", Point::new(1180.0, 680.0), Size::new(320.0, 220.0));
             workspace.add("SCP", Point::new(40.0, 800.0), Size::new(440.0, 160.0));
         }
         let pane_entry = workspace.id_by_title("Entry").unwrap_or_else(|| {
@@ -148,6 +152,9 @@ impl App {
         let pane_dxfeed = workspace.id_by_title("DX Feed").unwrap_or_else(|| {
             workspace.add("DX Feed", Point::new(1180.0, 400.0), Size::new(320.0, 260.0))
         });
+        let pane_perf = workspace.id_by_title("Performance").unwrap_or_else(|| {
+            workspace.add("Performance", Point::new(1180.0, 680.0), Size::new(320.0, 220.0))
+        });
         let pane_scp = workspace.id_by_title("SCP").unwrap_or_else(|| {
             workspace.add("SCP", Point::new(40.0, 800.0), Size::new(440.0, 160.0))
         });
@@ -174,7 +181,9 @@ impl App {
             pane_condx,
             pane_scp,
             pane_dxfeed,
+            pane_perf,
             dx_activity: VecDeque::with_capacity(DX_ACTIVITY_CAPACITY),
+            perf: perf::PerfSampler::new(),
             theme: resolve_saved_theme().unwrap_or(Theme::Dark),
             modal: None,
             error_banner: None,
@@ -292,6 +301,7 @@ fn update(state: &mut App, msg: Message) -> iced::Task<Message> {
             );
         }
         Message::Tick => {
+            state.perf.sample();
             let now = chrono::Utc::now().timestamp_millis();
             let effects = {
                 bridge::step(&mut state.session, AppEvent::TimerTick { now_ms: now })
@@ -668,6 +678,8 @@ fn body_for<'a>(state: &'a App, pane: &'a mdi::Pane) -> Element<'a, Message> {
         panes::condx::view(state.condx.as_ref())
     } else if pane.id == state.pane_dxfeed {
         panes::dxfeed::view(&state.dx_activity)
+    } else if pane.id == state.pane_perf {
+        panes::perf::view(state.perf.snapshot())
     } else if pane.id == state.pane_scp {
         panes::scp::view(&state.session.state)
     } else {
