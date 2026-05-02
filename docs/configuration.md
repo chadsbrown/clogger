@@ -65,12 +65,14 @@ model = "ic7300"      # riglib model id
 port = "/dev/ttyUSB0"
 baud_rate = 115200
 cw_speed = 28         # optional, used by `<`/`>` macros
-transceive = false    # true if you enabled Auto-Information on the rig
+transceive = false    # enable Auto-Information / broadcast events
 ```
 
-`transceive = true` means clogger stops polling freq/mode and relies
-on the rig's broadcast events — avoids bus collisions that make
-front-panel buttons feel laggy on half-duplex radios.
+`transceive = true` makes clogger stop polling freq/mode and consume
+the rig's broadcast events instead — avoids bus collisions that cause
+front-panel lag on half-duplex radios. On Icom you must also enable
+CI-V Transceive in the radio menu; on Yaesu/Kenwood/Elecraft riglib
+sends the AI-enable command itself.
 
 ### Keyer
 

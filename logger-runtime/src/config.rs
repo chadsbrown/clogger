@@ -348,12 +348,18 @@ pub struct RigConfig {
     pub baud_rate: Option<u32>,
     /// CW sending speed for this radio (used for < and > speed markers in macros)
     pub cw_speed: Option<u8>,
-    /// Declares whether the operator has CI-V Transceive (Auto-Information)
-    /// mode enabled on the radio. Must match the hardware menu setting.
+    /// Enable Auto-Information / Transceive mode on the rig.
+    ///
     /// When `true`, clogger disables its own frequency/mode/passband polling
-    /// and relies entirely on the rig's broadcast events (avoiding half-
-    /// duplex bus collisions that can make front-panel buttons feel laggy).
-    /// When `false`, clogger polls at 4 Hz as before. Default: `false`.
+    /// and consumes the rig's broadcast events instead, avoiding half-duplex
+    /// bus collisions that can cause front-panel lag. When `false`, clogger
+    /// polls at 4 Hz. Default: `false`.
+    ///
+    /// On Icom this is a declaration only — the operator must also enable
+    /// CI-V Transceive in the radio's menu. On Yaesu/Kenwood/Elecraft the
+    /// underlying riglib builder actively issues the AI-enable command at
+    /// connect and AI-disable at disconnect, so no radio-side configuration
+    /// is needed. FlexRadio has no equivalent and ignores this flag.
     #[serde(default)]
     pub transceive: bool,
 }
