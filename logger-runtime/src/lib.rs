@@ -1,5 +1,6 @@
 pub mod adif_export;
 pub mod analytics;
+pub mod cabrillo_export;
 pub mod bootstrap;
 pub mod call_history;
 pub mod condx_adapter;

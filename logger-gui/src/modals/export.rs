@@ -3,15 +3,22 @@
 //! is shown but disabled, matching the TUI.
 
 use iced::widget::{button, column, container, row, text, Space};
-use iced::{Border, Color, Element, Length, Theme};
+use iced::{Border, Element, Length, Theme};
 
 use crate::panes::style;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExportFormat {
+    Adif,
+    Cabrillo,
+}
 
 #[derive(Debug, Clone)]
 pub enum ExportStep {
     SelectFormat,
     /// File dialog is open or the export is being written. The modal is
-    /// inert in this state; the OS dialog drives.
+    /// inert in this state; the OS dialog drives. The chosen format
+    /// rides on `Message::ExportPathChosen` rather than this state.
     Working,
     Result {
         message: String,
@@ -33,6 +40,7 @@ impl Default for ExportState {
 pub fn view<'a, M: 'a + Clone + 'static>(
     state: &'a ExportState,
     on_pick_adif: M,
+    on_pick_cabrillo: M,
     on_close: M,
 ) -> Element<'a, M> {
     let close = button(text("✕").size(14.0))
@@ -67,9 +75,9 @@ pub fn view<'a, M: 'a + Clone + 'static>(
         ExportStep::SelectFormat => column![
             text("Select export format:").size(style::TEXT_BODY),
             Space::new().height(10),
-            adif_choice(on_pick_adif),
+            format_choice("ADIF (.adi)", on_pick_adif),
             Space::new().height(6),
-            cabrillo_disabled(),
+            format_choice("Cabrillo (.log)", on_pick_cabrillo),
         ]
         .spacing(0)
         .into(),
@@ -131,12 +139,10 @@ pub fn view<'a, M: 'a + Clone + 'static>(
         .into()
 }
 
-fn adif_choice<'a, M: 'a + Clone + 'static>(on_press: M) -> Element<'a, M> {
+fn format_choice<'a, M: 'a + Clone + 'static>(label: &'static str, on_press: M) -> Element<'a, M> {
     button(
         row![
-            text("[A]").size(style::TEXT_BODY),
-            Space::new().width(8),
-            text("ADIF (.adi)").size(style::TEXT_BODY),
+            text(label).size(style::TEXT_BODY),
         ]
         .align_y(iced::alignment::Vertical::Center),
     )
@@ -159,31 +165,6 @@ fn adif_choice<'a, M: 'a + Clone + 'static>(on_press: M) -> Element<'a, M> {
             },
             ..button::Style::default()
         }
-    })
-    .into()
-}
-
-fn cabrillo_disabled<'a, M: 'a>() -> Element<'a, M> {
-    container(
-        row![
-            text("[C]").size(style::TEXT_BODY).style(style::muted),
-            Space::new().width(8),
-            text("Cabrillo (not yet implemented)")
-                .size(style::TEXT_BODY)
-                .style(style::muted),
-        ]
-        .align_y(iced::alignment::Vertical::Center),
-    )
-    .padding([6, 10])
-    .width(Length::Fill)
-    .style(|t: &Theme| container::Style {
-        background: Some(Color::TRANSPARENT.into()),
-        border: Border {
-            color: style::border_color(t),
-            width: 1.0,
-            radius: style::RADIUS_INPUT.into(),
-        },
-        ..container::Style::default()
     })
     .into()
 }

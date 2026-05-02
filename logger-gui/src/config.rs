@@ -70,6 +70,10 @@ pub struct StableConfig {
     pub esm_enabled: bool,
     #[serde(default)]
     pub block_dupes: bool,
+    /// Cabrillo header metadata (NAME/ADDRESS/SOAPBOX/etc.). Read at
+    /// export time; absent block is fine (defaults to empty).
+    #[serde(default)]
+    pub cabrillo: logger_runtime::CabrilloConfig,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -125,6 +129,12 @@ pub struct SessionBits {
     /// Pre-composed RTC spawn bundle. `None` when RTC is disabled or
     /// the current contest has no `rtc_id`.
     pub rtc: Option<logger_runtime::config::RtcSpawnConfig>,
+    /// Operator's contest category — required for Cabrillo export.
+    /// `None` is fine for non-export sessions; the export modal surfaces
+    /// the missing-category case as a Result error.
+    pub category: Option<logger_runtime::CategoryConfig>,
+    /// Cabrillo header metadata. Empty by default.
+    pub cabrillo: logger_runtime::CabrilloConfig,
 }
 
 /// Hardware adapter configuration. Held separately from `SessionBits` so
@@ -235,6 +245,8 @@ fn load_pair(cli: &Cli, config_path: &PathBuf, contest_path: &PathBuf) -> Result
         block_dupes: stable.block_dupes,
         scoreboard: scoreboard_bundle,
         rtc: rtc_bundle,
+        category: contest.category,
+        cabrillo: stable.cabrillo,
     };
 
     // `rtc_configured` reflects what `compose_rtc` actually produced:

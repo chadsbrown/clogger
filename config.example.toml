@@ -298,6 +298,12 @@
 #address = ["123 Main St", "Anytown, ST 12345"]
 #email = "n9unx@example.com"
 #soapbox = ["Great conditions on 20m!", "First time trying SO2R"]
+# LOCATION header value — typically an ARRL section abbreviation (e.g. "EMA",
+# "SCV"), or "DX" for non-US/VE entrants. Required by ARRL/CQ contests.
+#location = "EMA"
+# GRID-LOCATOR header value — Maidenhead grid square. Optional but commonly
+# emitted; some contests use it for per-grid mults.
+#grid_locator = "FN42"
 
 # ---------------------------------------------------------------------------
 # Online scoreboard posting (optional). Repeat [[scoreboard.endpoints]] to

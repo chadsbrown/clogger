@@ -435,6 +435,8 @@ async fn main() -> Result<()> {
         scoreboard_status_rx,
         rtc_status_rx,
         loaded_theme,
+        config.category.clone(),
+        config.cabrillo.clone(),
     )
     .await
 }

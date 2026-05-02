@@ -705,7 +705,7 @@ mod tests {
     fn dynamicresults_with_qth_appends_qth_block() {
         use crate::config::{
             CategoryAssisted, CategoryBands, CategoryConfig, CategoryConfigMode, CategoryOperator,
-            CategoryOverlay, CategoryPower, CategoryTransmitter,
+            CategoryOverlay, CategoryPower, CategoryStation, CategoryTransmitter,
         };
         use crate::scoring::{BreakdownRow, ScoreBreakdown};
         let snap = ScoreboardSnapshot {
@@ -720,6 +720,7 @@ mod tests {
                 bands: CategoryBands::All,
                 mode: CategoryConfigMode::Cw,
                 overlay: CategoryOverlay::Na,
+                station: CategoryStation::Fixed,
             },
             breakdown: ScoreBreakdown {
                 rows: vec![BreakdownRow {

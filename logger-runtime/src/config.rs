@@ -17,6 +17,8 @@ pub struct CategoryConfig {
     pub mode: CategoryConfigMode,
     #[serde(default)]
     pub overlay: CategoryOverlay,
+    #[serde(default)]
+    pub station: CategoryStation,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
@@ -187,6 +189,41 @@ impl CategoryOverlay {
     }
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "SCREAMING-KEBAB-CASE")]
+pub enum CategoryStation {
+    #[default]
+    Fixed,
+    Mobile,
+    Portable,
+    Rover,
+    RoverLimited,
+    RoverUnlimited,
+    Expedition,
+    Hq,
+    School,
+    Explorer,
+    Distributed,
+}
+
+impl CategoryStation {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Fixed => "FIXED",
+            Self::Mobile => "MOBILE",
+            Self::Portable => "PORTABLE",
+            Self::Rover => "ROVER",
+            Self::RoverLimited => "ROVER-LIMITED",
+            Self::RoverUnlimited => "ROVER-UNLIMITED",
+            Self::Expedition => "EXPEDITION",
+            Self::Hq => "HQ",
+            Self::School => "SCHOOL",
+            Self::Explorer => "EXPLORER",
+            Self::Distributed => "DISTRIBUTED",
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Cabrillo header metadata
 // ---------------------------------------------------------------------------
@@ -202,6 +239,14 @@ pub struct CabrilloConfig {
     pub email: Option<String>,
     #[serde(default)]
     pub soapbox: Vec<String>,
+    /// LOCATION header value — typically an ARRL section abbreviation
+    /// (e.g. "MA", "EMA"), CQ zone, or "DX" for non-US/VE entrants.
+    /// Required by ARRL/CQ contests; harmless if omitted for sponsors
+    /// that don't use it.
+    pub location: Option<String>,
+    /// GRID-LOCATOR header value — Maidenhead grid square (e.g. "FN42").
+    /// Optional but commonly emitted.
+    pub grid_locator: Option<String>,
 }
 
 // ---------------------------------------------------------------------------

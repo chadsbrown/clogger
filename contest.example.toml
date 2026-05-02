@@ -119,3 +119,6 @@ contest = "cqww"
 #bands = "ALL"           # ALL | 160M | 80M | 40M | 20M | 15M | 10M | 6M | 2M
 #mode = "CW"             # MIXED | CW | SSB | RTTY | DIGI
 #overlay = "N/A"         # N/A | TB-WIRES | ROOKIE | CLASSIC | WIRE-ONLY
+#station = "FIXED"       # FIXED | MOBILE | PORTABLE | ROVER | ROVER-LIMITED |
+#                        # ROVER-UNLIMITED | EXPEDITION | HQ | SCHOOL |
+#                        # EXPLORER | DISTRIBUTED. Defaults to FIXED.

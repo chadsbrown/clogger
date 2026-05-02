@@ -12,7 +12,7 @@ use logger_runtime::LogAdapter;
 use ratatui::backend::CrosstermBackend;
 use tokio::sync::{broadcast, mpsc, watch};
 use logger_runtime::{
-    KeyerEvent, ScoreboardStatus,
+    CabrilloConfig, CategoryConfig, KeyerEvent, ScoreboardStatus,
     rtc_adapter::RtcStatus,
 };
 
@@ -43,6 +43,8 @@ pub async fn run(
     scoreboard_status_rx: Option<watch::Receiver<ScoreboardStatus>>,
     rtc_status_rx: Option<watch::Receiver<RtcStatus>>,
     theme: crate::theme::Theme,
+    category: Option<CategoryConfig>,
+    cabrillo: CabrilloConfig,
 ) -> Result<()> {
     // RX mode is a runtime knob — the config provides an initial value, and
     // the operator can toggle it mid-session via the backtick keybinding.
@@ -147,12 +149,16 @@ pub async fn run(
                             };
                             if let Some(kc) = key_code {
                                 let records = log_adapter.ordered_records();
+                                let claimed_score = log_adapter.score_summary().claimed_score;
                                 crate::ui::export_modal::handle_key(
                                     &mut tui_state.export_modal,
                                     kc,
                                     &records,
                                     &state.my_call,
-                                    contest.contest_id(),
+                                    contest.as_ref(),
+                                    category.as_ref(),
+                                    &cabrillo,
+                                    claimed_score,
                                 );
                                 continue;
                             }

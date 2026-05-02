@@ -87,6 +87,11 @@ struct App {
     /// Cached bandmap/available/rate pane data — recomputed in
     /// `update()` when inputs change rather than every render.
     analytics: analytics::PaneAnalytics,
+    /// Operator's contest category — needed at Cabrillo export time.
+    /// `None` when running demo or when the user omitted `[category]`.
+    session_category: Option<logger_runtime::CategoryConfig>,
+    /// Cabrillo header metadata — operator-supplied identity fields.
+    session_cabrillo: logger_runtime::CabrilloConfig,
 }
 
 const FONT_SCALE_MIN: f32 = 0.6;
@@ -94,7 +99,12 @@ const FONT_SCALE_MAX: f32 = 2.0;
 const FONT_SCALE_STEP: f32 = 0.1;
 
 impl App {
-    fn new(session: Session, app_tx: tokio::sync::mpsc::Sender<AppEvent>) -> Self {
+    fn new(
+        session: Session,
+        app_tx: tokio::sync::mpsc::Sender<AppEvent>,
+        session_category: Option<logger_runtime::CategoryConfig>,
+        session_cabrillo: logger_runtime::CabrilloConfig,
+    ) -> Self {
         let mut workspace = mdi::Workspace::default();
         mdi::load(&mut workspace);
         if workspace.panes.is_empty() {
@@ -191,6 +201,8 @@ impl App {
             font_scale: mdi::load_font_scale().unwrap_or(1.0).clamp(FONT_SCALE_MIN, FONT_SCALE_MAX),
             app_tx,
             analytics: analytics::PaneAnalytics::new(),
+            session_category,
+            session_cabrillo,
         };
         // Warm the cache so the first paint shows real bandmap/available/
         // rate data instead of blank panes that fill in only after the
@@ -270,9 +282,12 @@ enum Message {
     /// User clicked "ADIF" in the Export modal — transitions the modal
     /// to the Working step and fires the OS Save dialog.
     ExportPickAdif,
-    /// OS Save dialog returned: `Some(path)` runs the export and shows
-    /// the result; `None` means the user cancelled.
-    ExportPathChosen(Option<std::path::PathBuf>),
+    /// User clicked "Cabrillo" — same flow as ADIF but the eventual
+    /// `ExportPathChosen` runs the Cabrillo formatter instead.
+    ExportPickCabrillo,
+    /// OS Save dialog returned: `Some(path)` runs the export using the
+    /// carried format; `None` means the user cancelled.
+    ExportPathChosen(modals::export::ExportFormat, Option<std::path::PathBuf>),
     AdaptersReady(AdapterHandlesResult),
     KeyerEvent(KeyerEvent),
     CondxSnapshot(CondXSnapshot),
@@ -290,6 +305,40 @@ enum Message {
 enum AdapterHandlesResult {
     Ok(std::sync::Arc<std::sync::Mutex<Option<AdapterHandles>>>),
     Err(String),
+}
+
+/// Open the export modal in Working state and fire the OS Save dialog.
+/// The dialog future yields `Option<PathBuf>`; we wrap that in
+/// `Message::ExportPathChosen(format, ...)` so the result handler knows
+/// which exporter to invoke.
+fn spawn_export_dialog(
+    state: &mut App,
+    format: modals::export::ExportFormat,
+) -> iced::Task<Message> {
+    let (default_ext, filter_name, filter_ext) = match format {
+        modals::export::ExportFormat::Adif => ("adi", "ADIF", "adi"),
+        modals::export::ExportFormat::Cabrillo => ("log", "Cabrillo", "log"),
+    };
+    let default_name = format!(
+        "{}-{}.{}",
+        state.session.state.my_call.to_lowercase(),
+        state.session.contest.contest_id(),
+        default_ext,
+    );
+    state.modal = Some(modals::Modal::Export(modals::export::ExportState {
+        step: modals::export::ExportStep::Working,
+    }));
+    iced::Task::perform(
+        async move {
+            rfd::AsyncFileDialog::new()
+                .set_file_name(default_name)
+                .add_filter(filter_name, &[filter_ext])
+                .save_file()
+                .await
+                .map(|h| h.path().to_path_buf())
+        },
+        move |maybe_path| Message::ExportPathChosen(format, maybe_path),
+    )
 }
 
 fn update(state: &mut App, msg: Message) -> iced::Task<Message> {
@@ -371,58 +420,69 @@ fn update(state: &mut App, msg: Message) -> iced::Task<Message> {
         Message::OpenModal(m) => state.modal = Some(m),
         Message::CloseModal => state.modal = None,
         Message::ExportPickAdif => {
-            // Transition the export modal to Working while the OS dialog
-            // is up. If the modal isn't currently the export modal (race
-            // with closing), bail.
-            let default_name = format!(
-                "{}-{}.adi",
-                state.session.state.my_call.to_lowercase(),
-                state.session.contest.contest_id(),
-            );
-            state.modal = Some(modals::Modal::Export(modals::export::ExportState {
-                step: modals::export::ExportStep::Working,
-            }));
-            return iced::Task::perform(
-                async move {
-                    rfd::AsyncFileDialog::new()
-                        .set_file_name(default_name)
-                        .add_filter("ADIF", &["adi"])
-                        .save_file()
-                        .await
-                        .map(|h| h.path().to_path_buf())
-                },
-                Message::ExportPathChosen,
-            );
+            return spawn_export_dialog(state, modals::export::ExportFormat::Adif);
         }
-        Message::ExportPathChosen(maybe_path) => {
-            match maybe_path {
-                None => {
-                    // User cancelled the OS dialog — close the modal.
-                    state.modal = None;
-                }
-                Some(path) => {
-                    let records = state.session.log_adapter.ordered_records();
-                    let my_call = state.session.state.my_call.clone();
+        Message::ExportPickCabrillo => {
+            // Cabrillo export needs a [category] section; without it we'd
+            // emit an unsubmittable file. Surface that as a Result error
+            // instead of opening the dialog.
+            if state.session_category.is_none() {
+                state.modal = Some(modals::Modal::Export(modals::export::ExportState {
+                    step: modals::export::ExportStep::Result {
+                        message: "Cabrillo export requires a [category] section in config.toml"
+                            .into(),
+                        is_error: true,
+                    },
+                }));
+                return iced::Task::none();
+            }
+            return spawn_export_dialog(state, modals::export::ExportFormat::Cabrillo);
+        }
+        Message::ExportPathChosen(format, maybe_path) => {
+            let Some(path) = maybe_path else {
+                state.modal = None;
+                return iced::Task::none();
+            };
+            let records = state.session.log_adapter.ordered_records();
+            let my_call = state.session.state.my_call.clone();
+            let result = match format {
+                modals::export::ExportFormat::Adif => {
                     let contest_id = state.session.contest.contest_id().to_string();
-                    let result = logger_runtime::adif_export::export_adif(
+                    logger_runtime::adif_export::export_adif(
                         &records,
                         &my_call,
                         &contest_id,
                         &path,
-                    );
-                    let step = match result {
-                        Ok(count) => modals::export::ExportStep::Result {
-                            message: format!("Exported {count} QSOs to {}", path.display()),
-                            is_error: false,
-                        },
-                        Err(e) => modals::export::ExportStep::Result {
-                            message: format!("Export failed: {e}"),
-                            is_error: true,
-                        },
-                    };
-                    state.modal = Some(modals::Modal::Export(modals::export::ExportState { step }));
+                    )
                 }
-            }
+                modals::export::ExportFormat::Cabrillo => {
+                    let category = state
+                        .session_category
+                        .as_ref()
+                        .expect("category presence checked at Pick");
+                    let claimed_score = state.session.log_adapter.score_summary().claimed_score;
+                    logger_runtime::cabrillo_export::export_cabrillo(
+                        &records,
+                        state.session.contest.as_ref(),
+                        category,
+                        &state.session_cabrillo,
+                        &my_call,
+                        claimed_score,
+                        &path,
+                    )
+                }
+            };
+            let step = match result {
+                Ok(count) => modals::export::ExportStep::Result {
+                    message: format!("Exported {count} QSOs to {}", path.display()),
+                    is_error: false,
+                },
+                Err(e) => modals::export::ExportStep::Result {
+                    message: format!("Export failed: {e}"),
+                    is_error: true,
+                },
+            };
+            state.modal = Some(modals::Modal::Export(modals::export::ExportState { step }));
         }
         Message::SetTheme(t) => {
             state.theme = t;
@@ -642,9 +702,12 @@ fn view(state: &App) -> Element<'_, Message> {
             modals::Modal::ThemePicker => {
                 modals::theme::view(&state.theme, Message::SetTheme, Message::CloseModal)
             }
-            modals::Modal::Export(s) => {
-                modals::export::view(s, Message::ExportPickAdif, Message::CloseModal)
-            }
+            modals::Modal::Export(s) => modals::export::view(
+                s,
+                Message::ExportPickAdif,
+                Message::ExportPickCabrillo,
+                Message::CloseModal,
+            ),
         };
         stack![main, backdrop, content].into()
     } else {
@@ -1095,7 +1158,7 @@ fn init() -> (App, iced::Task<Message>) {
 
     let app_tx = bridge::make_app_channel();
 
-    let (session, adapter_bits) = match maybe_cfg {
+    let (session, adapter_bits, session_category, session_cabrillo) = match maybe_cfg {
         Some(cfg) => {
             let (session_bits, adapter_bits) = cfg.into_parts();
             tracing::info!(
@@ -1103,9 +1166,13 @@ fn init() -> (App, iced::Task<Message>) {
                 my_call = %session_bits.my_call,
                 "loaded config"
             );
+            // Cloned out before bootstrap consumes session_bits — both
+            // are kept on App for export-time access.
+            let category = session_bits.category.clone();
+            let cabrillo = session_bits.cabrillo.clone();
             let s = bridge::bootstrap_from_session(session_bits, app_tx.clone())
                 .expect("bootstrap_from_session failed");
-            (s, Some(adapter_bits))
+            (s, Some(adapter_bits), category, cabrillo)
         }
         None => {
             tracing::info!("no --config given; running demo session (CWT, callsign TEST)");
@@ -1114,7 +1181,7 @@ fn init() -> (App, iced::Task<Message>) {
             // first opening the GUI. No periodic generator — those used to
             // run, and they were misleading.
             bridge::inject_demo_state(&mut s);
-            (s, None)
+            (s, None, None, logger_runtime::CabrilloConfig::default())
         }
     };
 
@@ -1136,7 +1203,7 @@ fn init() -> (App, iced::Task<Message>) {
     if let Some(rx) = rtc_status_rx {
         let _ = bridge::set_rtc_status_rx(rx);
     }
-    let app = App::new(session, app_tx.clone());
+    let app = App::new(session, app_tx.clone(), session_category, session_cabrillo);
     // Note: `rtc_configured` lives on AdapterHandles and is populated
     // by `spawn_adapters` from `AdapterBits.rtc_configured`. Setting
     // it here would be overwritten when `AdaptersReady` installs the

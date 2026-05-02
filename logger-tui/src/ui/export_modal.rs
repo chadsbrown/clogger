@@ -8,6 +8,14 @@ use ratatui::{
 
 use crate::ExportModal;
 use crate::theme::Theme;
+use logger_core::ContestEntry;
+use logger_runtime::{CabrilloConfig, CategoryConfig};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExportFormat {
+    Adif,
+    Cabrillo,
+}
 
 pub fn render(frame: &mut Frame, modal: &ExportModal, theme: &Theme) {
     let area = centered_rect(50, 12, frame.area());
@@ -24,19 +32,25 @@ pub fn render(frame: &mut Frame, modal: &ExportModal, theme: &Theme) {
 
     match &modal.step {
         ExportStep::SelectFormat => render_format_select(frame, inner, theme),
-        ExportStep::InputPath { path, cursor } => render_path_input(frame, inner, path, *cursor, theme),
+        ExportStep::InputPath { path, cursor, format } => {
+            render_path_input(frame, inner, path, *cursor, *format, theme)
+        }
         ExportStep::Result { message, is_error } => {
             render_result(frame, inner, message, *is_error, theme)
         }
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn handle_key(
     modal: &mut Option<ExportModal>,
     key_code: crossterm::event::KeyCode,
     records: &[logger_runtime::QsoRecord],
     my_call: &str,
-    contest_id: &str,
+    contest: &dyn ContestEntry,
+    category: Option<&CategoryConfig>,
+    cabrillo: &CabrilloConfig,
+    claimed_score: i64,
 ) -> bool {
     let m = match modal {
         Some(m) => m,
@@ -46,11 +60,34 @@ pub fn handle_key(
     match &mut m.step {
         ExportStep::SelectFormat => match key_code {
             crossterm::event::KeyCode::Char('a') | crossterm::event::KeyCode::Char('A') => {
-                let default_path = format!("{}-{}.adi", my_call.to_lowercase(), contest_id);
+                let default_path =
+                    format!("{}-{}.adi", my_call.to_lowercase(), contest.contest_id());
                 let cursor = default_path.len();
                 m.step = ExportStep::InputPath {
                     path: default_path,
                     cursor,
+                    format: ExportFormat::Adif,
+                };
+            }
+            crossterm::event::KeyCode::Char('c') | crossterm::event::KeyCode::Char('C') => {
+                // Cabrillo requires a [category] section — without it we
+                // can't fill the CATEGORY-* headers and the export would be
+                // unsubmittable. Surface that as a Result error rather
+                // than silently degrading.
+                if category.is_none() {
+                    m.step = ExportStep::Result {
+                        message: "Cabrillo export requires a [category] section in config.toml".into(),
+                        is_error: true,
+                    };
+                    return true;
+                }
+                let default_path =
+                    format!("{}-{}.log", my_call.to_lowercase(), contest.contest_id());
+                let cursor = default_path.len();
+                m.step = ExportStep::InputPath {
+                    path: default_path,
+                    cursor,
+                    format: ExportFormat::Cabrillo,
                 };
             }
             crossterm::event::KeyCode::Esc => {
@@ -58,25 +95,40 @@ pub fn handle_key(
             }
             _ => {}
         },
-        ExportStep::InputPath { path, cursor } => match key_code {
+        ExportStep::InputPath { path, cursor, format } => match key_code {
             crossterm::event::KeyCode::Enter => {
                 let export_path = std::path::Path::new(&*path);
-                match logger_runtime::adif_export::export_adif(
-                    records, my_call, contest_id, export_path,
-                ) {
-                    Ok(count) => {
-                        m.step = ExportStep::Result {
-                            message: format!("Exported {count} QSOs to {path}"),
-                            is_error: false,
-                        };
+                let result = match format {
+                    ExportFormat::Adif => logger_runtime::adif_export::export_adif(
+                        records,
+                        my_call,
+                        contest.contest_id(),
+                        export_path,
+                    ),
+                    ExportFormat::Cabrillo => {
+                        // Already validated in SelectFormat; unwrap is safe.
+                        let category = category.expect("category checked at format selection");
+                        logger_runtime::cabrillo_export::export_cabrillo(
+                            records,
+                            contest,
+                            category,
+                            cabrillo,
+                            my_call,
+                            claimed_score,
+                            export_path,
+                        )
                     }
-                    Err(e) => {
-                        m.step = ExportStep::Result {
-                            message: format!("Export failed: {e}"),
-                            is_error: true,
-                        };
-                    }
-                }
+                };
+                m.step = match result {
+                    Ok(count) => ExportStep::Result {
+                        message: format!("Exported {count} QSOs to {path}"),
+                        is_error: false,
+                    },
+                    Err(e) => ExportStep::Result {
+                        message: format!("Export failed: {e}"),
+                        is_error: true,
+                    },
+                };
             }
             crossterm::event::KeyCode::Esc => {
                 *modal = None;
@@ -114,7 +166,7 @@ pub fn handle_key(
 #[derive(Debug, Clone)]
 pub enum ExportStep {
     SelectFormat,
-    InputPath { path: String, cursor: usize },
+    InputPath { path: String, cursor: usize, format: ExportFormat },
     Result { message: String, is_error: bool },
 }
 
@@ -142,8 +194,8 @@ fn render_format_select(frame: &mut Frame, area: Rect, theme: &Theme) {
 
     frame.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::styled("  [C] ", Style::from(theme.modal_disabled_option)),
-            Span::styled("Cabrillo (not yet implemented)", Style::from(theme.modal_disabled_option)),
+            Span::styled("  [C] ", Style::from(theme.modal_active_option)),
+            Span::raw("Cabrillo (.log)"),
         ])),
         chunks[3],
     );
@@ -157,7 +209,14 @@ fn render_format_select(frame: &mut Frame, area: Rect, theme: &Theme) {
     );
 }
 
-fn render_path_input(frame: &mut Frame, area: Rect, path: &str, cursor: usize, theme: &Theme) {
+fn render_path_input(
+    frame: &mut Frame,
+    area: Rect,
+    path: &str,
+    cursor: usize,
+    format: ExportFormat,
+    theme: &Theme,
+) {
     let chunks = Layout::vertical([
         Constraint::Length(1),
         Constraint::Length(1),
@@ -167,7 +226,11 @@ fn render_path_input(frame: &mut Frame, area: Rect, path: &str, cursor: usize, t
     ])
     .split(area);
 
-    frame.render_widget(Paragraph::new("Export ADIF to:"), chunks[0]);
+    let prompt = match format {
+        ExportFormat::Adif => "Export ADIF to:",
+        ExportFormat::Cabrillo => "Export Cabrillo to:",
+    };
+    frame.render_widget(Paragraph::new(prompt), chunks[0]);
     frame.render_widget(Paragraph::new(""), chunks[1]);
 
     let display_path = if path.is_empty() { " " } else { path };
