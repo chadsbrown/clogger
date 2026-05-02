@@ -8,9 +8,29 @@ use super::positioned::Positioned;
 use crate::panes::style;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HEdge {
+    None,
+    Left,
+    Right,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum VEdge {
+    None,
+    Top,
+    Bottom,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ResizeEdges {
+    h: HEdge,
+    v: VEdge,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DragKind {
     Move,
-    Resize,
+    Resize(ResizeEdges),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -56,7 +76,7 @@ pub struct Workspace {
 #[derive(Debug, Clone)]
 pub enum Message {
     StartMove(u32),
-    StartResize(u32),
+    StartResize(u32, ResizeEdges),
     PaneClicked(u32),
     Close(u32),
     Toggle(u32),
@@ -69,7 +89,12 @@ pub enum Message {
 const MIN_W: f32 = 140.0;
 const MIN_H: f32 = 80.0;
 const TITLE_H: f32 = 20.0;
-const RESIZE: f32 = 14.0;
+// Thickness of the perimeter resize zones (top/bottom strips and left/right strips).
+const EDGE: f32 = 6.0;
+// Length of each corner zone along the edge it sits on. Slightly larger than EDGE
+// so the corner's diagonal-resize area dominates over the straight-edge zones at
+// the meeting points.
+const CORNER: f32 = 12.0;
 const TOOLBAR_H: f32 = 32.0;
 // Keep at least this much of a pane visible when dragging.
 const VISIBLE_MARGIN: f32 = 60.0;
@@ -153,11 +178,11 @@ impl Workspace {
                 }
                 self.raise_and_focus(id);
             }
-            Message::StartResize(id) => {
+            Message::StartResize(id, edges) => {
                 if let Some(p) = self.panes.iter().find(|p| p.id == id) {
                     self.drag = Some(DragState {
                         pane: id,
-                        kind: DragKind::Resize,
+                        kind: DragKind::Resize(edges),
                         anchor: self.cursor,
                         start_pos: p.pos,
                         start_size: p.size,
@@ -212,12 +237,35 @@ impl Workspace {
                                 let raw = Point::new(d.start_pos.x + dx, d.start_pos.y + dy);
                                 pane.pos = Self::clamp_pos(window, raw, pane.size);
                             }
-                            DragKind::Resize => {
-                                pane.size = Size::new(
-                                    (d.start_size.width + dx).max(MIN_W),
-                                    (d.start_size.height + dy).max(MIN_H),
+                            DragKind::Resize(edges) => {
+                                let (new_x, new_w) = match edges.h {
+                                    HEdge::None => (d.start_pos.x, d.start_size.width),
+                                    HEdge::Right => {
+                                        (d.start_pos.x, (d.start_size.width + dx).max(MIN_W))
+                                    }
+                                    HEdge::Left => {
+                                        let new_w = (d.start_size.width - dx).max(MIN_W);
+                                        let used = d.start_size.width - new_w;
+                                        (d.start_pos.x + used, new_w)
+                                    }
+                                };
+                                let (new_y, new_h) = match edges.v {
+                                    VEdge::None => (d.start_pos.y, d.start_size.height),
+                                    VEdge::Bottom => {
+                                        (d.start_pos.y, (d.start_size.height + dy).max(MIN_H))
+                                    }
+                                    VEdge::Top => {
+                                        let new_h = (d.start_size.height - dy).max(MIN_H);
+                                        let used = d.start_size.height - new_h;
+                                        (d.start_pos.y + used, new_h)
+                                    }
+                                };
+                                pane.size = Size::new(new_w, new_h);
+                                pane.pos = Self::clamp_pos(
+                                    window,
+                                    Point::new(new_x, new_y),
+                                    pane.size,
                                 );
-                                pane.pos = Self::clamp_pos(window, pane.pos, pane.size);
                             }
                         }
                     }
@@ -502,20 +550,7 @@ where
     // Message via `wrap`.
     let body_area = mouse_area(body).on_press(wrap(Message::PaneClicked(pane.id)));
 
-    let resize_handle = mouse_area(
-        container(text("◢").size(12.0).color(Color::from_rgb(0.6, 0.6, 0.6)))
-            .padding(0)
-            .width(RESIZE)
-            .height(RESIZE)
-            .align_x(iced::alignment::Horizontal::Center)
-            .align_y(iced::alignment::Vertical::Center),
-    )
-    .on_press(wrap(Message::StartResize(pane.id)))
-    .interaction(mouse::Interaction::ResizingDiagonallyDown);
-
-    let footer = row![Space::new().width(Length::Fill).height(RESIZE), resize_handle];
-
-    container(column![title_bar, body_area, footer].spacing(0))
+    let pane_main: Element<'a, M> = container(column![title_bar, body_area].spacing(0))
         .width(Length::Fill)
         .height(Length::Fill)
         .style(move |t: &Theme| {
@@ -543,5 +578,134 @@ where
                 ..container::Style::default()
             }
         })
+        .into();
+
+    // 8 invisible resize zones layered on top of the pane body. The middle cell
+    // is a plain Space (no mouse_area), so events at the body fall through to
+    // pane_main below — that's what keeps the body clickable for raise-on-press.
+    let perimeter = perimeter_overlay(pane.id, wrap);
+
+    stack![pane_main, perimeter]
+        .width(Length::Fill)
+        .height(Length::Fill)
         .into()
+}
+
+fn perimeter_overlay<'a, M>(pane_id: u32, wrap: fn(Message) -> M) -> Element<'a, M>
+where
+    M: 'a + Clone,
+{
+    use iced::Length::{Fill, Fixed};
+
+    let nw = corner_zone(
+        pane_id,
+        ResizeEdges { h: HEdge::Left, v: VEdge::Top },
+        mouse::Interaction::ResizingDiagonallyDown,
+        wrap,
+    );
+    let ne = corner_zone(
+        pane_id,
+        ResizeEdges { h: HEdge::Right, v: VEdge::Top },
+        mouse::Interaction::ResizingDiagonallyUp,
+        wrap,
+    );
+    let sw = corner_zone(
+        pane_id,
+        ResizeEdges { h: HEdge::Left, v: VEdge::Bottom },
+        mouse::Interaction::ResizingDiagonallyUp,
+        wrap,
+    );
+    let se = corner_zone(
+        pane_id,
+        ResizeEdges { h: HEdge::Right, v: VEdge::Bottom },
+        mouse::Interaction::ResizingDiagonallyDown,
+        wrap,
+    );
+
+    let n_edge = horizontal_edge(
+        pane_id,
+        ResizeEdges { h: HEdge::None, v: VEdge::Top },
+        wrap,
+    );
+    let s_edge = horizontal_edge(
+        pane_id,
+        ResizeEdges { h: HEdge::None, v: VEdge::Bottom },
+        wrap,
+    );
+    let w_edge = vertical_edge(
+        pane_id,
+        ResizeEdges { h: HEdge::Left, v: VEdge::None },
+        wrap,
+    );
+    let e_edge = vertical_edge(
+        pane_id,
+        ResizeEdges { h: HEdge::Right, v: VEdge::None },
+        wrap,
+    );
+
+    let middle: Element<'a, M> = Space::new().width(Fill).height(Fill).into();
+
+    column![
+        row![nw, n_edge, ne].height(Fixed(EDGE)),
+        row![w_edge, middle, e_edge].height(Fill),
+        row![sw, s_edge, se].height(Fixed(EDGE)),
+    ]
+    .width(Fill)
+    .height(Fill)
+    .into()
+}
+
+fn corner_zone<'a, M>(
+    pane_id: u32,
+    edges: ResizeEdges,
+    interaction: mouse::Interaction,
+    wrap: fn(Message) -> M,
+) -> Element<'a, M>
+where
+    M: 'a + Clone,
+{
+    mouse_area(
+        Space::new()
+            .width(Length::Fixed(CORNER))
+            .height(Length::Fixed(EDGE)),
+    )
+    .on_press(wrap(Message::StartResize(pane_id, edges)))
+    .interaction(interaction)
+    .into()
+}
+
+fn horizontal_edge<'a, M>(
+    pane_id: u32,
+    edges: ResizeEdges,
+    wrap: fn(Message) -> M,
+) -> Element<'a, M>
+where
+    M: 'a + Clone,
+{
+    mouse_area(
+        Space::new()
+            .width(Length::Fill)
+            .height(Length::Fixed(EDGE)),
+    )
+    .on_press(wrap(Message::StartResize(pane_id, edges)))
+    .interaction(mouse::Interaction::ResizingVertically)
+    .into()
+}
+
+fn vertical_edge<'a, M>(
+    pane_id: u32,
+    edges: ResizeEdges,
+    wrap: fn(Message) -> M,
+) -> Element<'a, M>
+where
+    M: 'a + Clone,
+{
+    mouse_area(
+        Space::new()
+            .width(Length::Fixed(EDGE))
+            .height(Length::Fill),
+    )
+    .on_press(wrap(Message::StartResize(pane_id, edges)))
+    .interaction(mouse::Interaction::ResizingHorizontally)
+    .into()
 }
