@@ -315,7 +315,9 @@ async fn build_rig(config: &RigConfig) -> anyhow::Result<Arc<dyn Rig>> {
                 .into_iter()
                 .find(|m| normalize(m.name) == needle)
                 .ok_or_else(|| anyhow::anyhow!("yaesu model not found: {}", config.model))?;
-            let mut builder = riglib::yaesu::YaesuBuilder::new(model).serial_port(&config.port);
+            let mut builder = riglib::yaesu::YaesuBuilder::new(model)
+                .serial_port(&config.port)
+                .ai(config.transceive);
             if let Some(baud) = config.baud_rate {
                 builder = builder.baud_rate(baud);
             }
@@ -326,8 +328,9 @@ async fn build_rig(config: &RigConfig) -> anyhow::Result<Arc<dyn Rig>> {
                 .into_iter()
                 .find(|m| normalize(m.name) == needle)
                 .ok_or_else(|| anyhow::anyhow!("elecraft model not found: {}", config.model))?;
-            let mut builder =
-                riglib::elecraft::ElecraftBuilder::new(model).serial_port(&config.port);
+            let mut builder = riglib::elecraft::ElecraftBuilder::new(model)
+                .serial_port(&config.port)
+                .ai(config.transceive);
             if let Some(baud) = config.baud_rate {
                 builder = builder.baud_rate(baud);
             }
@@ -338,7 +341,9 @@ async fn build_rig(config: &RigConfig) -> anyhow::Result<Arc<dyn Rig>> {
                 .into_iter()
                 .find(|m| normalize(m.name) == needle)
                 .ok_or_else(|| anyhow::anyhow!("kenwood model not found: {}", config.model))?;
-            let mut builder = riglib::kenwood::KenwoodBuilder::new(model).serial_port(&config.port);
+            let mut builder = riglib::kenwood::KenwoodBuilder::new(model)
+                .serial_port(&config.port)
+                .ai(config.transceive);
             if let Some(baud) = config.baud_rate {
                 builder = builder.baud_rate(baud);
             }
