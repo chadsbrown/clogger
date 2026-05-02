@@ -267,6 +267,12 @@ enum Message {
     ToggleSo2rRxMode,
     OpenModal(modals::Modal),
     CloseModal,
+    /// User clicked "ADIF" in the Export modal — transitions the modal
+    /// to the Working step and fires the OS Save dialog.
+    ExportPickAdif,
+    /// OS Save dialog returned: `Some(path)` runs the export and shows
+    /// the result; `None` means the user cancelled.
+    ExportPathChosen(Option<std::path::PathBuf>),
     AdaptersReady(AdapterHandlesResult),
     KeyerEvent(KeyerEvent),
     CondxSnapshot(CondXSnapshot),
@@ -364,6 +370,60 @@ fn update(state: &mut App, msg: Message) -> iced::Task<Message> {
         }
         Message::OpenModal(m) => state.modal = Some(m),
         Message::CloseModal => state.modal = None,
+        Message::ExportPickAdif => {
+            // Transition the export modal to Working while the OS dialog
+            // is up. If the modal isn't currently the export modal (race
+            // with closing), bail.
+            let default_name = format!(
+                "{}-{}.adi",
+                state.session.state.my_call.to_lowercase(),
+                state.session.contest.contest_id(),
+            );
+            state.modal = Some(modals::Modal::Export(modals::export::ExportState {
+                step: modals::export::ExportStep::Working,
+            }));
+            return iced::Task::perform(
+                async move {
+                    rfd::AsyncFileDialog::new()
+                        .set_file_name(default_name)
+                        .add_filter("ADIF", &["adi"])
+                        .save_file()
+                        .await
+                        .map(|h| h.path().to_path_buf())
+                },
+                Message::ExportPathChosen,
+            );
+        }
+        Message::ExportPathChosen(maybe_path) => {
+            match maybe_path {
+                None => {
+                    // User cancelled the OS dialog — close the modal.
+                    state.modal = None;
+                }
+                Some(path) => {
+                    let records = state.session.log_adapter.ordered_records();
+                    let my_call = state.session.state.my_call.clone();
+                    let contest_id = state.session.contest.contest_id().to_string();
+                    let result = logger_runtime::adif_export::export_adif(
+                        &records,
+                        &my_call,
+                        &contest_id,
+                        &path,
+                    );
+                    let step = match result {
+                        Ok(count) => modals::export::ExportStep::Result {
+                            message: format!("Exported {count} QSOs to {}", path.display()),
+                            is_error: false,
+                        },
+                        Err(e) => modals::export::ExportStep::Result {
+                            message: format!("Export failed: {e}"),
+                            is_error: true,
+                        },
+                    };
+                    state.modal = Some(modals::Modal::Export(modals::export::ExportState { step }));
+                }
+            }
+        }
         Message::SetTheme(t) => {
             state.theme = t;
             mdi::save(
@@ -563,7 +623,7 @@ fn view(state: &App) -> Element<'_, Message> {
         Message::Mdi,
     );
 
-    if let Some(modal) = state.modal {
+    if let Some(modal) = &state.modal {
         use iced::widget::{container, mouse_area, stack, Space};
         use iced::{Background, Color, Length};
         let backdrop: Element<Message> = mouse_area(
@@ -581,6 +641,9 @@ fn view(state: &App) -> Element<'_, Message> {
             modals::Modal::Help => modals::help::view(Message::CloseModal),
             modals::Modal::ThemePicker => {
                 modals::theme::view(&state.theme, Message::SetTheme, Message::CloseModal)
+            }
+            modals::Modal::Export(s) => {
+                modals::export::view(s, Message::ExportPickAdif, Message::CloseModal)
             }
         };
         stack![main, backdrop, content].into()
@@ -808,6 +871,12 @@ fn status_bar(state: &App) -> Element<'_, Message> {
         .padding([0, 6])
         .on_press(Message::OpenModal(modals::Modal::Help))
         .style(icon_btn_style);
+    let export_btn = iced::widget::button(text("⤓").size(12.0))
+        .padding([0, 6])
+        .on_press(Message::OpenModal(modals::Modal::Export(
+            modals::export::ExportState::default(),
+        )))
+        .style(icon_btn_style);
     let font_down = iced::widget::button(text("A−").size(12.0))
         .padding([0, 6])
         .on_press(Message::FontScaleDown)
@@ -906,6 +975,7 @@ fn status_bar(state: &App) -> Element<'_, Message> {
     bar = bar
         .push(font_down)
         .push(font_up)
+        .push(export_btn)
         .push(theme_btn)
         .push(help_btn);
 
