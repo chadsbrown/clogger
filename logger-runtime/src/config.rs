@@ -76,11 +76,10 @@ impl CategoryTransmitter {
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "SCREAMING-KEBAB-CASE")]
 pub enum CategoryOperator {
+    #[serde(alias = "MULTI-ONE", alias = "MULTI-TWO", alias = "MULTI-MULTI")]
     MultiOp,
     SingleOp,
-    MultiOne,
-    MultiTwo,
-    MultiMulti,
+    Checklog,
 }
 
 impl CategoryOperator {
@@ -88,9 +87,7 @@ impl CategoryOperator {
         match self {
             Self::MultiOp => "MULTI-OP",
             Self::SingleOp => "SINGLE-OP",
-            Self::MultiOne => "MULTI-ONE",
-            Self::MultiTwo => "MULTI-TWO",
-            Self::MultiMulti => "MULTI-MULTI",
+            Self::Checklog => "CHECKLOG",
         }
     }
 }
@@ -174,7 +171,9 @@ pub enum CategoryOverlay {
     TbWires,
     Rookie,
     Classic,
-    WireOnly,
+    Youth,
+    NoviceTech,
+    Yl,
 }
 
 impl CategoryOverlay {
@@ -184,7 +183,9 @@ impl CategoryOverlay {
             Self::TbWires => "TB-WIRES",
             Self::Rookie => "ROOKIE",
             Self::Classic => "CLASSIC",
-            Self::WireOnly => "WIRE-ONLY",
+            Self::Youth => "YOUTH",
+            Self::NoviceTech => "NOVICE-TECH",
+            Self::Yl => "YL",
         }
     }
 }
@@ -555,6 +556,50 @@ impl SkimmerQualityConfigSerde {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn category_operator_emits_only_cabrillo_v3_values() {
+        assert_eq!(CategoryOperator::SingleOp.as_str(), "SINGLE-OP");
+        assert_eq!(CategoryOperator::MultiOp.as_str(), "MULTI-OP");
+        assert_eq!(CategoryOperator::Checklog.as_str(), "CHECKLOG");
+    }
+
+    #[test]
+    fn legacy_multi_operator_values_deserialize_as_multi_op() {
+        #[derive(Deserialize)]
+        struct Wrapper {
+            operator: CategoryOperator,
+        }
+
+        for value in ["MULTI-ONE", "MULTI-TWO", "MULTI-MULTI"] {
+            let parsed: Wrapper = toml::from_str(&format!("operator = \"{value}\"")).unwrap();
+            assert_eq!(parsed.operator, CategoryOperator::MultiOp);
+            assert_eq!(parsed.operator.as_str(), "MULTI-OP");
+        }
+    }
+
+    #[test]
+    fn category_overlay_emits_only_cabrillo_v3_values() {
+        assert_eq!(CategoryOverlay::Na.as_str(), "N/A");
+        assert_eq!(CategoryOverlay::Classic.as_str(), "CLASSIC");
+        assert_eq!(CategoryOverlay::Rookie.as_str(), "ROOKIE");
+        assert_eq!(CategoryOverlay::TbWires.as_str(), "TB-WIRES");
+        assert_eq!(CategoryOverlay::Youth.as_str(), "YOUTH");
+        assert_eq!(CategoryOverlay::NoviceTech.as_str(), "NOVICE-TECH");
+        assert_eq!(CategoryOverlay::Yl.as_str(), "YL");
+    }
+
+    #[test]
+    fn obsolete_wire_only_overlay_is_rejected() {
+        #[derive(Deserialize)]
+        struct Wrapper {
+            #[allow(dead_code)]
+            overlay: CategoryOverlay,
+        }
+
+        let res: Result<Wrapper, _> = toml::from_str("overlay = \"WIRE-ONLY\"");
+        assert!(res.is_err(), "obsolete overlay should fail to deserialize");
+    }
 
     #[test]
     fn skimmer_serde_defaults_match_dxfeed_defaults() {

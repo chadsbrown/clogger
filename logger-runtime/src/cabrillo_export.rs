@@ -185,8 +185,25 @@ fn exchange_tokens(rec: &QsoRecord) -> (Vec<String>, Vec<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{
+        CategoryAssisted, CategoryBands, CategoryConfigMode, CategoryOperator, CategoryPower,
+        CategoryStation, CategoryTransmitter,
+    };
     use qsolog::qso::{ExchangeBlob, QsoFlags, QsoRecord};
     use qsolog::types::{Band, Mode};
+
+    fn category(operator: CategoryOperator, overlay: CategoryOverlay) -> CategoryConfig {
+        CategoryConfig {
+            power: CategoryPower::Low,
+            assisted: CategoryAssisted::NonAssisted,
+            transmitter: CategoryTransmitter::One,
+            operator,
+            bands: CategoryBands::All,
+            mode: CategoryConfigMode::Cw,
+            overlay,
+            station: CategoryStation::Fixed,
+        }
+    }
 
     fn cwt_record(is_void: bool) -> QsoRecord {
         let pairs: Vec<(String, String)> = vec![
@@ -257,5 +274,25 @@ mod tests {
         assert_eq!(mode_to_cabrillo(Mode::CW), "CW");
         assert_eq!(mode_to_cabrillo(Mode::SSB), "PH");
         assert_eq!(mode_to_cabrillo(Mode::Digital), "RY");
+    }
+
+    #[test]
+    fn header_uses_current_cabrillo_category_values() {
+        let header = CabrilloConfig::default();
+        let body = build_cabrillo(
+            &[],
+            "CQ-WW-CW",
+            &category(CategoryOperator::Checklog, CategoryOverlay::Youth),
+            &header,
+            "N1XYZ",
+            0,
+        );
+
+        assert!(body.contains("\r\nCATEGORY-OPERATOR: CHECKLOG\r\n"));
+        assert!(body.contains("\r\nCATEGORY-OVERLAY: YOUTH\r\n"));
+        assert!(!body.contains("MULTI-ONE"));
+        assert!(!body.contains("MULTI-TWO"));
+        assert!(!body.contains("MULTI-MULTI"));
+        assert!(!body.contains("WIRE-ONLY"));
     }
 }

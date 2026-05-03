@@ -115,10 +115,11 @@ contest = "cqww"
 #power = "HIGH"          # LOW | HIGH | QRP
 #assisted = "ASSISTED"   # NON-ASSISTED | ASSISTED
 #transmitter = "ONE"     # UNLIMITED | TWO | ONE
-#operator = "SINGLE-OP"  # MULTI-OP | SINGLE-OP | MULTI-ONE | MULTI-TWO | MULTI-MULTI
+#operator = "SINGLE-OP"  # SINGLE-OP | MULTI-OP | CHECKLOG
 #bands = "ALL"           # ALL | 160M | 80M | 40M | 20M | 15M | 10M | 6M | 2M
 #mode = "CW"             # MIXED | CW | SSB | RTTY | DIGI
-#overlay = "N/A"         # N/A | TB-WIRES | ROOKIE | CLASSIC | WIRE-ONLY
+#overlay = "N/A"         # N/A | CLASSIC | ROOKIE | TB-WIRES | YOUTH |
+#                        # NOVICE-TECH | YL
 #station = "FIXED"       # FIXED | MOBILE | PORTABLE | ROVER | ROVER-LIMITED |
 #                        # ROVER-UNLIMITED | EXPEDITION | HQ | SCHOOL |
 #                        # EXPLORER | DISTRIBUTED. Defaults to FIXED.
