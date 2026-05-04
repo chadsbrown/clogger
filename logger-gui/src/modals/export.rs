@@ -1,8 +1,6 @@
-//! Export modal — generate ADIF files via a native Save File dialog.
-//! Mirrors the TUI flow: SelectFormat → (OS dialog) → Result. Cabrillo
-//! is shown but disabled, matching the TUI.
+//! Export modal.
 
-use iced::widget::{button, column, container, mouse_area, row, text, Space};
+use iced::widget::{button, column, container, mouse_area, row, text, text_input, Space};
 use iced::{mouse, Border, Element, Length, Theme};
 
 use crate::panes::style;
@@ -13,13 +11,22 @@ pub enum ExportFormat {
     Cabrillo,
 }
 
+impl ExportFormat {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Adif => "ADIF",
+            Self::Cabrillo => "Cabrillo",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum ExportStep {
     SelectFormat,
-    /// File dialog is open or the export is being written. The modal is
-    /// inert in this state; the OS dialog drives. The chosen format
-    /// rides on `Message::ExportPathChosen` rather than this state.
-    Working,
+    ChoosePath {
+        format: ExportFormat,
+        path: String,
+    },
     Result {
         message: String,
         is_error: bool,
@@ -41,6 +48,8 @@ pub fn view<'a, M: 'a + Clone + 'static>(
     state: &'a ExportState,
     on_pick_adif: M,
     on_pick_cabrillo: M,
+    on_path_changed: impl Fn(String) -> M + 'a + Clone,
+    on_export: M,
     on_close: M,
 ) -> Element<'a, M> {
     let close = button(text("✕").size(14.0))
@@ -81,15 +90,32 @@ pub fn view<'a, M: 'a + Clone + 'static>(
         ]
         .spacing(0)
         .into(),
-        ExportStep::Working => column![
-            text("Choose destination…").size(style::TEXT_BODY),
-            Space::new().height(8),
-            text("File dialog open. Cancel the dialog to abort.")
-                .size(style::TEXT_LABEL)
-                .style(style::muted),
-        ]
-        .spacing(0)
-        .into(),
+        ExportStep::ChoosePath { format, path } => {
+            let can_export = !path.trim().is_empty();
+            column![
+                text(format!("{} destination:", format.label())).size(style::TEXT_BODY),
+                Space::new().height(8),
+                text_input("Path", path)
+                    .on_input(on_path_changed.clone())
+                    .on_submit(on_export.clone())
+                    .padding([6, 10])
+                    .size(style::TEXT_BODY),
+                Space::new().height(12),
+                row![
+                    Space::new().width(Length::Fill),
+                    button(text("Cancel").size(style::TEXT_BODY))
+                        .padding([4, 12])
+                        .on_press(on_close.clone()),
+                    button(text("Export").size(style::TEXT_BODY))
+                        .padding([4, 12])
+                        .on_press_maybe(can_export.then_some(on_export.clone())),
+                ]
+                .spacing(8)
+                .align_y(iced::alignment::Vertical::Center),
+            ]
+            .spacing(0)
+            .into()
+        }
         ExportStep::Result { message, is_error } => {
             let result_color = move |t: &Theme| -> iced::widget::text::Style {
                 iced::widget::text::Style {

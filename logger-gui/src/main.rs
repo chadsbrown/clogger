@@ -7,9 +7,10 @@ mod modals;
 mod panes;
 mod perf;
 
+use std::collections::VecDeque;
+use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
-use std::collections::VecDeque;
 
 use clap::Parser;
 use iced::{event, keyboard, Element, Event, Point, Size, Subscription, Theme};
@@ -279,15 +280,14 @@ enum Message {
     ToggleSo2rRxMode,
     OpenModal(modals::Modal),
     CloseModal,
-    /// User clicked "ADIF" in the Export modal — transitions the modal
-    /// to the Working step and fires the OS Save dialog.
+    /// User clicked "ADIF" in the Export modal.
     ExportPickAdif,
-    /// User clicked "Cabrillo" — same flow as ADIF but the eventual
-    /// `ExportPathChosen` runs the Cabrillo formatter instead.
+    /// User clicked "Cabrillo" in the Export modal.
     ExportPickCabrillo,
-    /// OS Save dialog returned: `Some(path)` runs the export using the
-    /// carried format; `None` means the user cancelled.
-    ExportPathChosen(modals::export::ExportFormat, Option<std::path::PathBuf>),
+    /// User edited the export destination path.
+    ExportPathChanged(String),
+    /// User confirmed the export destination path.
+    ExportConfirm,
     AdaptersReady(AdapterHandlesResult),
     KeyerEvent(KeyerEvent),
     CondxSnapshot(CondXSnapshot),
@@ -307,17 +307,10 @@ enum AdapterHandlesResult {
     Err(String),
 }
 
-/// Open the export modal in Working state and fire the OS Save dialog.
-/// The dialog future yields `Option<PathBuf>`; we wrap that in
-/// `Message::ExportPathChosen(format, ...)` so the result handler knows
-/// which exporter to invoke.
-fn spawn_export_dialog(
-    state: &mut App,
-    format: modals::export::ExportFormat,
-) -> iced::Task<Message> {
-    let (default_ext, filter_name, filter_ext) = match format {
-        modals::export::ExportFormat::Adif => ("adi", "ADIF", "adi"),
-        modals::export::ExportFormat::Cabrillo => ("log", "Cabrillo", "log"),
+fn default_export_path(state: &App, format: modals::export::ExportFormat) -> String {
+    let default_ext = match format {
+        modals::export::ExportFormat::Adif => "adi",
+        modals::export::ExportFormat::Cabrillo => "log",
     };
     let default_name = format!(
         "{}-{}.{}",
@@ -325,20 +318,99 @@ fn spawn_export_dialog(
         state.session.contest.contest_id(),
         default_ext,
     );
+
+    std::env::current_dir()
+        .map(|dir| dir.join(&default_name))
+        .unwrap_or_else(|_| PathBuf::from(default_name))
+        .display()
+        .to_string()
+}
+
+fn path_from_export_input(input: &str) -> Result<PathBuf, String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return Err("Export path cannot be empty".into());
+    }
+
+    if trimmed == "~" || trimmed.starts_with("~/") {
+        let home = dirs::home_dir().ok_or_else(|| "Cannot resolve home directory".to_string())?;
+        if trimmed == "~" {
+            Ok(home)
+        } else {
+            Ok(home.join(&trimmed[2..]))
+        }
+    } else {
+        Ok(PathBuf::from(trimmed))
+    }
+}
+
+fn open_export_path_step(state: &mut App, format: modals::export::ExportFormat) {
     state.modal = Some(modals::Modal::Export(modals::export::ExportState {
-        step: modals::export::ExportStep::Working,
-    }));
-    iced::Task::perform(
-        async move {
-            rfd::AsyncFileDialog::new()
-                .set_file_name(default_name)
-                .add_filter(filter_name, &[filter_ext])
-                .save_file()
-                .await
-                .map(|h| h.path().to_path_buf())
+        step: modals::export::ExportStep::ChoosePath {
+            format,
+            path: default_export_path(state, format),
         },
-        move |maybe_path| Message::ExportPathChosen(format, maybe_path),
-    )
+    }));
+}
+
+fn run_export_to_path(
+    state: &mut App,
+    format: modals::export::ExportFormat,
+    path_input: String,
+) {
+    let path = match path_from_export_input(&path_input) {
+        Ok(path) => path,
+        Err(message) => {
+            state.modal = Some(modals::Modal::Export(modals::export::ExportState {
+                step: modals::export::ExportStep::Result {
+                    message,
+                    is_error: true,
+                },
+            }));
+            return;
+        },
+    };
+
+    let records = state.session.log_adapter.ordered_records();
+    let my_call = state.session.state.my_call.clone();
+    let result = match format {
+        modals::export::ExportFormat::Adif => {
+            let contest_id = state.session.contest.contest_id().to_string();
+            logger_runtime::adif_export::export_adif(
+                &records,
+                &my_call,
+                &contest_id,
+                &path,
+            )
+        }
+        modals::export::ExportFormat::Cabrillo => {
+            let category = state
+                .session_category
+                .as_ref()
+                .expect("category presence checked at Pick");
+            let claimed_score = state.session.log_adapter.score_summary().claimed_score;
+            logger_runtime::cabrillo_export::export_cabrillo(
+                &records,
+                state.session.contest.as_ref(),
+                category,
+                &state.session_cabrillo,
+                &my_call,
+                claimed_score,
+                &path,
+            )
+        }
+    };
+    let step = match result {
+        Ok(count) => modals::export::ExportStep::Result {
+            message: format!("Exported {count} QSOs to {}", path.display()),
+            is_error: false,
+        },
+        Err(e) => modals::export::ExportStep::Result {
+            message: format!("Export failed: {e}"),
+            is_error: true,
+        },
+    };
+    state.modal = Some(modals::Modal::Export(modals::export::ExportState { step }));
 }
 
 fn update(state: &mut App, msg: Message) -> iced::Task<Message> {
@@ -420,12 +492,12 @@ fn update(state: &mut App, msg: Message) -> iced::Task<Message> {
         Message::OpenModal(m) => state.modal = Some(m),
         Message::CloseModal => state.modal = None,
         Message::ExportPickAdif => {
-            return spawn_export_dialog(state, modals::export::ExportFormat::Adif);
+            open_export_path_step(state, modals::export::ExportFormat::Adif);
         }
         Message::ExportPickCabrillo => {
             // Cabrillo export needs a [category] section; without it we'd
             // emit an unsubmittable file. Surface that as a Result error
-            // instead of opening the dialog.
+            // instead of asking for a destination.
             if state.session_category.is_none() {
                 state.modal = Some(modals::Modal::Export(modals::export::ExportState {
                     step: modals::export::ExportStep::Result {
@@ -436,53 +508,27 @@ fn update(state: &mut App, msg: Message) -> iced::Task<Message> {
                 }));
                 return iced::Task::none();
             }
-            return spawn_export_dialog(state, modals::export::ExportFormat::Cabrillo);
+            open_export_path_step(state, modals::export::ExportFormat::Cabrillo);
         }
-        Message::ExportPathChosen(format, maybe_path) => {
-            let Some(path) = maybe_path else {
-                state.modal = None;
+        Message::ExportPathChanged(next_path) => {
+            if let Some(modals::Modal::Export(modals::export::ExportState {
+                step: modals::export::ExportStep::ChoosePath { path, .. },
+            })) = &mut state.modal
+            {
+                *path = next_path;
+            }
+        }
+        Message::ExportConfirm => {
+            let Some((format, path)) = state.modal.as_ref().and_then(|modal| match modal {
+                modals::Modal::Export(modals::export::ExportState {
+                    step: modals::export::ExportStep::ChoosePath { format, path },
+                }) => Some((*format, path.clone())),
+                _ => None,
+            }) else {
                 return iced::Task::none();
             };
-            let records = state.session.log_adapter.ordered_records();
-            let my_call = state.session.state.my_call.clone();
-            let result = match format {
-                modals::export::ExportFormat::Adif => {
-                    let contest_id = state.session.contest.contest_id().to_string();
-                    logger_runtime::adif_export::export_adif(
-                        &records,
-                        &my_call,
-                        &contest_id,
-                        &path,
-                    )
-                }
-                modals::export::ExportFormat::Cabrillo => {
-                    let category = state
-                        .session_category
-                        .as_ref()
-                        .expect("category presence checked at Pick");
-                    let claimed_score = state.session.log_adapter.score_summary().claimed_score;
-                    logger_runtime::cabrillo_export::export_cabrillo(
-                        &records,
-                        state.session.contest.as_ref(),
-                        category,
-                        &state.session_cabrillo,
-                        &my_call,
-                        claimed_score,
-                        &path,
-                    )
-                }
-            };
-            let step = match result {
-                Ok(count) => modals::export::ExportStep::Result {
-                    message: format!("Exported {count} QSOs to {}", path.display()),
-                    is_error: false,
-                },
-                Err(e) => modals::export::ExportStep::Result {
-                    message: format!("Export failed: {e}"),
-                    is_error: true,
-                },
-            };
-            state.modal = Some(modals::Modal::Export(modals::export::ExportState { step }));
+
+            run_export_to_path(state, format, path);
         }
         Message::SetTheme(t) => {
             state.theme = t;
@@ -706,6 +752,8 @@ fn view(state: &App) -> Element<'_, Message> {
                 s,
                 Message::ExportPickAdif,
                 Message::ExportPickCabrillo,
+                Message::ExportPathChanged,
+                Message::ExportConfirm,
                 Message::CloseModal,
             ),
         };
@@ -1121,18 +1169,24 @@ fn subscription(state: &App) -> Subscription<Message> {
 }
 
 fn keyboard_subscription() -> Subscription<Message> {
-    event::listen_with(|ev, _status, _id| match ev {
-        Event::Keyboard(keyboard::Event::KeyPressed {
-            key,
-            modifiers,
-            text,
-            ..
-        }) => {
-            // Ctrl-modifier shortcuts that should never reach the reducer.
-            // Match on the Key (which is layout-aware and stable across
-            // shift state) rather than the produced text.
-            if (modifiers.control() || modifiers.command())
-                && let keyboard::Key::Character(s) = &key {
+    event::listen_with(|ev, status, _id| {
+        if matches!(status, event::Status::Captured) {
+            return None;
+        }
+
+        match ev {
+            Event::Keyboard(keyboard::Event::KeyPressed {
+                key,
+                modifiers,
+                text,
+                ..
+            }) => {
+                // Ctrl-modifier shortcuts that should never reach the reducer.
+                // Match on the Key (which is layout-aware and stable across
+                // shift state) rather than the produced text.
+                if (modifiers.control() || modifiers.command())
+                    && let keyboard::Key::Character(s) = &key
+                {
                     match s.as_str() {
                         "+" | "=" => return Some(Message::FontScaleUp),
                         "-" | "_" => return Some(Message::FontScaleDown),
@@ -1140,14 +1194,15 @@ fn keyboard_subscription() -> Subscription<Message> {
                         _ => {}
                     }
                 }
-            // Backtick → SO2R RX-mode toggle. Intercept before the reducer
-            // sees it so the entry box doesn't collect a stray `.
-            if text.as_deref() == Some("`") {
-                return Some(Message::ToggleSo2rRxMode);
+                // Backtick → SO2R RX-mode toggle. Intercept before the reducer
+                // sees it so the entry box doesn't collect a stray `.
+                if text.as_deref() == Some("`") {
+                    return Some(Message::ToggleSo2rRxMode);
+                }
+                keys::translate(&key, modifiers, text.as_deref()).map(Message::Domain)
             }
-            keys::translate(&key, modifiers, text.as_deref()).map(Message::Domain)
+            _ => None,
         }
-        _ => None,
     })
 }
 

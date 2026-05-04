@@ -18,5 +18,3 @@ clap = { version = "4", features = ["derive"] }
 toml = "0.8"
 dirs = "5"
 sysinfo = { version = "0.38.4", default-features = false, features = ["system"] }
-# Match iced's Tokio executor; rfd's default Linux backend uses async-std.
-rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "tokio"] }
