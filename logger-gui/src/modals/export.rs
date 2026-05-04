@@ -2,8 +2,8 @@
 //! Mirrors the TUI flow: SelectFormat → (OS dialog) → Result. Cabrillo
 //! is shown but disabled, matching the TUI.
 
-use iced::widget::{button, column, container, row, text, Space};
-use iced::{Border, Element, Length, Theme};
+use iced::widget::{button, column, container, mouse_area, row, text, Space};
+use iced::{mouse, Border, Element, Length, Theme};
 
 use crate::panes::style;
 
@@ -140,31 +140,28 @@ pub fn view<'a, M: 'a + Clone + 'static>(
 }
 
 fn format_choice<'a, M: 'a + Clone + 'static>(label: &'static str, on_press: M) -> Element<'a, M> {
-    button(
-        row![
-            text(label).size(style::TEXT_BODY),
-        ]
-        .align_y(iced::alignment::Vertical::Center),
+    mouse_area(
+        container(
+            row![text(label).size(style::TEXT_BODY)]
+                .align_y(iced::alignment::Vertical::Center),
+        )
+        .padding([6, 10])
+        .width(Length::Fill)
+        .style(|t: &Theme| {
+            let pal = t.extended_palette();
+            container::Style {
+                background: Some(pal.background.weak.color.into()),
+                text_color: Some(pal.background.base.text),
+                border: Border {
+                    color: style::border_color(t),
+                    width: 1.0,
+                    radius: style::RADIUS_INPUT.into(),
+                },
+                ..container::Style::default()
+            }
+        }),
     )
-    .padding([6, 10])
-    .width(Length::Fill)
     .on_press(on_press)
-    .style(|t: &Theme, status| {
-        let pal = t.extended_palette();
-        let bg = match status {
-            button::Status::Hovered => pal.primary.weak.color,
-            _ => pal.background.weak.color,
-        };
-        button::Style {
-            background: Some(bg.into()),
-            text_color: pal.background.base.text,
-            border: Border {
-                color: style::border_color(t),
-                width: 1.0,
-                radius: style::RADIUS_INPUT.into(),
-            },
-            ..button::Style::default()
-        }
-    })
+    .interaction(mouse::Interaction::Pointer)
     .into()
 }
