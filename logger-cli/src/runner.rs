@@ -425,7 +425,9 @@ fn execute_script(script: &Script, record_trace: bool) -> Result<RunArtifacts> {
             ScriptEvent::Spot { call, freq_hz, mode } => Some(AppEvent::SpotReceived {
                 spot: Spot { call, freq_hz, mode },
             }),
-            ScriptEvent::SpotWithdraw { call } => Some(AppEvent::SpotWithdrawn { call }),
+            ScriptEvent::SpotWithdraw { call, freq_hz } => {
+                Some(AppEvent::SpotWithdrawn { call, freq_hz })
+            }
         };
 
         let mut trace_effects = Vec::new();

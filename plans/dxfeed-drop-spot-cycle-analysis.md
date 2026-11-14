@@ -1,5 +1,12 @@
 # DX feed DROP/SPOT cycle — analysis
 
+> **Status (2026-11-14): addressed.** dxfeed now matches reports to an
+> existing spot by frequency tolerance (300 Hz on CW by default) instead of
+> a 10 Hz bucket, so skimmer jitter no longer produces a Withdraw/New pair.
+> clogger picked this up in the dxfeed bump to `f8fdbc3`, and its adapter
+> now withdraws the exact spot it sent rather than every spot for the
+> call. The analysis below describes the behavior before those changes.
+
 ## Context
 
 In the dxfeed pane, operators routinely see a `DROP` for a callsign immediately

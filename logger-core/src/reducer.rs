@@ -177,8 +177,9 @@ pub fn reduce(
             recompute_passband_warning(st);
             Vec::new()
         }
-        AppEvent::SpotWithdrawn { call } => {
-            st.bandmap.retain(|s| s.call != call);
+        AppEvent::SpotWithdrawn { call, freq_hz } => {
+            st.bandmap
+                .retain(|s| s.call != call || freq_hz.is_some_and(|f| s.freq_hz != f));
             st.bandmap_version = st.bandmap_version.wrapping_add(1);
             snap_all_bandmap_cursors(st);
             recompute_passband_warning(st);
@@ -2147,6 +2148,7 @@ mod tests {
             &macros,
             AppEvent::SpotWithdrawn {
                 call: "K5ZD".to_string(),
+                freq_hz: None,
             },
         );
         assert!(!st.focused_entry().is_passband_qrm);
@@ -2453,12 +2455,48 @@ mod tests {
             &macros,
             AppEvent::SpotWithdrawn {
                 call: "DL1ABC".to_string(),
+                freq_hz: None,
             },
         );
         assert!(matches!(
             st.bandmap_cursors.get(&1),
             Some(BandmapCursor::On { call, .. }) if call == "K5ZD"
         ));
+    }
+
+    #[test]
+    fn spot_withdrawn_with_freq_removes_only_that_spot() {
+        // The same call is spotted on 40m and 20m. Withdrawing the 40m
+        // spot must leave the 20m one on the bandmap.
+        let mut st = mk_state();
+        add_spot(&mut st, "K5ZD", 7_025_000, "CW");
+        add_spot(&mut st, "K5ZD", 14_025_000, "CW");
+        let contest = contest_from_id("cqww").unwrap();
+        let macros = Macros::default();
+        reduce(
+            &mut st,
+            contest.as_ref(),
+            &macros,
+            AppEvent::SpotWithdrawn {
+                call: "K5ZD".to_string(),
+                freq_hz: Some(7_025_000),
+            },
+        );
+        let left: Vec<u64> = st.bandmap.iter().map(|s| s.freq_hz).collect();
+        assert_eq!(left, vec![14_025_000]);
+
+        // Without a frequency, every spot for the call goes.
+        add_spot(&mut st, "K5ZD", 7_025_000, "CW");
+        reduce(
+            &mut st,
+            contest.as_ref(),
+            &macros,
+            AppEvent::SpotWithdrawn {
+                call: "K5ZD".to_string(),
+                freq_hz: None,
+            },
+        );
+        assert!(st.bandmap.is_empty());
     }
 
     #[test]
@@ -2485,6 +2523,7 @@ mod tests {
             &macros,
             AppEvent::SpotWithdrawn {
                 call: "K5ZD".to_string(),
+                freq_hz: None,
             },
         );
         assert!(
