@@ -54,8 +54,13 @@ pub enum AppEvent {
     SpotReceived {
         spot: Spot,
     },
+    /// Remove a spot from the bandmap. With `freq_hz: Some(f)` only the
+    /// spot for `call` at exactly `f` is removed, so the same call spotted
+    /// on another band or frequency stays. With `None`, every spot for
+    /// `call` is removed.
     SpotWithdrawn {
         call: String,
+        freq_hz: Option<u64>,
     },
     SetOpMode {
         mode: OpMode,

@@ -73,6 +73,9 @@ pub enum ScriptEvent {
     },
     SpotWithdraw {
         call: String,
+        /// When set, only the spot at this exact frequency is withdrawn.
+        #[serde(default)]
+        freq_hz: Option<u64>,
     },
 }
 

@@ -282,6 +282,11 @@ call is marked **Valid**. Subsequent single-skimmer spots at the same
 frequency that are one edit-distance away from a verified call are tagged
 **Busted** and dropped.
 
+Verification is tracked per band. A station heard on several bands at
+once (multi-op, SO2R) is **Valid** on each of them. A call is tagged
+**Qsy** only when it turns up away from its verified frequency on the
+same band.
+
 ### All knobs
 
 | Field | Default | Effect of increasing |
@@ -291,7 +296,7 @@ frequency that are one edit-distance away from a verified call are tagged
 | `lookback_window_secs` | `180` | Longer = more time to accumulate skimmers |
 | `busted_freq_window_hz` | `100` | Wider = catch busted copies further from verified freq |
 | `similar_call_max_edit_distance` | `1` | Higher = catch more typos, but also more false positives |
-| `qsy_freq_window_hz` | `400` | Wider = more tolerance before tagging a call as QSY |
+| `qsy_freq_window_hz` | `400` | Wider = more tolerance, within one band, before tagging a call as QSY |
 | `apply_only_to_skimmer` | `true` | `false` = also gate human spots (aggressive) |
 
 ### Gating tags
@@ -301,7 +306,7 @@ frequency that are one edit-distance away from a verified call are tagged
 | `allow_valid` | `true` | Corroborated by enough skimmers |
 | `allow_busted` | `false` | One-character typo of a verified call |
 | `allow_unknown` | `false` | Not enough data to classify |
-| `allow_qsy` | `false` | Verified call heard far from its last freq |
+| `allow_qsy` | `false` | Verified call heard far from its last freq on the same band |
 
 ### Example: aggressive noise reduction
 

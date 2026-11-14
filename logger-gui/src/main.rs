@@ -884,18 +884,18 @@ impl App {
                 freq_hz: Some(spot.freq_hz),
                 mode: Some(spot.mode.clone()),
             }),
-            AppEvent::SpotWithdrawn { call } => {
-                let existing = self
-                    .session
-                    .state
-                    .bandmap
-                    .iter()
-                    .find(|spot| spot.call.eq_ignore_ascii_case(call));
+            AppEvent::SpotWithdrawn { call, freq_hz } => {
+                // Runs before the reducer drops the spot, so the bandmap
+                // still holds it and can supply the mode.
+                let existing = self.session.state.bandmap.iter().find(|spot| {
+                    spot.call.eq_ignore_ascii_case(call)
+                        && freq_hz.is_none_or(|f| spot.freq_hz == f)
+                });
                 Some(DxActivityItem {
                     ts_ms: now_ms,
                     kind: DxActivityKind::Withdraw,
                     call: call.clone(),
-                    freq_hz: existing.map(|spot| spot.freq_hz),
+                    freq_hz: freq_hz.or(existing.map(|spot| spot.freq_hz)),
                     mode: existing.map(|spot| spot.mode.clone()),
                 })
             }
