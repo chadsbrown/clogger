@@ -1,40 +1,36 @@
-//! Performance pane — process and host resource usage for the running GUI.
+//! Performance pane: process and host resource usage for the running GUI.
 
 use iced::widget::{Space, column, container, progress_bar, row, text};
-use iced::{Element, Font, Length, Theme};
+use iced::{Border, Element, Length, Theme};
 
 use crate::perf::PerfSnapshot;
 
 use super::style;
+use super::widgets::{self, Tone};
 
 pub fn view<'a, M: 'a>(snapshot: &'a PerfSnapshot) -> Element<'a, M> {
     let error: Element<M> = snapshot
         .error
         .as_ref()
         .map(|message| {
-            container(
-                text(message.clone())
-                    .size(style::TEXT_TINY)
-                    .style(style::very_muted),
-            )
-            .padding([4, 8])
-            .width(Length::Fill)
-            .style(style::card_style)
-            .into()
+            text(message.clone())
+                .size(style::TEXT_TINY)
+                .style(style::danger)
+                .into()
         })
         .unwrap_or_else(|| Space::new().height(0).into());
 
-    container(
+    widgets::pane_body(
         column![
             row![
-                metric_card(
-                    "PROC CPU",
+                metric_tile(
+                    "Proc CPU",
                     fmt_percent(snapshot.process_cpu_percent),
                     "Clogger process".to_string(),
                     snapshot.process_cpu_percent,
                     true,
                 ),
-                metric_card(
+                metric_tile(
                     "RSS",
                     fmt_bytes(snapshot.rss_bytes),
                     format!("virt {}", fmt_bytes(snapshot.virtual_bytes)),
@@ -42,17 +38,17 @@ pub fn view<'a, M: 'a>(snapshot: &'a PerfSnapshot) -> Element<'a, M> {
                     false,
                 ),
             ]
-            .spacing(8),
+            .spacing(style::SP_3),
             row![
-                metric_card(
-                    "HOST CPU",
+                metric_tile(
+                    "Host CPU",
                     fmt_percent(snapshot.system_cpu_percent),
                     "Total system".to_string(),
                     snapshot.system_cpu_percent,
                     false,
                 ),
-                metric_card(
-                    "HOST MEM",
+                metric_tile(
+                    "Host mem",
                     fmt_percent(snapshot.system_memory_used_percent),
                     fmt_memory_pair(
                         snapshot.system_memory_used_bytes,
@@ -62,19 +58,15 @@ pub fn view<'a, M: 'a>(snapshot: &'a PerfSnapshot) -> Element<'a, M> {
                     false,
                 ),
             ]
-            .spacing(8),
-            details_card(snapshot),
+            .spacing(style::SP_3),
+            details_row(snapshot),
             error,
         ]
-        .spacing(8),
+        .spacing(style::SP_3),
     )
-    .padding(8)
-    .width(Length::Fill)
-    .height(Length::Fill)
-    .into()
 }
 
-fn metric_card<'a, M: 'a>(
+fn metric_tile<'a, M: 'a>(
     label: &'static str,
     value: String,
     caption: String,
@@ -82,83 +74,55 @@ fn metric_card<'a, M: 'a>(
     emphasize: bool,
 ) -> Element<'a, M> {
     let bar: Element<M> = match bar_percent {
-        Some(percent) => container(progress_bar(0.0..=100.0, percent.clamp(0.0, 100.0)))
-            .height(Length::Fixed(4.0))
+        Some(percent) => progress_bar(0.0..=100.0, percent.clamp(0.0, 100.0))
+            .girth(4.0)
+            .style(move |t: &Theme| progress_bar::Style {
+                background: style::surface_sunken(t).into(),
+                bar: if emphasize {
+                    style::accent_color(t)
+                } else {
+                    style::muted_color(t)
+                }
+                .into(),
+                border: Border {
+                    radius: 2.0.into(),
+                    ..Border::default()
+                },
+            })
             .into(),
         None => Space::new().height(4).into(),
     };
 
-    container(
+    widgets::tile(
         column![
-            text(label).size(style::TEXT_TINY).style(move |t: &Theme| {
-                if emphasize {
-                    style::accent(t)
-                } else {
-                    style::muted(t)
-                }
-            }),
-            text(value)
-                .size(style::TEXT_HEADER)
-                .font(Font::MONOSPACE)
-                .style(move |t: &Theme| {
-                    if emphasize {
-                        iced::widget::text::Style {
-                            color: Some(style::accent_text_color(t)),
-                        }
-                    } else {
-                        style::body(t)
-                    }
-                }),
+            widgets::stat(label, value, style::TEXT_HEADER, None),
             bar,
-            text(caption)
-                .size(style::TEXT_TINY)
-                .style(style::very_muted),
+            text(caption).size(style::TEXT_TINY).style(style::very_muted),
         ]
-        .spacing(3),
+        .spacing(style::SP_2),
+        emphasize.then_some(Tone::Accent),
+        false,
     )
-    .padding([8, 10])
     .width(Length::FillPortion(1))
-    .style(move |t: &Theme| {
-        if emphasize {
-            style::accent_card_style(t)
-        } else {
-            style::card_style(t)
-        }
-    })
     .into()
 }
 
-fn details_card<'a, M: 'a>(snapshot: &PerfSnapshot) -> Element<'a, M> {
-    container(
-        row![
-            detail("THREADS", fmt_u64(snapshot.thread_count)),
-            detail("FD", fmt_u64(snapshot.fd_count)),
-            detail("UP", fmt_duration(snapshot.uptime)),
-            detail("SAMPLES", snapshot.sample_count.to_string()),
-        ]
-        .spacing(10)
-        .align_y(iced::alignment::Vertical::Center),
-    )
-    .padding([6, 10])
-    .width(Length::Fill)
-    .style(style::card_style)
+fn details_row<'a, M: 'a>(snapshot: &PerfSnapshot) -> Element<'a, M> {
+    row![
+        detail("Threads", fmt_u64(snapshot.thread_count)),
+        detail("FD", fmt_u64(snapshot.fd_count)),
+        detail("Up", fmt_duration(snapshot.uptime)),
+        detail("Samples", snapshot.sample_count.to_string()),
+    ]
+    .spacing(style::SP_3)
+    .align_y(iced::alignment::Vertical::Center)
     .into()
 }
 
 fn detail<'a, M: 'a>(label: &'static str, value: String) -> Element<'a, M> {
-    column![
-        text(label)
-            .size(style::TEXT_TINY)
-            .font(Font::MONOSPACE)
-            .style(style::muted),
-        text(value)
-            .size(style::TEXT_BODY)
-            .font(Font::MONOSPACE)
-            .style(style::body),
-    ]
-    .spacing(1)
-    .width(Length::FillPortion(1))
-    .into()
+    container(widgets::stat(label, value, style::TEXT_BODY, None))
+        .width(Length::FillPortion(1))
+        .into()
 }
 
 fn fmt_percent(value: Option<f32>) -> String {

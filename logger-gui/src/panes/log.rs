@@ -1,25 +1,33 @@
-//! Log pane — shows the last N QSOs from `LogAdapter`.
+//! Log pane: shows the last N QSOs from `LogAdapter`.
+//!
+//! A flat, striped table. Earlier versions drew every row as a bordered
+//! card, which turned up to 512 rows into a wall of boxes. Now the
+//! newest QSO is marked with an accent bar and tint, and a voided QSO
+//! gets danger call text plus a solid VOID badge.
 
-use iced::widget::{column, container, responsive, row, scrollable, text};
 use iced::widget::text::Wrapping;
-use iced::{Element, Font, Length, Size, Theme};
+use iced::widget::{column, responsive, row, scrollable, text};
+use iced::{Element, Length, Size, Theme};
 use logger_runtime::{LogAdapter, decode_exchange_pairs};
 
 use super::style;
+use super::widgets::{self, Tone};
 
 /// Render a bounded recent-history buffer inside a bottom-anchored
 /// scrollable, so the newest QSOs are visible by default while the mouse
 /// wheel can navigate upward through recent history.
 const ROW_BUFFER: usize = 512;
-const COL_INDEX_W: f32 = 24.0;
-const COL_CALL_W: f32 = 86.0;
+/// Wide enough for a 4-digit QSO number. Contest logs regularly pass 999,
+/// and the old 24px column overflowed at that point.
+const COL_INDEX_W: f32 = 36.0;
+const COL_CALL_W: f32 = 96.0;
 const COL_BAND_W: f32 = 40.0;
 const COL_MODE_W: f32 = 36.0;
 const COL_UTC_W: f32 = 42.0;
 const COL_VOID_W: f32 = 44.0;
-const COL_SPACING: f32 = 8.0;
-const HEADER_GAP: f32 = 4.0;
-const ROW_GAP: f32 = 2.0;
+const COL_SPACING: f32 = style::SP_3;
+/// Number of column gaps in a row (8 columns).
+const COL_GAPS: f32 = 7.0;
 
 #[derive(Clone, Copy)]
 struct LogColumns {
@@ -48,15 +56,23 @@ pub fn view<'a, M: 'a>(log: &'a LogAdapter) -> Element<'a, M> {
 
 fn view_for_size<'a, M: 'a>(log: &'a LogAdapter, size: Size) -> Element<'a, M> {
     let records = log.records();
-    let cols = compute_columns(size.width.max(320.0));
+    // Subtract the pane padding and the row chrome (row padding plus the
+    // accent-bar gutter) so the exchange columns fill exactly the
+    // remaining width.
+    let chrome = style::PAD_PANE.left
+        + style::PAD_PANE.right
+        + style::PAD_ROW.left
+        + style::PAD_ROW.right
+        + widgets::ACCENT_BAR_W;
+    let cols = compute_columns((size.width - chrome).max(320.0));
 
-    let mut row_views: Vec<LogRowView> = Vec::with_capacity(ROW_BUFFER);
     let start = records.len().saturating_sub(ROW_BUFFER);
     let tail = &records[start..];
+    let mut rows: Vec<Element<M>> = Vec::with_capacity(tail.len());
     for (offset, rec) in tail.iter().enumerate() {
         let i = start + offset;
         let (rx_exchange, tx_exchange) = split_exchange_values(rec);
-        row_views.push(LogRowView {
+        let view = LogRowView {
             index: i + 1,
             callsign_norm: rec.callsign_norm.clone(),
             band: band_label(rec),
@@ -66,42 +82,32 @@ fn view_for_size<'a, M: 'a>(log: &'a LogAdapter, size: Size) -> Element<'a, M> {
             tx_exchange,
             is_void: rec.flags.is_void,
             newest: offset + 1 == tail.len(),
-        });
-    }
-    let mut rows: Vec<Element<M>> = Vec::with_capacity(row_views.len());
-    for row_data in row_views {
-        rows.push(log_row(row_data, cols));
-    }
-
-    if rows.is_empty() {
-        rows.push(
-            container(
-                text("(no QSOs yet)")
-                    .size(style::TEXT_BODY)
-                    .style(style::very_muted),
-            )
-            .padding([8, 10])
-            .style(style::card_style)
-            .into(),
-        );
+        };
+        // Stripe by absolute QSO index so a row keeps its shade as new
+        // QSOs arrive, instead of every row flickering on each log.
+        rows.push(log_row(view, cols, i % 2 == 1));
     }
 
-    container(
-        column![
-            header_row(cols),
-            scrollable(column(rows).spacing(ROW_GAP))
-                .anchor_bottom()
-                .height(Length::Fill),
-        ]
-        .spacing(HEADER_GAP),
-    )
-    .padding(8)
-    .width(Length::Fill)
-    .height(Length::Fill)
-    .into()
+    let body: Element<M> = if rows.is_empty() {
+        widgets::empty_state("No QSOs yet")
+    } else {
+        scrollable(column(rows))
+            .anchor_bottom()
+            .height(Length::Fill)
+            .into()
+    };
+
+    widgets::pane_body(column![header_row(cols), body].spacing(style::SP_1))
 }
 
-fn log_row<'a, M: 'a>(row_data: LogRowView, cols: LogColumns) -> Element<'a, M> {
+fn mono<'a>(s: impl Into<String>, size: f32, width: f32) -> iced::widget::Text<'a> {
+    text(s.into())
+        .size(size)
+        .font(style::FONT_MONO)
+        .width(Length::Fixed(width))
+}
+
+fn log_row<'a, M: 'a>(row_data: LogRowView, cols: LogColumns, stripe: bool) -> Element<'a, M> {
     let LogRowView {
         index,
         callsign_norm,
@@ -113,133 +119,61 @@ fn log_row<'a, M: 'a>(row_data: LogRowView, cols: LogColumns) -> Element<'a, M> 
         is_void,
         newest,
     } = row_data;
-    container(
-        row![
-            text(format!("{index:>2}"))
-                .size(style::TEXT_TINY)
-                .font(Font::MONOSPACE)
-                .style(style::muted)
-                .width(Length::Fixed(24.0)),
-            text(callsign_norm)
-                .size(style::TEXT_BODY)
-                .font(Font::MONOSPACE)
-                .style(move |t: &Theme| {
-                    if newest {
-                        style::accent(t)
-                    } else if is_void {
-                        iced::widget::text::Style {
-                            color: Some(style::danger_color(t)),
-                        }
-                    } else {
-                        style::body(t)
-                    }
-                })
-                .width(Length::Fixed(86.0)),
-            container(
-                text(rx_exchange)
-                    .size(style::TEXT_BODY)
-                    .font(Font::MONOSPACE)
-                    .style(style::body)
-                    .wrapping(Wrapping::WordOrGlyph)
-                    .width(Length::Fixed(cols.rx_w)),
-            )
-            .width(Length::Fixed(cols.rx_w)),
-            container(
-                text(tx_exchange)
-                    .size(style::TEXT_BODY)
-                    .font(Font::MONOSPACE)
-                    .style(style::body)
-                    .wrapping(Wrapping::WordOrGlyph)
-                    .width(Length::Fixed(cols.tx_w)),
-            )
-            .width(Length::Fixed(cols.tx_w)),
-            text(band)
-                .size(style::TEXT_TINY)
-                .font(Font::MONOSPACE)
-                .style(style::muted)
-                .width(Length::Fixed(COL_BAND_W)),
-            text(mode)
-                .size(style::TEXT_TINY)
-                .font(Font::MONOSPACE)
-                .style(style::muted)
-                .width(Length::Fixed(COL_MODE_W)),
-            text(time_utc)
-                .size(style::TEXT_TINY)
-                .font(Font::MONOSPACE)
-                .style(style::muted)
-                .width(Length::Fixed(COL_UTC_W)),
-            void_badge(is_void),
-        ]
-        .spacing(8)
-        .align_y(iced::alignment::Vertical::Center)
-        .width(Length::Fill),
-    )
-    .padding([4, 6])
-    .width(Length::Fill)
-    .style(move |t: &Theme| {
-        if newest {
-            style::accent_card_style(t)
-        } else {
-            style::card_style(t)
-        }
-    })
-    .into()
+    let content = row![
+        mono(index.to_string(), style::TEXT_TINY, COL_INDEX_W).style(style::very_muted),
+        text(callsign_norm)
+            .size(style::TEXT_BODY)
+            .font(style::FONT_MONO_BOLD)
+            .width(Length::Fixed(COL_CALL_W))
+            .style(move |t: &Theme| {
+                if is_void {
+                    style::danger(t)
+                } else if newest {
+                    style::accent(t)
+                } else {
+                    style::body(t)
+                }
+            }),
+        mono(rx_exchange, style::TEXT_BODY, cols.rx_w)
+            .style(style::body)
+            .wrapping(Wrapping::WordOrGlyph),
+        mono(tx_exchange, style::TEXT_BODY, cols.tx_w)
+            .style(style::muted)
+            .wrapping(Wrapping::WordOrGlyph),
+        mono(band, style::TEXT_LABEL, COL_BAND_W).style(style::muted),
+        mono(mode, style::TEXT_LABEL, COL_MODE_W).style(style::muted),
+        mono(time_utc, style::TEXT_LABEL, COL_UTC_W).style(style::muted),
+        void_badge(is_void),
+    ]
+    .spacing(COL_SPACING)
+    .align_y(iced::alignment::Vertical::Center)
+    .width(Length::Fill);
+
+    widgets::table_row(content, stripe, newest.then_some(Tone::Accent))
 }
 
 fn header_row<'a, M: 'a>(cols: LogColumns) -> Element<'a, M> {
-    row![
-        text("#")
-            .size(style::TEXT_TINY)
-            .font(Font::MONOSPACE)
-            .style(style::muted)
-            .width(Length::Fixed(COL_INDEX_W)),
-        text("CALL")
-            .size(style::TEXT_TINY)
-            .font(Font::MONOSPACE)
-            .style(style::muted)
-            .width(Length::Fixed(COL_CALL_W)),
-        text("RX")
-            .size(style::TEXT_TINY)
-            .font(Font::MONOSPACE)
-            .style(style::muted)
-            .width(Length::Fixed(cols.rx_w)),
-        text("TX")
-            .size(style::TEXT_TINY)
-            .font(Font::MONOSPACE)
-            .style(style::muted)
-            .width(Length::Fixed(cols.tx_w)),
-        text("BAND")
-            .size(style::TEXT_TINY)
-            .font(Font::MONOSPACE)
-            .style(style::muted)
-            .width(Length::Fixed(COL_BAND_W)),
-        text("MODE")
-            .size(style::TEXT_TINY)
-            .font(Font::MONOSPACE)
-            .style(style::muted)
-            .width(Length::Fixed(COL_MODE_W)),
-        text("UTC")
-            .size(style::TEXT_TINY)
-            .font(Font::MONOSPACE)
-            .style(style::muted)
-            .width(Length::Fixed(COL_UTC_W)),
-        text("")
-            .size(style::TEXT_TINY)
-            .width(Length::Fixed(COL_VOID_W)),
-    ]
-    .spacing(COL_SPACING)
-    .width(Length::Fill)
-    .into()
+    widgets::table_header(
+        vec![
+            widgets::col_header("#", Length::Fixed(COL_INDEX_W)),
+            widgets::col_header("Call", Length::Fixed(COL_CALL_W)),
+            widgets::col_header("Rcvd", Length::Fixed(cols.rx_w)),
+            widgets::col_header("Sent", Length::Fixed(cols.tx_w)),
+            widgets::col_header("Band", Length::Fixed(COL_BAND_W)),
+            widgets::col_header("Mode", Length::Fixed(COL_MODE_W)),
+            widgets::col_header("UTC", Length::Fixed(COL_UTC_W)),
+            widgets::col_header("", Length::Fixed(COL_VOID_W)),
+        ],
+        COL_SPACING,
+    )
 }
 
 fn void_badge<'a, M: 'a>(is_void: bool) -> Element<'a, M> {
-    if !is_void {
-        return text("").size(style::TEXT_TINY).width(Length::Shrink).into();
+    if is_void {
+        widgets::badge_solid("VOID", Tone::Danger)
+    } else {
+        iced::widget::Space::new().width(Length::Fixed(COL_VOID_W)).into()
     }
-    container(text("VOID").size(style::TEXT_TINY).font(Font::MONOSPACE))
-        .padding([2, 6])
-        .style(move |t: &Theme| style::badge_style(t, style::dupe_pair(t)))
-        .into()
 }
 
 fn band_label(rec: &logger_runtime::QsoRecord) -> &'static str {
@@ -331,7 +265,7 @@ fn compute_columns(available_width: f32) -> LogColumns {
         + COL_MODE_W
         + COL_UTC_W
         + COL_VOID_W
-        + 7.0 * COL_SPACING;
+        + COL_GAPS * COL_SPACING;
     let exchange_total = (available_width - fixed).max(140.0);
     let rx_w = (exchange_total * 0.6).max(80.0);
     let tx_w = (exchange_total - rx_w).max(60.0);

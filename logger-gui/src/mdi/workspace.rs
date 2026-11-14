@@ -1,11 +1,12 @@
 use iced::widget::{button, column, container, mouse_area, row, stack, text, Space};
 use iced::{
-    event, mouse, window, Border, Color, Element, Event, Length, Point, Shadow, Size,
-    Subscription, Theme, Vector,
+    event, mouse, window, Border, Color, Element, Event, Length, Padding, Point, Size,
+    Subscription, Theme,
 };
 
 use super::positioned::Positioned;
-use crate::panes::style;
+use crate::panes::style::{self, Icon};
+use crate::panes::widgets::{self, ButtonVariant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum HEdge {
@@ -88,14 +89,20 @@ pub enum Message {
 
 const MIN_W: f32 = 140.0;
 const MIN_H: f32 = 80.0;
-const TITLE_H: f32 = 20.0;
+/// Title-bar height. It was 20px, which squeezed 11px text against the
+/// edges. 26px gives the title room and a comfortable drag target.
+const TITLE_H: f32 = 26.0;
+/// The pane frame's border width. Pane content is inset by exactly this
+/// much, so nothing inside (title tint, hairline, canvas) can paint over
+/// the border.
+const FRAME_BORDER: f32 = 1.0;
 // Thickness of the perimeter resize zones (top/bottom strips and left/right strips).
 const EDGE: f32 = 6.0;
 // Length of each corner zone along the edge it sits on. Slightly larger than EDGE
 // so the corner's diagonal-resize area dominates over the straight-edge zones at
 // the meeting points.
 const CORNER: f32 = 12.0;
-const TOOLBAR_H: f32 = 32.0;
+const TOOLBAR_H: f32 = 34.0;
 // Keep at least this much of a pane visible when dragging.
 const VISIBLE_MARGIN: f32 = 60.0;
 
@@ -352,29 +359,29 @@ impl Workspace {
 
         let mut items: Vec<Element<Message>> = Vec::with_capacity(by_id.len());
         for p in by_id {
-            items.push(toolbar_button(p).into());
+            items.push(toolbar_button(p));
         }
 
-        container(
-            row(items)
-                .spacing(4)
-                .align_y(iced::alignment::Vertical::Center),
-        )
-        .padding([4, 8])
-        .width(Length::Fill)
-        .height(TOOLBAR_H)
-        .style(|t: &Theme| {
-            let pal = t.extended_palette().background.strong;
-            container::Style {
-                background: Some(pal.color.into()),
-                border: Border {
-                    color: Color::from_rgba(0.0, 0.0, 0.0, 0.3),
-                    width: 0.0,
-                    radius: 0.0.into(),
-                },
+        // A neutral strip on the pane surface with a hairline beneath.
+        // Earlier versions used `background.strong` plus a filled primary
+        // pill for every visible pane, which made the toolbar the
+        // brightest thing on screen.
+        column![
+            container(
+                row(items)
+                    .spacing(style::SP_1)
+                    .align_y(iced::alignment::Vertical::Center),
+            )
+            .padding([0.0, style::SP_3])
+            .width(Length::Fill)
+            .height(TOOLBAR_H - 1.0)
+            .align_y(iced::alignment::Vertical::Center)
+            .style(|t: &Theme| container::Style {
+                background: Some(style::surface_pane(t).into()),
                 ..container::Style::default()
-            }
-        })
+            }),
+            widgets::hairline(),
+        ]
         .into()
     }
 
@@ -395,7 +402,7 @@ impl Workspace {
             .width(Length::Fill)
             .height(Length::Fill)
             .style(|t: &Theme| {
-                let bg = t.extended_palette().background.weak.color;
+                let bg = style::surface_canvas(t);
                 container::Style {
                     background: Some(bg.into()),
                     ..container::Style::default()
@@ -415,42 +422,48 @@ impl Workspace {
     }
 }
 
-fn toolbar_button(pane: &Pane) -> iced::widget::Button<'_, Message> {
+/// A toolbar toggle for one pane. Visible panes show body-colored text
+/// over a 2px accent underline; hidden panes show muted text and no
+/// underline. This is the familiar tab idiom, and it keeps the toolbar
+/// calm.
+fn toolbar_button(pane: &Pane) -> Element<'_, Message> {
     let visible = pane.visible;
-    let label = text(pane.title.clone()).size(style::TEXT_LABEL);
-    button(label)
-        .padding([4, 10])
+    let label = text(pane.title.clone())
+        .size(style::TEXT_LABEL)
+        .font(if visible {
+            style::FONT_UI_MEDIUM
+        } else {
+            style::FONT_UI
+        });
+    let btn = button(label)
+        .padding([style::SP_2, style::SP_3 + 2.0])
         .on_press(Message::Toggle(pane.id))
         .style(move |t: &Theme, status| {
-            let palette = t.extended_palette();
-            let (bg, fg) = if visible {
-                let p = palette.primary.strong;
-                (p.color, p.text)
-            } else {
-                let p = palette.background.weak;
-                (p.color, p.text)
-            };
-            let bg = match status {
-                button::Status::Hovered => {
-                    if visible {
-                        palette.primary.base.color
-                    } else {
-                        palette.background.base.color
-                    }
-                }
-                _ => bg,
-            };
-            button::Style {
-                background: Some(bg.into()),
-                text_color: fg,
-                border: Border {
-                    color: Color::from_rgba(0.0, 0.0, 0.0, 0.0),
-                    width: 0.0,
-                    radius: 3.0.into(),
-                },
-                ..button::Style::default()
+            let mut s = widgets::button_style(ButtonVariant::Ghost)(t, status);
+            if !matches!(status, button::Status::Hovered) {
+                s.text_color = if visible {
+                    style::text_color(t)
+                } else {
+                    style::very_muted_color(t)
+                };
             }
-        })
+            s
+        });
+    let underline = container(Space::new().height(2))
+        .width(Length::Fill)
+        .height(2)
+        .style(move |t: &Theme| container::Style {
+            background: visible.then(|| style::accent_color(t).into()),
+            border: Border {
+                radius: 1.0.into(),
+                ..Border::default()
+            },
+            ..container::Style::default()
+        });
+    column![btn, underline]
+        .width(Length::Shrink)
+        .align_x(iced::alignment::Horizontal::Center)
+        .into()
 }
 
 fn pane_view<'a, M>(
@@ -462,88 +475,82 @@ fn pane_view<'a, M>(
 where
     M: 'a + Clone,
 {
-    let title_text = container(text(pane.title.clone()).size(style::TEXT_LABEL))
-        .padding([2, 10])
-        .width(Length::Fill)
-        .height(TITLE_H)
-        .style(move |t: &Theme| {
-            let pal = if focused {
-                t.extended_palette().primary.strong
-            } else {
-                t.extended_palette().background.strong
-            };
-            container::Style {
-                background: Some(pal.color.into()),
-                text_color: Some(pal.text),
-                border: Border {
-                    color: Color::TRANSPARENT,
-                    width: 0.0,
-                    // Round only the top-left — the top-right meets the
-                    // close button flush, and rounding it there would let
-                    // the frame's background color bleed through the seam.
-                    radius: iced::border::Radius {
-                        top_left: style::RADIUS_FRAME - 1.0,
-                        top_right: 0.0,
-                        bottom_left: 0.0,
-                        bottom_right: 0.0,
-                    },
-                },
-                ..container::Style::default()
-            }
-        });
+    // The title bar sits on the pane surface with a hairline below. Focus
+    // shows as a faint accent tint on the title bar, accent title text, an
+    // accent border and a deeper shadow. Earlier versions filled the whole
+    // focused title bar with primary, which competed with the entry pane's
+    // focus cues.
+    //
+    // A separate 2px accent stripe was tried and dropped. A 2px-tall shape
+    // can't carry the frame's 5px inner corner radius, so it broke the
+    // rounded top-left corner. The full-width hairline also painted over
+    // the 1px accent border, which left a notch just below the title.
+    let title_text = container(
+        text(pane.title.to_uppercase())
+            .size(style::TEXT_TINY)
+            .font(style::FONT_UI_SEMIBOLD)
+            .style(move |t: &Theme| {
+                if focused {
+                    style::accent(t)
+                } else {
+                    style::muted(t)
+                }
+            }),
+    )
+    .padding(Padding {
+        left: style::SP_4 - 2.0,
+        ..Padding::ZERO
+    })
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .align_y(iced::alignment::Vertical::Center);
 
     let drag_handle = mouse_area(title_text)
         .on_press(wrap(Message::StartMove(pane.id)))
         .interaction(mouse::Interaction::Grab);
 
-    // Fill the full title-bar height so the frame background doesn't show
-    // through as a horizontal band above/below the ✕ glyph, and match the
-    // title bar's tint (primary when focused, background.strong otherwise)
-    // so the whole strip reads as one color until hover flips it red. The
-    // top-right corner picks up the frame's outer radius; other corners
-    // stay square so the seam with the drag handle is flush.
-    let close_btn = button(
-        text("✕")
-            .size(style::TEXT_LABEL)
-            .height(Length::Fill)
-            .align_y(iced::alignment::Vertical::Center),
+    let close_btn: Element<'a, M> = container(
+        widgets::icon_button(
+            Icon::X,
+            style::TEXT_LABEL,
+            ButtonVariant::GhostDanger,
+            wrap(Message::Close(pane.id)),
+        )
+        .padding(3),
     )
-        .padding([0, 10])
-        .height(Length::Fixed(TITLE_H))
-        .on_press(wrap(Message::Close(pane.id)))
-        .style(move |t: &Theme, status| {
-            let base = if focused {
-                t.extended_palette().primary.strong
-            } else {
-                t.extended_palette().background.strong
-            };
-            let (bg, fg) = match status {
-                button::Status::Hovered => (
-                    t.extended_palette().danger.base.color,
-                    t.extended_palette().danger.base.text,
-                ),
-                _ => (base.color, base.text),
-            };
-            button::Style {
-                background: Some(bg.into()),
-                text_color: fg,
-                border: Border {
-                    color: Color::TRANSPARENT,
-                    width: 0.0,
-                    radius: iced::border::Radius {
-                        top_left: 0.0,
-                        top_right: style::RADIUS_FRAME - 1.0,
-                        bottom_left: 0.0,
-                        bottom_right: 0.0,
-                    },
-                },
-                ..button::Style::default()
-            }
-        });
+    .padding(Padding {
+        right: style::SP_2,
+        ..Padding::ZERO
+    })
+    .height(Length::Fill)
+    .align_y(iced::alignment::Vertical::Center)
+    .into();
 
-    let title_bar = row![drag_handle, close_btn]
-        .height(TITLE_H)
-        .align_y(iced::alignment::Vertical::Center);
+    let inner_radius = style::RADIUS_MD - FRAME_BORDER;
+    let title_bar = column![
+        container(
+            row![drag_handle, close_btn]
+                .height(Length::Fill)
+                .align_y(iced::alignment::Vertical::Center),
+        )
+        .width(Length::Fill)
+        .height(TITLE_H - FRAME_BORDER - 1.0)
+        .style(move |t: &Theme| container::Style {
+            background: focused.then(|| style::accent_tint(t).into()),
+            border: Border {
+                color: Color::TRANSPARENT,
+                width: 0.0,
+                radius: iced::border::Radius {
+                    top_left: inner_radius,
+                    top_right: inner_radius,
+                    bottom_left: 0.0,
+                    bottom_right: 0.0,
+                },
+            },
+            ..container::Style::default()
+        }),
+        widgets::hairline(),
+    ];
 
     // Wrap the body so a click anywhere inside raises this pane. The body
     // itself is already in host-message space; the click emits an MDI
@@ -551,32 +558,26 @@ where
     let body_area = mouse_area(body).on_press(wrap(Message::PaneClicked(pane.id)));
 
     let pane_main: Element<'a, M> = container(column![title_bar, body_area].spacing(0))
+        .padding(FRAME_BORDER)
         .width(Length::Fill)
         .height(Length::Fill)
-        .style(move |t: &Theme| {
-            let pal = t.extended_palette().background.base;
-            container::Style {
-                background: Some(pal.color.into()),
-                shadow: if focused {
-                    Shadow {
-                        color: style::shadow_color(t),
-                        offset: Vector::new(0.0, 3.0),
-                        blur_radius: 10.0,
-                    }
+        .style(move |t: &Theme| container::Style {
+            background: Some(style::surface_pane(t).into()),
+            shadow: if focused {
+                style::shadow_focus(t)
+            } else {
+                style::shadow_rest(t)
+            },
+            border: Border {
+                color: if focused {
+                    style::focused_border_color(t)
                 } else {
-                    Shadow::default()
+                    style::border_color(t)
                 },
-                border: Border {
-                    color: if focused {
-                        style::focused_border_color(t)
-                    } else {
-                        style::border_color(t)
-                    },
-                    width: if focused { 1.5 } else { 1.0 },
-                    radius: style::RADIUS_FRAME.into(),
-                },
-                ..container::Style::default()
-            }
+                width: FRAME_BORDER,
+                radius: style::RADIUS_MD.into(),
+            },
+            ..container::Style::default()
         })
         .into();
 

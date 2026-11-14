@@ -11,3 +11,4 @@ pub mod scp;
 pub mod score;
 pub mod so2r;
 pub mod style;
+pub mod widgets;
