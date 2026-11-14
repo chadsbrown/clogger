@@ -14,106 +14,86 @@
 //!   when fewer than 5 QSOs have been logged.
 //! * **Since last Q** — wall-clock seconds since the most recent QSO.
 
-use iced::widget::{column, container, row, text};
-use iced::{Element, Font, Length, Theme};
+use iced::widget::{column, row, text};
+use iced::{Element, Length, Theme};
 
 use crate::analytics::RateMetrics;
 
 use super::style;
+use super::widgets::{self, Tone};
 
 pub fn view<'a, M: 'a>(metrics: &'a RateMetrics) -> Element<'a, M> {
-    container(
+    widgets::pane_body(
         column![
             row![
-                metric_card(
+                metric_tile(
                     "10 min",
                     fmt_rate(Some(metrics.r10_per_hour)),
                     fmt_count(metrics.r10_count, "in 10m"),
                     true,
                 ),
-                metric_card(
+                metric_tile(
                     "60 min",
                     fmt_rate(Some(metrics.r60_per_hour)),
                     fmt_count(metrics.r60_count, "in 60m"),
                     false,
                 ),
             ]
-            .spacing(8),
+            .spacing(style::SP_3),
             row![
-                metric_card(
+                metric_tile(
                     "Last 5 Qs",
                     fmt_rate(metrics.last_5_per_hour),
                     "Recent run cadence".to_string(),
                     false,
                 ),
-                metric_card(
+                metric_tile(
                     "Idle",
                     fmt_since(metrics.secs_since_last),
                     "Since the last QSO".to_string(),
                     false,
                 ),
             ]
-            .spacing(8),
+            .spacing(style::SP_3),
         ]
-        .spacing(8),
+        .spacing(style::SP_3),
     )
-    .padding(8)
-    .width(Length::Fill)
-    .height(Length::Fill)
-    .into()
 }
 
-fn metric_card<'a, M: 'a>(
+/// One metric tile. The 10-minute rate is the headline number, so it is
+/// marked with an accent bar and accent label. Earlier versions filled
+/// the whole tile with primary color, which competed with the entry
+/// pane's focus color.
+fn metric_tile<'a, M: 'a>(
     label: &'static str,
     value: String,
     caption: String,
     emphasize: bool,
 ) -> Element<'a, M> {
-    container(
+    widgets::tile(
         column![
-            text(label).size(style::TEXT_TINY).style(move |t: &Theme| {
-                if emphasize {
-                    style::accent(t)
-                } else {
-                    style::muted(t)
-                }
-            }),
+            text(label.to_uppercase())
+                .size(style::TEXT_TINY)
+                .font(style::FONT_UI_SEMIBOLD)
+                .style(move |t: &Theme| {
+                    if emphasize {
+                        style::accent(t)
+                    } else {
+                        style::muted(t)
+                    }
+                }),
             text(value)
                 .size(style::TEXT_DISPLAY)
-                .font(Font::MONOSPACE)
-                .style(move |t: &Theme| {
-                    if emphasize {
-                        iced::widget::text::Style {
-                            color: Some(t.extended_palette().primary.weak.text),
-                        }
-                    } else {
-                        style::body(t)
-                    }
-                }),
-            text(caption)
-                .size(style::TEXT_TINY)
-                .style(move |t: &Theme| {
-                    if emphasize {
-                        iced::widget::text::Style {
-                            color: Some(t.extended_palette().primary.base.color),
-                        }
-                    } else {
-                        style::very_muted(t)
-                    }
-                }),
+                .font(style::FONT_MONO)
+                .style(style::body),
+            text(caption).size(style::TEXT_TINY).style(style::very_muted),
         ]
-        .spacing(2),
+        .spacing(style::SP_1),
+        emphasize.then_some(Tone::Accent),
+        true,
     )
-    .padding([8, 10])
     .width(Length::FillPortion(1))
     .height(Length::FillPortion(1))
-    .style(move |t: &Theme| {
-        if emphasize {
-            style::accent_card_style(t)
-        } else {
-            style::card_style(t)
-        }
-    })
     .into()
 }
 

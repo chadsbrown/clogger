@@ -1,23 +1,30 @@
-//! DX feed activity pane — recent spot add/remove events so the operator
-//! can see cluster traffic is still flowing.
+//! DX feed activity pane: recent spot add/remove events, so the operator
+//! can see that cluster traffic is still flowing. It uses the shared
+//! flat-table look (`widgets::table_row`).
 
 use std::collections::VecDeque;
 
-use iced::widget::{column, container, responsive, row, text};
-use iced::{Element, Font, Length, Size, Theme};
+use iced::widget::{column, responsive, row, text};
+use iced::{Element, Length, Size, Theme};
 
 use super::style;
+use super::widgets::{self, Tone};
 
-const COL_KIND_W: f32 = 42.0;
+const COL_KIND_W: f32 = 48.0;
 const COL_TIME_W: f32 = 64.0;
 const COL_CALL_W: f32 = 86.0;
 const COL_FREQ_W: f32 = 72.0;
 const COL_MODE_W: f32 = 40.0;
-const ROW_GAP: f32 = 2.0;
-const HEADER_GAP: f32 = 4.0;
-const PANE_PADDING_Y: f32 = 16.0;
-const HEADER_H: f32 = 12.0;
-const ROW_H: f32 = 16.0;
+const COL_SPACING: f32 = style::SP_3;
+const HEADER_GAP: f32 = style::SP_1;
+// Row-count estimate used to show only the rows that fit. The values
+// track the shared table metrics: a row is PAD_ROW plus one 13px mono
+// line, and the header is an 11px label, a 4px pad and a hairline. They
+// are rounded up so the last row is never clipped.
+const PANE_PADDING_Y: f32 = style::PAD_PANE.top + style::PAD_PANE.bottom;
+const HEADER_H: f32 = 20.0;
+const ROW_H: f32 = 24.0;
+const ROW_GAP: f32 = 0.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DxActivityKind {
@@ -46,95 +53,64 @@ fn view_for_size<'a, M: 'a>(items: &'a VecDeque<DxActivityItem>, size: Size) -> 
     let start = items.len().saturating_sub(visible_rows);
 
     let mut rows: Vec<Element<M>> = Vec::with_capacity(visible_rows.max(1));
-    for item in items.iter().skip(start) {
-        rows.push(activity_row(item));
+    for (i, item) in items.iter().enumerate().skip(start) {
+        rows.push(widgets::table_row(activity_cells(item), i % 2 == 1, None));
     }
 
     let body: Element<M> = if rows.is_empty() {
-        text("(no dxfeed activity yet)")
-            .size(style::TEXT_BODY)
-            .style(style::very_muted)
-            .into()
+        widgets::empty_state("No DX feed activity yet")
     } else {
-        column(rows).spacing(ROW_GAP).into()
+        column(rows).into()
     };
 
-    container(column![header_row(), body].spacing(HEADER_GAP))
-        .padding(8)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
+    widgets::pane_body(column![header_row(), body].spacing(HEADER_GAP))
 }
 
 fn header_row<'a, M: 'a>() -> Element<'a, M> {
+    widgets::table_header(
+        vec![
+            widgets::col_header("", Length::Fixed(COL_KIND_W)),
+            widgets::col_header("UTC", Length::Fixed(COL_TIME_W)),
+            widgets::col_header("Call", Length::Fixed(COL_CALL_W)),
+            widgets::col_header("Freq", Length::Fixed(COL_FREQ_W)),
+            widgets::col_header("Mode", Length::Fixed(COL_MODE_W)),
+        ],
+        COL_SPACING,
+    )
+}
+
+/// New spots get a soft accent SPOT badge and accent call. Drops get a
+/// neutral DROP badge and plain text, so cluster churn reads at a glance.
+fn activity_cells<'a, M: 'a>(item: &'a DxActivityItem) -> Element<'a, M> {
+    let is_spot = item.kind == DxActivityKind::Spot;
     row![
-        text("")
-            .size(style::TEXT_TINY)
-            .width(Length::Fixed(COL_KIND_W)),
-        text("UTC")
-            .size(style::TEXT_TINY)
-            .font(Font::MONOSPACE)
+        iced::widget::container(match item.kind {
+            DxActivityKind::Spot => widgets::badge("SPOT", Tone::Accent),
+            DxActivityKind::Withdraw => widgets::badge("DROP", Tone::Neutral),
+        })
+        .width(Length::Fixed(COL_KIND_W)),
+        text(format_time_utc(item.ts_ms))
+            .size(style::TEXT_LABEL)
+            .font(style::FONT_MONO)
             .style(style::muted)
             .width(Length::Fixed(COL_TIME_W)),
-        text("CALL")
-            .size(style::TEXT_TINY)
-            .font(Font::MONOSPACE)
-            .style(style::muted)
+        text(item.call.clone())
+            .size(style::TEXT_BODY)
+            .font(style::FONT_MONO_BOLD)
+            .style(move |t: &Theme| if is_spot { style::accent(t) } else { style::muted(t) })
             .width(Length::Fixed(COL_CALL_W)),
-        text("FREQ")
-            .size(style::TEXT_TINY)
-            .font(Font::MONOSPACE)
-            .style(style::muted)
+        text(format_freq(item.freq_hz))
+            .size(style::TEXT_BODY)
+            .font(style::FONT_MONO)
+            .style(style::body)
             .width(Length::Fixed(COL_FREQ_W)),
-        text("MODE")
-            .size(style::TEXT_TINY)
-            .font(Font::MONOSPACE)
+        text(item.mode.as_deref().unwrap_or("—"))
+            .size(style::TEXT_LABEL)
+            .font(style::FONT_MONO)
             .style(style::muted)
             .width(Length::Fixed(COL_MODE_W)),
     ]
-    .spacing(8)
-    .width(Length::Fill)
-    .into()
-}
-
-fn activity_row<'a, M: 'a>(item: &'a DxActivityItem) -> Element<'a, M> {
-    row![
-            text(match item.kind {
-                DxActivityKind::Spot => "SPOT",
-                DxActivityKind::Withdraw => "DROP",
-            })
-            .size(style::TEXT_TINY)
-            .font(Font::MONOSPACE)
-            .style(move |t: &Theme| match item.kind {
-                DxActivityKind::Spot => style::accent(t),
-                DxActivityKind::Withdraw => style::very_muted(t),
-            })
-            .width(Length::Fixed(COL_KIND_W)),
-            text(format_time_utc(item.ts_ms))
-                .size(style::TEXT_TINY)
-                .font(Font::MONOSPACE)
-                .style(style::muted)
-                .width(Length::Fixed(COL_TIME_W)),
-            text(item.call.clone())
-                .size(style::TEXT_BODY)
-                .font(Font::MONOSPACE)
-                .style(move |t: &Theme| match item.kind {
-                    DxActivityKind::Spot => style::accent(t),
-                    DxActivityKind::Withdraw => style::body(t),
-                })
-                .width(Length::Fixed(COL_CALL_W)),
-            text(format_freq(item.freq_hz))
-                .size(style::TEXT_BODY)
-                .font(Font::MONOSPACE)
-                .style(style::body)
-                .width(Length::Fixed(COL_FREQ_W)),
-            text(item.mode.as_deref().unwrap_or("—"))
-                .size(style::TEXT_TINY)
-                .font(Font::MONOSPACE)
-                .style(style::muted)
-                .width(Length::Fixed(COL_MODE_W)),
-        ]
-    .spacing(8)
+    .spacing(COL_SPACING)
     .align_y(iced::alignment::Vertical::Center)
     .width(Length::Fill)
     .into()

@@ -763,36 +763,48 @@ fn view(state: &App) -> Element<'_, Message> {
     }
 }
 
+/// Critical-alert banner above the status bar. It is the one place a
+/// full danger fill is right: it must interrupt.
 fn error_banner_view(msg: String) -> Element<'static, Message> {
     use iced::widget::{button, container, row, text, Space};
     use iced::{Background, Border, Length};
+    use panes::style::{self, Icon};
     container(
         row![
-            text("⚠").size(14.0),
-            text(msg).size(12.0),
+            style::icon(Icon::Alert, style::TEXT_BODY),
+            text(msg).size(style::TEXT_LABEL).font(style::FONT_UI_MEDIUM),
             Space::new().width(Length::Fill),
-            button(text("✕").size(12.0))
-                .padding([0, 8])
+            button(style::icon(Icon::X, style::TEXT_LABEL))
+                .padding(style::SP_2)
                 .on_press(Message::DismissError)
-                .style(|t: &Theme, _status| {
-                    let pair = panes::style::error_banner_pair(t);
-                    let mut overlay = pair.text;
-                    overlay.a = 0.15;
+                .style(|t: &Theme, status| {
+                    let pair = style::error_banner_pair(t);
+                    let overlay = style::with_alpha(
+                        pair.text,
+                        if matches!(status, iced::widget::button::Status::Hovered) {
+                            0.25
+                        } else {
+                            0.12
+                        },
+                    );
                     iced::widget::button::Style {
                         background: Some(Background::Color(overlay)),
                         text_color: pair.text,
-                        border: Border::default(),
+                        border: Border {
+                            radius: style::RADIUS_SM.into(),
+                            ..Border::default()
+                        },
                         ..iced::widget::button::Style::default()
                     }
                 }),
         ]
-        .spacing(8)
+        .spacing(style::SP_3)
         .align_y(iced::alignment::Vertical::Center),
     )
-    .padding([4, 12])
+    .padding([style::SP_2, style::SP_4])
     .width(Length::Fill)
     .style(|t: &Theme| {
-        let pair = panes::style::error_banner_pair(t);
+        let pair = style::error_banner_pair(t);
         iced::widget::container::Style {
             background: Some(Background::Color(pair.color)),
             text_color: Some(pair.text),
@@ -946,206 +958,183 @@ fn synthesize_rig_status(state: &mut App, radio: RadioId, freq_hz: u64) {
     bridge::dispatch(&mut state.session, effects, &state.handles);
 }
 
+/// Bottom status bar, laid out in three zones:
+/// * left: station call (semibold) and contest name
+/// * center: UTC clock in mono, which contesters check constantly
+/// * right: connection dots, a divider, then icon buttons
+///
+/// Earlier versions used solid-fill indicator pills and mixed an emoji
+/// (🎨) with Unicode glyphs for buttons, so rendering depended on the
+/// system's emoji font. Every icon now comes from the bundled Lucide
+/// subset.
 fn status_bar(state: &App) -> Element<'_, Message> {
-    use iced::widget::{container, row, text, Space};
-    use iced::{Background, Border, Color, Length};
+    use iced::widget::{column, container, row, text, Space};
+    use iced::{Background, Length};
+    use panes::style::{self, Icon};
+    use panes::widgets::{self, ButtonVariant, DotState};
 
     let s = &state.session.state;
-    let utc = chrono::Utc::now().format("%H:%M:%S UTC").to_string();
-    let label = format!("{} • {}", s.my_call, state.session.contest.contest_name());
+    let utc = chrono::Utc::now().format("%H:%M:%S").to_string();
 
-    let icon_btn_style = |t: &Theme, status: iced::widget::button::Status| {
-        let pal = t.extended_palette().background.weak;
-        let bg = match status {
-            iced::widget::button::Status::Hovered => t.extended_palette().background.base.color,
-            _ => pal.color,
-        };
-        iced::widget::button::Style {
-            background: Some(bg.into()),
-            text_color: pal.text,
-            border: Border {
-                color: Color::TRANSPARENT,
-                width: 0.0,
-                radius: 2.0.into(),
-            },
-            ..iced::widget::button::Style::default()
-        }
+    let icon_btn = |i: Icon, msg: Message| -> Element<'_, Message> {
+        widgets::icon_button(i, style::TEXT_BODY + 1.0, ButtonVariant::Ghost, msg)
+            .padding(3)
+            .into()
     };
-    // Palette glyph — opens the theme picker modal. Single entry point
-    // instead of the old binary dark/light toggle, since iced ships ~20
-    // themes and we want them all reachable.
-    let theme_btn = iced::widget::button(text("🎨").size(12.0))
-        .padding([0, 6])
-        .on_press(Message::OpenModal(modals::Modal::ThemePicker))
-        .style(icon_btn_style);
-    let help_btn = iced::widget::button(text("?").size(12.0))
-        .padding([0, 6])
-        .on_press(Message::OpenModal(modals::Modal::Help))
-        .style(icon_btn_style);
-    let export_btn = iced::widget::button(text("⤓").size(12.0))
-        .padding([0, 6])
-        .on_press(Message::OpenModal(modals::Modal::Export(
-            modals::export::ExportState::default(),
-        )))
-        .style(icon_btn_style);
-    let font_down = iced::widget::button(text("A−").size(12.0))
-        .padding([0, 6])
-        .on_press(Message::FontScaleDown)
-        .style(icon_btn_style);
-    let font_up = iced::widget::button(text("A+").size(12.0))
-        .padding([0, 6])
-        .on_press(Message::FontScaleUp)
-        .style(icon_btn_style);
 
-    // RIG status: if any rig is configured, render one indicator per rig
-    // (green=connected, red=configured-but-disconnected). Otherwise placeholder.
-    let mut indicators: Vec<Element<Message>> = Vec::new();
+    // RIG status: one dot per configured rig (green connected, red
+    // configured but disconnected), or a single idle placeholder.
+    let mut dots: Vec<Element<Message>> = Vec::new();
     if state.handles.rig_status.is_empty() {
-        indicators.push(indicator("RIG", IndicatorState::Idle));
+        dots.push(widgets::status_dot("RIG", DotState::Idle));
     } else {
         for (radio, ok) in &state.handles.rig_status {
-            indicators.push(indicator_owned(
+            dots.push(widgets::status_dot(
                 format!("R{radio}"),
-                if *ok { IndicatorState::Ok } else { IndicatorState::Error },
+                if *ok { DotState::Ok } else { DotState::Error },
             ));
         }
     }
-    indicators.push(indicator(
+    let tri = |configured: bool, connected: bool| {
+        if !configured {
+            DotState::Idle
+        } else if connected {
+            DotState::Ok
+        } else {
+            DotState::Error
+        }
+    };
+    dots.push(widgets::status_dot(
         "KEY",
-        if !state.handles.keyer_configured {
-            IndicatorState::Idle
-        } else if state.handles.keyer_connected {
-            IndicatorState::Ok
-        } else {
-            IndicatorState::Error
-        },
+        tri(state.handles.keyer_configured, state.handles.keyer_connected),
     ));
-    indicators.push(indicator(
+    dots.push(widgets::status_dot(
         "DXF",
-        if !state.handles.dxfeed_configured {
-            IndicatorState::Idle
-        } else if state.handles.dxfeed_connected {
-            IndicatorState::Ok
-        } else {
-            IndicatorState::Error
-        },
+        tri(state.handles.dxfeed_configured, state.handles.dxfeed_connected),
     ));
     if state.handles.so2r_configured {
-        indicators.push(indicator(
+        dots.push(widgets::status_dot(
             "SO2R",
-            if state.handles.so2r_connected {
-                IndicatorState::Ok
-            } else {
-                IndicatorState::Error
-            },
+            tri(true, state.handles.so2r_connected),
         ));
     }
-    // Scoreboard upload status: gray Idle when not configured OR before
-    // the first upload cycle fires; green on a successful post; red when
-    // the adapter reports upload failures.
-    indicators.push(indicator(
+    // Scoreboard upload status: idle when not configured OR before the
+    // first upload cycle fires; ok on a successful post; error when the
+    // adapter reports upload failures.
+    dots.push(widgets::status_dot(
         "SCRBD",
         if !state.handles.scoreboard_configured {
-            IndicatorState::Idle
+            DotState::Idle
         } else {
             match state.handles.scoreboard_status {
-                ScoreboardStatus::Ok => IndicatorState::Ok,
-                ScoreboardStatus::Failing => IndicatorState::Error,
-                ScoreboardStatus::Idle => IndicatorState::Idle,
+                ScoreboardStatus::Ok => DotState::Ok,
+                ScoreboardStatus::Failing => DotState::Error,
+                ScoreboardStatus::Idle => DotState::Idle,
             }
         },
     ));
-
-    // RTC upload status: same tri-state pattern as SCRBD. Hidden when
-    // the adapter wasn't spawned (RTC disabled or contest has no
-    // `rtc_id`) — there's no "disabled-but-relevant" state the way
-    // scoreboard has, so we simply skip the badge.
+    // RTC upload status: same tri-state pattern as SCRBD. Hidden when the
+    // adapter wasn't spawned (RTC disabled or contest has no `rtc_id`),
+    // since there's no "disabled-but-relevant" state the way scoreboard
+    // has.
     if state.handles.rtc_configured {
         use logger_runtime::rtc_adapter::RtcStatus;
-        indicators.push(indicator(
+        dots.push(widgets::status_dot(
             "RTC",
             match state.handles.rtc_status {
-                RtcStatus::Ok => IndicatorState::Ok,
-                RtcStatus::Failing | RtcStatus::Unsupported => IndicatorState::Error,
-                RtcStatus::Idle | RtcStatus::NoChanges => IndicatorState::Idle,
+                RtcStatus::Ok => DotState::Ok,
+                RtcStatus::Failing | RtcStatus::Unsupported => DotState::Error,
+                RtcStatus::Idle | RtcStatus::NoChanges => DotState::Idle,
             },
         ));
     }
 
-    let mut bar = row![
-        text(label).size(12.0),
-        Space::new().width(Length::Fill),
-        text(utc).size(12.0),
-        Space::new().width(Length::Fill),
+    let left = row![
+        text(s.my_call.clone())
+            .size(style::TEXT_LABEL)
+            .font(style::FONT_UI_SEMIBOLD)
+            .style(style::body),
+        text(state.session.contest.contest_name().to_string())
+            .size(style::TEXT_LABEL)
+            .style(style::muted),
     ]
-    .spacing(8)
+    .spacing(style::SP_3)
     .align_y(iced::alignment::Vertical::Center);
-    for ind in indicators {
-        bar = bar.push(ind);
-    }
-    bar = bar
-        .push(font_down)
-        .push(font_up)
-        .push(export_btn)
-        .push(theme_btn)
-        .push(help_btn);
 
-    container(bar)
-        .padding([4, 10])
-        .width(Length::Fill)
-        .height(Length::Fixed(24.0))
-        .align_y(iced::alignment::Vertical::Center)
-        .style(|t: &Theme| {
-            let pal = t.extended_palette().background.strong;
-            container::Style {
-                background: Some(Background::Color(pal.color)),
-                text_color: Some(pal.text),
-                border: Border {
-                    color: Color::from_rgba(0.0, 0.0, 0.0, 0.4),
-                    width: 0.0,
-                    radius: 0.0.into(),
-                },
-                ..container::Style::default()
-            }
-        })
-        .into()
+    let center = row![
+        text(utc)
+            .size(style::TEXT_LABEL)
+            .font(style::FONT_MONO)
+            .style(style::body),
+        text("UTC")
+            .size(style::TEXT_TINY)
+            .font(style::FONT_UI_SEMIBOLD)
+            .style(style::very_muted),
+    ]
+    .spacing(style::SP_2)
+    .align_y(iced::alignment::Vertical::Center);
+
+    let divider = container(Space::new().width(1).height(14))
+        .width(1)
+        .height(14)
+        .style(|t: &Theme| iced::widget::container::Style {
+            background: Some(Background::Color(style::border_color(t))),
+            ..iced::widget::container::Style::default()
+        });
+
+    let right = row![
+        row(dots)
+            .spacing(style::SP_4)
+            .align_y(iced::alignment::Vertical::Center),
+        divider,
+        row![
+            icon_btn(Icon::TextSmaller, Message::FontScaleDown),
+            icon_btn(Icon::TextLarger, Message::FontScaleUp),
+            icon_btn(
+                Icon::Download,
+                Message::OpenModal(modals::Modal::Export(
+                    modals::export::ExportState::default(),
+                )),
+            ),
+            icon_btn(Icon::Palette, Message::OpenModal(modals::Modal::ThemePicker)),
+            icon_btn(Icon::Help, Message::OpenModal(modals::Modal::Help)),
+        ]
+        .spacing(style::SP_1)
+        .align_y(iced::alignment::Vertical::Center),
+    ]
+    .spacing(style::SP_4)
+    .align_y(iced::alignment::Vertical::Center);
+
+    // Left and right zones get equal fill portions so the clock sits at
+    // the true center of the window, whatever their content widths.
+    let bar = row![
+        container(left).width(Length::FillPortion(1)),
+        center,
+        container(right)
+            .width(Length::FillPortion(1))
+            .align_x(iced::alignment::Horizontal::Right),
+    ]
+    .align_y(iced::alignment::Vertical::Center);
+
+    column![
+        widgets::hairline(),
+        container(bar)
+            .padding([0.0, style::SP_4])
+            .width(Length::Fill)
+            .height(Length::Fixed(STATUS_BAR_H))
+            .align_y(iced::alignment::Vertical::Center)
+            .style(|t: &Theme| iced::widget::container::Style {
+                background: Some(Background::Color(style::surface_pane(t))),
+                text_color: Some(style::text_color(t)),
+                ..iced::widget::container::Style::default()
+            }),
+    ]
+    .into()
 }
 
-#[derive(Clone, Copy)]
-enum IndicatorState {
-    Idle,
-    Ok,
-    Error,
-}
-
-fn indicator<'a>(label: &'static str, state: IndicatorState) -> Element<'a, Message> {
-    indicator_owned(label.to_string(), state)
-}
-
-fn indicator_owned<'a>(label: String, state: IndicatorState) -> Element<'a, Message> {
-    use iced::widget::{container, text};
-    use iced::{Border, Color, Theme};
-    container(text(label).size(10.0))
-        .padding([1, 6])
-        .style(move |t: &Theme| {
-            let pair = match state {
-                IndicatorState::Idle => t.extended_palette().background.weak,
-                IndicatorState::Ok => t.extended_palette().success.base,
-                IndicatorState::Error => t.extended_palette().danger.base,
-            };
-            container::Style {
-                background: Some(pair.color.into()),
-                text_color: Some(pair.text),
-                border: Border {
-                    color: Color::TRANSPARENT,
-                    width: 0.0,
-                    radius: 2.0.into(),
-                },
-                ..container::Style::default()
-            }
-        })
-        .into()
-}
+/// Status-bar height. It was 24px, which forced 10px text and cramped
+/// buttons. 30px fits 12px text and 15px icons comfortably.
+const STATUS_BAR_H: f32 = 30.0;
 
 fn subscription(state: &App) -> Subscription<Message> {
     let mut subs: Vec<Subscription<Message>> = vec![
@@ -1353,8 +1342,15 @@ fn main() -> anyhow::Result<()> {
         ..Default::default()
     };
 
-    iced::application(init, update, view)
-        .title(|_state: &App| "Clogger".to_string())
+    let mut app = iced::application(init, update, view)
+        .title(|_state: &App| "Clogger".to_string());
+    // Bundled fonts (Inter, JetBrains Mono, Lucide). See
+    // panes/style.rs and docs/gui-visual-design.md for why they're
+    // embedded rather than taken from the system.
+    for bytes in panes::style::FONT_FILES {
+        app = app.font(*bytes);
+    }
+    app.default_font(panes::style::FONT_UI)
         .subscription(subscription)
         .theme(theme_for)
         .scale_factor(scale_factor_for)

@@ -64,6 +64,11 @@ pub fn view<'a, M: 'a + Clone + Send + Sync + 'static>(
     .into()
 }
 
+/// The muted label color, factored out so the axis can blend toward it.
+fn label_color_base(theme: &Theme) -> Color {
+    style::muted_color(theme)
+}
+
 fn pick_band(cursor_hz: u64) -> (u64, u64) {
     const BANDS: &[(u64, u64)] = &[
         (1_800_000, 2_000_000),
@@ -246,18 +251,15 @@ impl<M> canvas::Program<M> for BandmapProgram<M> {
         // Match the pane frame's own background so the canvas blends with
         // every other pane instead of reading as a sunk-in sub-surface.
         let bg_color = pal.background.base.color;
-        let axis_color = if style::is_light(theme) {
-            Color::from_rgb(0.55, 0.55, 0.6)
-        } else {
-            Color::from_rgb(0.3, 0.3, 0.35)
-        };
+        // Axis and ticks use the shared hairline color, so the bandmap
+        // takes on the theme's tint like every other border.
+        let axis_color = style::lerp(style::border_color(theme), label_color_base(theme), 0.35);
         let label_color = style::muted_color(theme);
         let text_color = pal.background.base.text;
 
-        frame.fill(
-            &Path::rectangle(Point::ORIGIN, Size::new(w, h)),
-            bg_color,
-        );
+        // The canvas doesn't paint its own background. The pane surface
+        // behind it is the same color, and a square fill would cover the
+        // frame's rounded bottom corners.
 
         frame.stroke(
             &Path::line(Point::new(AXIS_X, 0.0), Point::new(AXIS_X, h)),
@@ -280,7 +282,8 @@ impl<M> canvas::Program<M> for BandmapProgram<M> {
                     content: format!("{:.3}", hz as f64 / 1_000_000.0),
                     position: Point::new(2.0, y - 6.0),
                     color: label_color,
-                    size: 10.0.into(),
+                    size: style::TEXT_TINY.into(),
+                    font: style::FONT_MONO,
                     ..Text::default()
                 });
             }
@@ -322,7 +325,7 @@ impl<M> canvas::Program<M> for BandmapProgram<M> {
         // clip into the next label.
         const LABEL_SPACE: f32 = 13.0;
         let leader_color = style::very_muted_color(theme);
-        let dot_size = 6.0;
+        let dot_radius = 3.5;
 
         let mut i = 0;
         while i < placements.len() {
@@ -354,19 +357,15 @@ impl<M> canvas::Program<M> for BandmapProgram<M> {
                 };
 
                 // Dot at the true frequency (not the label position).
-                frame.fill(
-                    &Path::rectangle(
-                        Point::new(AXIS_X - dot_size / 2.0, p.y - dot_size / 2.0),
-                        Size::new(dot_size, dot_size),
-                    ),
-                    dot_color,
-                );
+                // Round dots read as "marker"; the old squares read as
+                // pixels.
+                frame.fill(&Path::circle(Point::new(AXIS_X, p.y), dot_radius), dot_color);
 
                 // Leader line from the dot to the label's left edge, drawn
                 // only when the label is actually displaced. Colored muted
                 // so it doesn't compete with the call text.
                 if (label_y - p.y).abs() > 1.5 {
-                    let leader_start_x = AXIS_X + dot_size / 2.0;
+                    let leader_start_x = AXIS_X + dot_radius;
                     let leader_end_x = AXIS_X + 10.0;
                     frame.stroke(
                         &Path::line(
@@ -389,7 +388,8 @@ impl<M> canvas::Program<M> for BandmapProgram<M> {
                     content: p.spot.call.clone(),
                     position: Point::new(AXIS_X + 12.0 + label_x_nudge, label_y - 7.0),
                     color: call_color,
-                    size: 12.0.into(),
+                    size: style::TEXT_LABEL.into(),
+                    font: style::FONT_MONO,
                     ..Text::default()
                 });
             }
@@ -399,23 +399,43 @@ impl<M> canvas::Program<M> for BandmapProgram<M> {
 
         if self.cursor_hz >= vlow && self.cursor_hz <= vhigh {
             let y = y_for(self.cursor_hz);
+            let cursor = style::cursor_color(theme);
             frame.stroke(
                 &Path::line(Point::new(AXIS_X, y), Point::new(w, y)),
-                Stroke::default()
-                    .with_width(1.5)
-                    .with_color(style::cursor_color(theme)),
+                Stroke::default().with_width(2.0).with_color(cursor),
             );
+            // A small pointer on the axis anchors the cursor line to the
+            // frequency scale, so the eye can read the frequency.
+            let tri = Path::new(|b| {
+                b.move_to(Point::new(AXIS_X - 7.0, y - 5.0));
+                b.line_to(Point::new(AXIS_X, y));
+                b.line_to(Point::new(AXIS_X - 7.0, y + 5.0));
+                b.close();
+            });
+            frame.fill(&tri, cursor);
         }
 
         // Zoom indicator in the top-right — "100%" when full band,
         // smaller values as the user zooms in.
         let pct = (self.zoom.clamp(MIN_ZOOM, 1.0) * 100.0).round() as u32;
         if pct < 100 {
+            // Drawn as a small badge so it reads as a status chip rather
+            // than stray text floating over the spots.
+            let chip_w = 40.0;
+            let chip_h = 16.0;
+            let origin = Point::new(w - chip_w - 6.0, 6.0);
+            frame.fill(
+                &Path::rounded_rectangle(origin, Size::new(chip_w, chip_h), style::RADIUS_SM.into()),
+                style::lerp(bg_color, text_color, 0.09),
+            );
             frame.fill_text(Text {
                 content: format!("{pct}%"),
-                position: Point::new(w - 40.0, 4.0),
+                position: Point::new(origin.x + chip_w / 2.0, origin.y + chip_h / 2.0),
                 color: label_color,
-                size: 10.0.into(),
+                size: style::TEXT_TINY.into(),
+                font: style::FONT_MONO,
+                align_x: iced::widget::text::Alignment::Center,
+                align_y: iced::alignment::Vertical::Center,
                 ..Text::default()
             });
         }
